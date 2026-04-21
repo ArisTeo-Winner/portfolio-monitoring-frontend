@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0A0A0A;
+  --foreground: #f8fafc;
+  --brand: #FCD34D;
+  --brand-soft: #fde68a;
+  --accent: #1ec6b6;
+  --panel: #111111;
+  --panel-border: #2B3139;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", "Segoe UI", sans-serif;
+}
+
+/* Scroll elegante */
+.hide-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.hide-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hide-scrollbar::-webkit-scrollbar-thumb {
+  background: #2B3139;
+  border-radius: 4px;
+}
+.hide-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #848E9C;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.glass {
+  background: #09090b;
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(53, 89, 232, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(53, 89, 232, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+@keyframes public-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-33.333%);
+  }
+}

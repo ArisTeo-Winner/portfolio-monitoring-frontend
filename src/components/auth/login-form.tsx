@@ -1,0 +1,139 @@
+"use client";
+
+import type { FormEvent } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ProblemAlert } from "@/components/ui/problem-alert";
+import { login } from "@/features/auth/api/login";
+import { persistSession } from "@/features/auth/lib/session";
+import { ApiError } from "@/lib/api/problem-details";
+
+type Props = {
+  initialEmail?: string;
+};
+
+export function LoginForm({ initialEmail = "" }: Props) {
+  const router = useRouter();
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const disabled = useMemo(() => !email.trim() || !password.trim() || pending, [email, password, pending]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+
+    try {
+      const tokens = await login({ email: email.trim(), password });
+      persistSession(tokens);
+      router.push("/portfolio");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No fue posible iniciar sesion.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form className="space-y-4" onSubmit={handleSubmit}>
+      <ProblemAlert
+        className="rounded-[1rem] border border-[#4b1d28] bg-[#241217] px-4 py-3 text-sm text-[#ff8ea5] shadow-none"
+        message={error}
+      />
+      <Input
+        autoComplete="email"
+        hideLabel
+        icon={<MailIcon />}
+        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        label="Correo"
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder="tucorreo@ejemplo.com"
+        type="email"
+        value={email}
+        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+      />
+      <Input
+        autoComplete="current-password"
+        hideLabel
+        icon={<LockIcon />}
+        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        label="Contrasena"
+        onChange={(event) => setPassword(event.target.value)}
+        placeholder=".............."
+        type={showPassword ? "text" : "password"}
+        value={password}
+        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+      />
+      <div className="flex justify-end">
+        <button
+          className="text-xs font-medium text-[#77808d] transition hover:text-[#19c37d]"
+          onClick={() => setShowPassword((value) => !value)}
+          type="button"
+        >
+          {showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+        </button>
+      </div>
+      <Button
+        block
+        className="h-[3.55rem] rounded-[1rem] bg-[#19c37d] py-4 text-[1.02rem] font-bold text-[#07130d] shadow-[0_18px_40px_rgba(25,195,125,0.2)] hover:bg-[#22d08a] disabled:bg-[#205c45] disabled:text-[#98bea9]"
+        disabled={disabled}
+        icon={<ArrowRightIcon />}
+        type="submit"
+      >
+        {pending ? "Accediendo..." : "Acceder"}
+      </Button>
+    </form>
+  );
+}
+
+function MailIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24">
+      <path
+        d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Zm1.7.1 6.1 4.7a.35.35 0 0 0 .4 0l6.1-4.7"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.9"
+      />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24">
+      <path
+        d="M7 10V8a5 5 0 1 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.9"
+      />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+      <path
+        d="M5 12h13m-4-4 4 4-4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}

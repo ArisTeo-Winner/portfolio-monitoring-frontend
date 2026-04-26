@@ -1,4 +1,4 @@
-import { env } from "@/lib/config/env";
+import { env, ensureClientRuntimeConfig } from "@/lib/config/env";
 import { ApiError, type ProblemDetails } from "@/lib/api/problem-details";
 import { endpoints } from "@/lib/api/endpoints";
 import { expireSession, persistSession, readSession } from "@/features/auth/lib/session";
@@ -18,6 +18,8 @@ async function doApiRequest<T>(
   options: RequestOptions,
   allowRefresh: boolean,
 ): Promise<T> {
+  ensureClientRuntimeConfig();
+
   const headers = new Headers(options.headers ?? {});
   const session = options.auth ? readSession() : null;
 
@@ -77,6 +79,8 @@ function isRefreshExcludedPath(path: string) {
 }
 
 async function tryRefreshSession(refreshToken: string): Promise<boolean> {
+  ensureClientRuntimeConfig();
+
   const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
     method: "POST",
     headers: {

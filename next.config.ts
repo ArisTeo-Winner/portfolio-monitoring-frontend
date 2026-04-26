@@ -16,7 +16,7 @@ function resolveApiOrigin(): string {
 function buildContentSecurityPolicy(): string {
   const isDevelopment = process.env.NODE_ENV !== "production";
   const scriptSources = ["'self'", "'unsafe-inline'"];
-  const connectSources = ["'self'", resolveApiOrigin(), "https://api.coingecko.com", "https:"];
+  const connectSources = ["'self'", resolveApiOrigin(), "https://api.coingecko.com"];
 
   if (isDevelopment) {
     scriptSources.push("'unsafe-eval'");

@@ -1,6 +1,7 @@
+import { env } from "@/lib/config/env";
 import type { JwtResponse } from "@/features/auth/types/auth.types";
 
-const SESSION_KEY = "cpm.session";
+const LEGACY_SESSION_KEY = "cpm.session";
 const SESSION_EXPIRED_REDIRECT = "/login?session_expired=1";
 
 export function persistSession(tokens: JwtResponse) {
@@ -8,7 +9,8 @@ export function persistSession(tokens: JwtResponse) {
     return;
   }
 
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(tokens));
+  window.localStorage.setItem(getSessionKey(), JSON.stringify(tokens));
+  window.localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
 export function clearSession() {
@@ -16,7 +18,8 @@ export function clearSession() {
     return;
   }
 
-  window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(getSessionKey());
+  window.localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
 export function expireSession() {
@@ -36,7 +39,8 @@ export function readSession(): JwtResponse | null {
     return null;
   }
 
-  const raw = window.localStorage.getItem(SESSION_KEY);
+  const sessionKey = getSessionKey();
+  const raw = window.localStorage.getItem(sessionKey) ?? migrateLegacySession(sessionKey);
   if (!raw) {
     return null;
   }
@@ -44,7 +48,27 @@ export function readSession(): JwtResponse | null {
   try {
     return JSON.parse(raw) as JwtResponse;
   } catch {
-    window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(sessionKey);
+    window.localStorage.removeItem(LEGACY_SESSION_KEY);
     return null;
   }
+}
+
+function migrateLegacySession(sessionKey: string) {
+  const legacy = window.localStorage.getItem(LEGACY_SESSION_KEY);
+  if (!legacy) {
+    return null;
+  }
+
+  window.localStorage.setItem(sessionKey, legacy);
+  window.localStorage.removeItem(LEGACY_SESSION_KEY);
+  return legacy;
+}
+
+function getSessionKey() {
+  return `${LEGACY_SESSION_KEY}:${encodeStorageSegment(env.apiOrigin)}`;
+}
+
+function encodeStorageSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

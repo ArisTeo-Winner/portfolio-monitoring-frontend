@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { persistSession } from "@/features/auth/lib/session";
 import type { JwtResponse } from "@/features/auth/types/auth.types";
+import { ensureClientRuntimeConfig } from "@/lib/config/env";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -16,20 +17,26 @@ export default function AuthCallbackPage() {
   );
 
   useEffect(() => {
-    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-    const params = new URLSearchParams(hash);
-    const accessToken = params.get("accessToken");
-    const refreshToken = params.get("refreshToken");
+    try {
+      ensureClientRuntimeConfig();
 
-    if (!accessToken || !refreshToken) {
-      setError("Google login returned without JWT tokens. Retry the sign-in flow.");
-      return;
+      const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get("accessToken");
+      const refreshToken = params.get("refreshToken");
+
+      if (!accessToken || !refreshToken) {
+        setError("Google login returned without JWT tokens. Retry the sign-in flow.");
+        return;
+      }
+
+      const tokens: JwtResponse = { accessToken, refreshToken };
+      persistSession(tokens);
+      router.replace("/portfolio");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google login failed because the frontend runtime config is invalid.");
     }
-
-    const tokens: JwtResponse = { accessToken, refreshToken };
-    persistSession(tokens);
-    router.replace("/portfolio");
-    router.refresh();
   }, [router]);
 
   return (

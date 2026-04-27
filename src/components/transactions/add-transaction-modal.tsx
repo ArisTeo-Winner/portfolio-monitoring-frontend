@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CryptoSelector } from "@/components/transactions/cryptoSelector";
 import { Modal } from "@/components/ui/modal";
@@ -342,11 +343,14 @@ function AssetAvatar({ asset, dark = false }: { asset: AssetOption | null; dark?
 
   if (logoUrl) {
     return (
-      <img
+      <Image
         alt={asset?.name ?? symbol}
         className={`${className} bg-[#0f131b] object-cover`}
+        height={32}
         onError={() => setImageError(true)}
         src={logoUrl}
+        unoptimized
+        width={32}
       />
     );
   }
@@ -430,11 +434,6 @@ function mergeAssetOptions(assets: AssetOption[]) {
   return Array.from(map.values());
 }
 
-function matchesAssetType(asset: AssetOption, filter: string) {
-  const normalizedFilter = normalizeAssetType(filter) ?? "ALL";
-  return normalizedFilter === "ALL" || normalizeAssetType(asset.assetType) === normalizedFilter;
-}
-
 function getFilterLabel(filter?: string) {
   switch (normalizeAssetType(filter)) {
     case "CRYPTO": return "Crypto";
@@ -457,16 +456,6 @@ function getPortfolioLabel(filter?: string) {
     case "ETF": return "ETFs";
     case "INDEX": return "Index";
     default: return "Multi-asset";
-  }
-}
-
-function getAssetTypeDescription(filter?: string) {
-  switch (normalizeAssetType(filter)) {
-    case "CRYPTO": return "Coins and tokens from the crypto market.";
-    case "STOCK": return "Public equities and company shares.";
-    case "ETF": return "Exchange-traded funds and indexed baskets.";
-    case "INDEX": return "Indices or benchmark-style market instruments.";
-    default: return "Select the asset class you want to register.";
   }
 }
 

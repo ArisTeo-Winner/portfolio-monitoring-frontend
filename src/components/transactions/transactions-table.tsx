@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddTransactionModal, type InitialTransactionDraft } from "@/components/transactions/add-transaction-modal";
 import { Modal } from "@/components/ui/modal";
@@ -533,11 +534,14 @@ function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: stri
 
   if (logoUrl && !failed) {
     return (
-      <img
+      <Image
         alt={symbol}
         className="h-8 w-8 shrink-0 rounded-full bg-[#0f131b] object-cover"
+        height={32}
         onError={() => setFailed(true)}
         src={logoUrl}
+        unoptimized
+        width={32}
       />
     );
   }

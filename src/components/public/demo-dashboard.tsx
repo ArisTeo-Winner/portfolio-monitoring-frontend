@@ -17,6 +17,8 @@ import type {
 import { useSearchParams } from "next/navigation";
 
 type Mode = "login" | "register";
+const EMPTY_MARKET_ROWS: MarketRow[] = [];
+const EMPTY_TRENDING_ASSETS: TrendingMarketAsset[] = [];
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   OIDC_LOGIN_FAILED: "No fue posible completar el acceso con Google.",
@@ -96,9 +98,10 @@ export function DemoDashboard({
     retry: false,
   });
 
-  const assets = cryptoQuery.data ?? [];
+  const assets = cryptoQuery.data ?? EMPTY_MARKET_ROWS;
   const tickerAssets = tickerQuery.data ?? assets;
   const globalStats = globalQuery.data ?? EMPTY_GLOBAL_STATS;
+  const trendingAssets = trendingQuery.data ?? EMPTY_TRENDING_ASSETS;
 
   const previewAssets = useMemo(() => assets.slice(0, 4), [assets]);
   const gainers = useMemo(
@@ -109,7 +112,7 @@ export function DemoDashboard({
         .slice(0, 3),
     [assets],
   );
-  const trending = useMemo(() => mapTrending(trendingQuery.data ?? [], assets).slice(0, 3), [assets, trendingQuery.data]);
+  const trending = useMemo(() => mapTrending(trendingAssets, assets).slice(0, 3), [assets, trendingAssets]);
   const compositeSeries = useMemo(() => buildCompositeSeries(previewAssets), [previewAssets]);
   const allocation = useMemo(() => buildAllocation(previewAssets), [previewAssets]);
 
@@ -722,36 +725,6 @@ function ChangeChip({ value }: { value: number | null }) {
   );
 }
 
-function ChangeInline({ value }: { value: number | null }) {
-  const positive = (value ?? 0) >= 0;
-  return (
-    <span className={`inline-flex items-center gap-1 text-sm font-semibold ${positive ? "text-[#22d38c]" : "text-[#ff5c7c]"}`}>
-      {positive ? <ArrowUpRightIcon className="h-3.5 w-3.5" /> : <ArrowDownRightIcon className="h-3.5 w-3.5" />}
-      {formatSignedPercent(value)}
-    </span>
-  );
-}
-
-function AssetAvatar({ asset, compact = false }: { asset: MarketRow; compact?: boolean }) {
-  return (
-    <div
-      className={`flex items-center justify-center overflow-hidden rounded-full bg-[#0b0f14] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] ${
-        compact ? "h-10 w-10" : "h-12 w-12"
-      }`}
-    >
-      {asset.logoUrl ? (
-        <img
-          alt={asset.symbol}
-          className={compact ? "h-7 w-7 rounded-full object-cover" : "h-8 w-8 rounded-full object-cover"}
-          src={asset.logoUrl}
-        />
-      ) : (
-        <span className={compact ? "text-sm font-bold text-white" : "text-base font-bold text-white"}>{asset.symbol.slice(0, 1)}</span>
-      )}
-    </div>
-  );
-}
-
 const EMPTY_GLOBAL_STATS: MarketOverviewStats = {
   marketCapUsd: null,
   marketCapChangePercentage24hUsd: null,
@@ -795,15 +768,6 @@ function ShieldIcon({ className }: { className?: string }) {
     <IconWrapper className={className}>
       <path d="M12 3L19 6V11.5C19 16 15.9 19.95 12 21C8.1 19.95 5 16 5 11.5V6L12 3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
       <path d="M9.25 12L11.1 13.85L14.75 10.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </IconWrapper>
-  );
-}
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <IconWrapper className={className}>
-      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M16 16L21 21" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </IconWrapper>
   );
 }

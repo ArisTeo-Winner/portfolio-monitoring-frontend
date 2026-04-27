@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-modal";
 import { PortfolioDetailCard } from "@/components/portfolio/portfolio-widgets";
@@ -62,11 +62,11 @@ export default function PortfolioSymbolPage() {
     measureNames: string[];
   } | null>(null);
 
-  function loadPreferences() {
+  const loadPreferences = useCallback(() => {
     setPreferences(readPortfolioPreferences());
-  }
+  }, []);
 
-  async function loadSidebarPortfolio() {
+  const loadSidebarPortfolio = useCallback(async () => {
     const sidebarFetchStartedAt = typeof window !== "undefined" ? window.performance.now() : 0;
 
     try {
@@ -79,9 +79,9 @@ export default function PortfolioSymbolPage() {
         traceRef.current.sidebarFetchMs = window.performance.now() - sidebarFetchStartedAt;
       }
     }
-  }
+  }, [symbol]);
 
-  async function loadEntry() {
+  const loadEntry = useCallback(async () => {
     if (!symbol) {
       setError("Invalid asset symbol.");
       setLoading(false);
@@ -116,9 +116,9 @@ export default function PortfolioSymbolPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [symbol]);
 
-  async function loadTransactions() {
+  const loadTransactions = useCallback(async () => {
     if (!symbol) {
       setTransactionsLoading(false);
       return;
@@ -154,7 +154,7 @@ export default function PortfolioSymbolPage() {
     } finally {
       setTransactionsLoading(false);
     }
-  }
+  }, [symbol]);
 
   useEffect(() => {
     const navigationTrace = readHoldingDetailTrace(symbol);
@@ -189,7 +189,7 @@ export default function PortfolioSymbolPage() {
     return () => {
       clearHoldingDetailPerformance(measureNames, markNames);
     };
-  }, [symbol]);
+  }, [loadEntry, loadPreferences, loadSidebarPortfolio, loadTransactions, symbol]);
 
   useEffect(() => {
     if (loading || !entry || process.env.NODE_ENV !== "development") return;
@@ -246,8 +246,8 @@ export default function PortfolioSymbolPage() {
   }, [symbol, transactions.length, transactionsLoading]);
 
   const sidebarGroups = useMemo(
-    () => buildSidebarGroups(portfolioEntries, preferences, entry?.assetType),
-    [entry?.assetType, portfolioEntries, preferences],
+    () => buildSidebarGroups(portfolioEntries, preferences),
+    [portfolioEntries, preferences],
   );
   const totalValue = useMemo(
     () => portfolioEntries.reduce((acc, current) => acc + Number(current.currentValue), 0),

@@ -1,13 +1,12 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
-import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar";
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
-import { readPortfolioPreferences, type PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
@@ -18,10 +17,9 @@ const DISTRIBUTION_COLORS = ["#f7931a", "#5b8ff9", "#22c55e", "#a855f7", "#14b8a
 
 export default function DashboardPage() {
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
-  const [preferences, setPreferences] = useState<PortfolioPreference[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
-  const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
-  const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>({});
+  const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>(() => readAssetLogoRegistry());
+  const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>(() => readCoinGeckoCryptoLogoMap());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +39,6 @@ export default function DashboardPage() {
 
       setEntries(portfolioData);
       setTransactions(transactionData);
-      setPreferences(readPortfolioPreferences());
       setLogoRegistry(readAssetLogoRegistry());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No fue posible cargar el dashboard.");
@@ -51,7 +48,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void loadDashboard();
+    const timeoutId = window.setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -69,10 +70,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let active = true;
-    const cached = readCoinGeckoCryptoLogoMap();
-    if (Object.keys(cached).length) {
-      setCryptoLogoMap(cached);
-    }
 
     fetchCoinGeckoCryptoLogoMap()
       .then((nextMap) => {
@@ -89,7 +86,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const groups = useMemo(() => buildSidebarGroups(entries, preferences), [entries, preferences]);
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
   const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const totalProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
@@ -503,11 +499,14 @@ function AssetAvatar({
 
   if (logoUrl && !failed) {
     return (
-      <img
+      <Image
         alt={symbol}
         className={`${sizeClass} shrink-0 rounded-full bg-[#0f131b] object-cover`}
         onError={() => setFailed(true)}
         src={logoUrl}
+        unoptimized
+        width={small ? 28 : 40}
+        height={small ? 28 : 40}
       />
     );
   }
@@ -531,16 +530,31 @@ function DistributionDonut({
 }) {
   const radius = 52;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  const renderedSegments = segments.reduce<
+    Array<{ color: string; length: number; offset: number; symbol: string }>
+  >((acc, segment) => {
+    const previous = acc[acc.length - 1];
+    const offset = previous ? previous.offset + previous.length : 0;
+    const length = (segment.share / 100) * circumference;
+
+    acc.push({
+      color: segment.color,
+      length,
+      offset,
+      symbol: segment.symbol,
+    });
+
+    return acc;
+  }, []);
 
   return (
     <div className="relative flex h-[14rem] w-full items-center justify-center">
       <svg className="h-[13rem] w-[13rem] -rotate-90" viewBox="0 0 140 140">
         <circle cx="70" cy="70" fill="none" r={radius} stroke="#16191e" strokeWidth="16" />
-        {segments.map((segment) => {
-          const length = (segment.share / 100) * circumference;
-          const strokeDasharray = `${length} ${circumference - length}`;
-          const circle = (
+        {renderedSegments.map((segment) => {
+          const strokeDasharray = `${segment.length} ${circumference - segment.length}`;
+
+          return (
             <circle
               cx="70"
               cy="70"
@@ -549,13 +563,11 @@ function DistributionDonut({
               r={radius}
               stroke={segment.color}
               strokeDasharray={strokeDasharray}
-              strokeDashoffset={-offset}
+              strokeDashoffset={-segment.offset}
               strokeLinecap="round"
               strokeWidth="16"
             />
           );
-          offset += length;
-          return circle;
         })}
       </svg>
 

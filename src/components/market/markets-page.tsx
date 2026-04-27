@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
@@ -23,11 +24,7 @@ import {
   getEquityMarketFeed,
   type EquityMarketSeed,
 } from "@/features/marketdata/api/get-equity-market-feed";
-import type {
-  MarketCategory,
-  MarketRow,
-  TrendingMarketAsset,
-} from "@/features/marketdata/types/market.types";
+import type { MarketRow, TrendingMarketAsset } from "@/features/marketdata/types/market.types";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
@@ -110,6 +107,7 @@ const KNOWN_ASSET_NAMES: Record<string, string> = {
 };
 
 let tradingViewScriptPromise: Promise<void> | null = null;
+const EMPTY_MARKET_ROWS: MarketRow[] = [];
 
 export function MarketsPage() {
   const [activeTab, setActiveTab] = useState<MarketTab>("CRYPTO");
@@ -201,9 +199,9 @@ export function MarketsPage() {
     retry: false,
   });
 
-  const cryptoRows = cryptoQuery.data ?? [];
-  const stockRows = stockQuery.data ?? [];
-  const etfRows = etfQuery.data ?? [];
+  const cryptoRows = cryptoQuery.data ?? EMPTY_MARKET_ROWS;
+  const stockRows = stockQuery.data ?? EMPTY_MARKET_ROWS;
+  const etfRows = etfQuery.data ?? EMPTY_MARKET_ROWS;
 
   const allRows = useMemo(() => [...cryptoRows, ...stockRows, ...etfRows], [cryptoRows, etfRows, stockRows]);
   const rowsBySymbol = useMemo(() => {
@@ -665,7 +663,14 @@ function AssetBadge({
         style={{ backgroundColor: logoUrl ? "#0d1015" : fallbackColor }}
       >
         {logoUrl ? (
-          <img alt={row.symbol} className="h-8 w-8 rounded-full object-cover" src={logoUrl} />
+          <Image
+            alt={row.symbol}
+            className="h-8 w-8 rounded-full object-cover"
+            height={32}
+            src={logoUrl}
+            unoptimized
+            width={32}
+          />
         ) : (
           <span className="text-sm font-bold text-white">{row.symbol.slice(0, 1)}</span>
         )}
@@ -759,11 +764,13 @@ function TradingViewWidget({ asset }: { asset: MarketRow }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    const host = widgetHostRef.current;
+
     async function mountWidget() {
-      if (!widgetHostRef.current) return;
+      if (!host) return;
 
       setFailed(false);
-      widgetHostRef.current.innerHTML = "";
+      host.innerHTML = "";
 
       try {
         await loadTradingViewScript();
@@ -771,12 +778,11 @@ function TradingViewWidget({ asset }: { asset: MarketRow }) {
           throw new Error("TradingView widget unavailable");
         }
 
-        widgetHostRef.current.id = `tradingview_${asset.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
+        host.id = `tradingview_${asset.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
-        // eslint-disable-next-line no-new
-        new window.TradingView.widget({
+        void new window.TradingView.widget({
           autosize: true,
-          container_id: widgetHostRef.current.id,
+          container_id: host.id,
           symbol: asset.tvSymbol,
           interval: "240",
           timezone: "Etc/UTC",
@@ -800,8 +806,8 @@ function TradingViewWidget({ asset }: { asset: MarketRow }) {
     void mountWidget();
 
     return () => {
-      if (widgetHostRef.current) {
-        widgetHostRef.current.innerHTML = "";
+      if (host) {
+        host.innerHTML = "";
       }
     };
   }, [asset]);

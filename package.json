@@ -8,7 +8,8 @@
     "build:isolated": "node scripts/run-isolated-build.mjs",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ci:verify": "npm run test && npm run build:isolated"
   },
   "overrides": {
     "postcss": "^8.5.10"
@@ -34,6 +35,8 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.21",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.4",
     "jsdom": "^29.0.1",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",

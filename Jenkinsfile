@@ -11,6 +11,7 @@ pipeline {
 
   parameters {
     string(name: 'NEXT_PUBLIC_API_BASE_URL', defaultValue: 'http://localhost:8080', description: 'Backend base URL baked into the Next.js build')
+    string(name: 'NEXT_PUBLIC_APP_URL', defaultValue: 'http://localhost:3000', description: 'Frontend public URL baked into the Next.js build')
     string(name: 'FRONTEND_PORT', defaultValue: '3000', description: 'Host port used when DEPLOY_CONTAINER is enabled')
     booleanParam(name: 'DEPLOY_CONTAINER', defaultValue: false, description: 'Run the built image as crypto_portfolio_frontend after a successful build')
   }
@@ -42,8 +43,8 @@ pipeline {
       steps {
         script {
           runCommand(
-            "NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' npm run build",
-            "set NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}&& npm run build"
+            "NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' npm run build",
+            "set NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}&& set NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL}&& npm run build"
           )
         }
       }
@@ -53,8 +54,8 @@ pipeline {
       steps {
         script {
           runCommand(
-            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest .",
-            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
+            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' --build-arg NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest .",
+            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} --build-arg NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL} -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
           )
         }
       }
@@ -78,8 +79,8 @@ pipeline {
       steps {
         script {
           runCommand(
-            "docker rm -f crypto_portfolio_frontend || true && docker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' ${env.IMAGE_NAME}:${env.IMAGE_TAG}",
-            "docker rm -f crypto_portfolio_frontend 2>NUL\r\ndocker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+            "docker rm -f crypto_portfolio_frontend || true && docker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' -e NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' ${env.IMAGE_NAME}:${env.IMAGE_TAG}",
+            "docker rm -f crypto_portfolio_frontend 2>NUL\r\ndocker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} -e NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL} ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
           )
         }
       }

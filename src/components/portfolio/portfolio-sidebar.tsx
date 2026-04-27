@@ -29,7 +29,7 @@ function getAssetPalette(keyword: string) {
   return palettes[index];
 }
 
-export function buildSidebarGroups(entries: PortfolioEntry[], preferences: PortfolioPreference[], activeType?: string) {
+export function buildSidebarGroups(entries: PortfolioEntry[], preferences: PortfolioPreference[]) {
   const groups: SidebarGroup[] = [];
   const activeEntries = entries.filter((entry) => Number(entry.totalQuantity) > 0 || Number(entry.totalInvested) > 0);
   const discoveredAssetTypes = new Set(activeEntries.map((entry) => entry.assetType));

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 export type Crypto = {
@@ -69,7 +70,7 @@ export function CryptoSelector({ onChange, value }: CryptoSelectorProps) {
         setCryptos(nextCryptos);
         writeCache(nextCryptos);
         setError(null);
-      } catch (caughtError) {
+      } catch {
         if (!active) return;
         if (!cached.length) setError("No fue posible cargar las criptomonedas en este momento.");
       } finally {
@@ -144,9 +145,10 @@ export function CryptoSelector({ onChange, value }: CryptoSelectorProps) {
               >
                 <div className="flex min-w-0 items-center gap-3">
                   {imageSrc ? (
-                    <img
+                    <Image
                       alt={crypto.name}
                       className="h-8 w-8 rounded-full bg-[#0f131b] object-cover"
+                      height={32}
                       loading="lazy"
                       onError={() =>
                         setFailedImages((current) => ({
@@ -155,6 +157,8 @@ export function CryptoSelector({ onChange, value }: CryptoSelectorProps) {
                         }))
                       }
                       src={imageSrc}
+                      unoptimized
+                      width={32}
                     />
                   ) : (
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0f131b] text-xs font-semibold text-white">

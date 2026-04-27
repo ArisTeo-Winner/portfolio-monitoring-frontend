@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { IChartApi, MouseEventParams, Time, UTCTimestamp } from "lightweight-charts";
@@ -731,11 +732,14 @@ function AssetOrb({ logoUrl, symbol }: { logoUrl: string | null; symbol: string 
 
   if (logoUrl && !failed) {
     return (
-      <img
+      <Image
         alt={symbol}
         className="h-14 w-14 rounded-full bg-[#0d1015] object-cover shadow-[0_20px_40px_rgba(0,0,0,0.28)]"
+        height={56}
         onError={() => setFailed(true)}
         src={logoUrl}
+        unoptimized
+        width={56}
       />
     );
   }

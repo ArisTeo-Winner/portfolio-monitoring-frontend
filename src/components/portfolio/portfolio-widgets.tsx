@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
@@ -10,8 +11,6 @@ import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types"
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
 
 type WorkspaceTab = "assets" | "history";
-type SummaryRange = "24h" | "7d" | "1m" | "all";
-const DISTRIBUTION_COLORS = ["#f59e0b", "#6366f1", "#21d4a7", "#7c3aed", "#22c55e", "#38bdf8"];
 
 export function PortfolioSummary({
   portfolioId,
@@ -267,51 +266,6 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DistributionDonut({
-  assetCount,
-  segments,
-}: {
-  assetCount: number;
-  segments: Array<{ symbol: string; label: string; share: number; color: string }>;
-}) {
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
-
-  return (
-    <div className="relative flex h-[14rem] w-full items-center justify-center">
-      <svg className="h-[13rem] w-[13rem] -rotate-90" viewBox="0 0 140 140">
-        <circle cx="70" cy="70" fill="none" r={radius} stroke="#16191e" strokeWidth="16" />
-        {segments.map((segment) => {
-          const length = (segment.share / 100) * circumference;
-          const strokeDasharray = `${length} ${circumference - length}`;
-          const circle = (
-            <circle
-              cx="70"
-              cy="70"
-              fill="none"
-              key={segment.symbol}
-              r={radius}
-              stroke={segment.color}
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={-offset}
-              strokeLinecap="round"
-              strokeWidth="16"
-            />
-          );
-          offset += length;
-          return circle;
-        })}
-      </svg>
-
-      <div className="absolute text-center">
-        <p className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{assetCount}</p>
-        <p className="mt-1 text-[0.86rem] text-[#7f8aa3]">Activos</p>
-      </div>
-    </div>
-  );
-}
-
 function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
@@ -332,11 +286,14 @@ function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: stri
 
   if (logoUrl && !failed) {
     return (
-      <img
+      <Image
         alt={symbol}
         className="h-12 w-12 shrink-0 rounded-full bg-[#0f131b] object-cover"
+        height={48}
         onError={() => setFailed(true)}
         src={logoUrl}
+        unoptimized
+        width={48}
       />
     );
   }
@@ -349,63 +306,6 @@ function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: stri
       {initials}
     </span>
   );
-}
-
-function buildDistribution(entries: PortfolioEntry[]) {
-  const total = entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0);
-
-  return [...entries]
-    .filter((entry) => Number(entry.currentValue) > 0)
-    .sort((left, right) => Number(right.currentValue) - Number(left.currentValue))
-    .slice(0, 5)
-    .map((entry, index) => ({
-      symbol: entry.assetSymbol,
-      label: getAssetDisplayName(entry.assetSymbol),
-      share: total > 0 ? (Number(entry.currentValue) / total) * 100 : 0,
-      color: DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length],
-    }));
-}
-
-function buildOverviewTrend(entries: PortfolioEntry[], range: SummaryRange) {
-  const pointCount = range === "24h" ? 18 : range === "7d" ? 22 : range === "1m" ? 26 : 32;
-  const hasActivity = entries.some(
-    (entry) =>
-      Number(entry.totalQuantity) > 0 || Number(entry.totalInvested) > 0 || Number(entry.currentValue) > 0,
-  );
-
-  if (!hasActivity) {
-    return Array.from({ length: pointCount }, (_, index) => ({
-      x: (index / (pointCount - 1)) * 860,
-      y: 210,
-    }));
-  }
-
-  const totalValue = entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0);
-  const totalInvested = entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0);
-  const drift = Math.max(40, Math.abs(totalValue - totalInvested) * 0.18 + entries.length * 18);
-  const amplitude = range === "24h" ? 18 : range === "7d" ? 24 : range === "1m" ? 28 : 34;
-  const seed = entries.reduce((acc, entry) => acc + entry.assetSymbol.charCodeAt(0), 0) || 14;
-
-  const series = Array.from({ length: pointCount }, (_, index) => {
-    const wave = Math.sin((index + seed) / 2.8) * amplitude + Math.cos((index + seed) / 4.6) * amplitude * 0.55;
-    const latePush = index > pointCount * 0.58 ? (index - pointCount * 0.58) * (drift / pointCount) * 1.45 : 0;
-    return totalInvested + drift + wave + latePush;
-  });
-
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const spread = max - min || 1;
-
-  return series.map((value, index) => ({
-    x: (index / (series.length - 1)) * 860,
-    y: 248 - ((value - min) / spread) * 170,
-  }));
-}
-
-function toPath(points: Array<{ x: number; y: number }>) {
-  return points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-    .join(" ");
 }
 
 function getAssetDisplayName(symbol: string) {
@@ -445,38 +345,11 @@ function pickAssetPalette(symbol: string) {
   return palettes[index];
 }
 
-function EyeIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M2.25 12S5.25 6.75 12 6.75 21.75 12 21.75 12 18.75 17.25 12 17.25 2.25 12 2.25 12Z" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.7" />
       <path d="M16 16L21 21" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function RefreshIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M3.25 12A8.75 8.75 0 0 1 18.1 5.8M20.75 12a8.75 8.75 0 0 1-14.85 6.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-      <path d="M15.9 5.8h2.2V3.6M5.9 18.2H3.7v2.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function PieLegendIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 3.5v8.5h8.5A8.5 8.5 0 1 1 12 3.5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.7" />
-      <path d="M14.5 3.86A8.51 8.51 0 0 1 20.14 9.5H14.5V3.86Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.7" />
     </svg>
   );
 }

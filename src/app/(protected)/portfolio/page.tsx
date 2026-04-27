@@ -12,8 +12,6 @@ import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api
 import { readPortfolioPreferences, type PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import type { AssetOption } from "@/features/assets/types/asset.types";
-import { getUserTransactions } from "@/features/transactions/api/get-transactions";
-import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 
 function PortfolioPageContent() {
@@ -30,7 +28,6 @@ function PortfolioPageContent() {
   const [activePortfolioType, setActivePortfolioType] = useState<string>(requestedType);
   const [activeTab, setActiveTab] = useState<"assets" | "history">("assets");
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
-  const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
 
   const loadPortfolio = useCallback(async (force = false) => {
     setLoading(true);
@@ -53,27 +50,17 @@ function PortfolioPageContent() {
     setPreferences(readPortfolioPreferences());
   }, []);
 
-  const loadTransactions = useCallback(async () => {
-    try {
-      const data = await getUserTransactions();
-      setTransactions(data);
-    } catch {
-      setTransactions([]);
-    }
-  }, []);
-
   useEffect(() => {
     void loadPortfolio();
-    void loadTransactions();
     loadPreferences();
     setLogoRegistry(readAssetLogoRegistry());
-  }, [loadPortfolio, loadPreferences, loadTransactions]);
+  }, [loadPortfolio, loadPreferences]);
 
   useEffect(() => {
     setActivePortfolioType(isOverviewScope ? "" : requestedType);
   }, [isOverviewScope, requestedType]);
 
-  const portfolioGroups = useMemo(() => buildSidebarGroups(entries, preferences, activePortfolioType), [activePortfolioType, entries, preferences]);
+  const portfolioGroups = useMemo(() => buildSidebarGroups(entries, preferences), [entries, preferences]);
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
   const createdCount = preferences.length > 0 ? preferences.length : portfolioGroups.length;
 
@@ -93,14 +80,6 @@ function PortfolioPageContent() {
 
   const activePortfolio = activePortfolioType ? portfolioGroups.find((group) => group.assetType === activePortfolioType) : undefined;
   const filteredEntries = activePortfolio ? entries.filter((entry) => entry.assetType === activePortfolio.assetType) : entries;
-  const filteredTransactions = useMemo(() => {
-    if (!activePortfolio?.assetType) {
-      return transactions;
-    }
-
-    const normalizedActiveType = normalizePortfolioAssetType(activePortfolio.assetType);
-    return transactions.filter((transaction) => normalizePortfolioAssetType(transaction.assetType) === normalizedActiveType);
-  }, [activePortfolio?.assetType, transactions]);
   const hasExistingTransactions = entries.length > 0;
   const transactionsEnabled = true;
   const holdingsPortfolioId = isOverviewScope ? "overview" : normalizePortfolioAssetType(activePortfolio?.assetType || requestedType || "overview");
@@ -149,7 +128,6 @@ function PortfolioPageContent() {
               onAddTransaction={() => setModalOpen(true)}
               onHistoryChanged={async () => {
                 await loadPortfolio(true);
-                await loadTransactions();
                 await refreshHoldingsPerformance();
               }}
               onTabChange={setActiveTab}
@@ -163,7 +141,6 @@ function PortfolioPageContent() {
         onClose={() => setModalOpen(false)}
         onCreated={async () => {
           await loadPortfolio(true);
-          await loadTransactions();
           await refreshHoldingsPerformance();
         }}
         portfolioAssetType={isOverviewScope ? undefined : hasExistingTransactions ? activePortfolio?.assetType : undefined}

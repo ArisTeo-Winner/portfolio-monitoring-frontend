@@ -76,6 +76,24 @@ npm run build:isolated
 
 Eso genera el build en `.next-build` y evita mezclar artefactos de desarrollo con producción.
 
+## Workflows
+
+El repo ya queda listo para CI en GitHub Actions con [.github/workflows/frontend-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-ci.yml).
+
+Ese workflow hace:
+- `npm ci`
+- `npm audit --audit-level=high`
+- `npm test`
+- `npm run build:isolated`
+- build de imagen Docker
+- smoke test levantando el contenedor y validando `GET /login`
+
+Variables recomendadas en GitHub Actions (`Repository Variables`):
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_APP_URL`
+
+Si no existen, el workflow usa defaults seguros de staging para no quedar bloqueado.
+
 ## Docker
 
 ```powershell

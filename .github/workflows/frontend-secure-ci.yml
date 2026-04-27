@@ -1,0 +1,79 @@
+name: Frontend Secure CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secure-build:
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_ENV: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Clean install
+        run: npm ci
+
+      - name: TypeScript strict check
+        run: npx tsc --noEmit
+
+      - name: ESLint strict
+        run: npm run lint -- --max-warnings=0
+
+      - name: Production build
+        run: npm run build
+
+      - name: Generate SBOM (CycloneDX)
+        run: npx @cyclonedx/cyclonedx-npm --output-file bom.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-sbom
+          path: bom.json
+
+      - name: npm audit (fail on high/critical)
+        run: npm audit --audit-level=high
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+
+      - name: Trivy dependency scan
+        run: |
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --no-progress \
+            .
+
+      - name: Trivy secret scan
+        run: |
+          trivy fs \
+            --scanners secret \
+            --exit-code 1 \
+            --no-progress \
+            .
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

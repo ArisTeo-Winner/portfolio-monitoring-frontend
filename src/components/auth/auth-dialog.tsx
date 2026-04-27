@@ -52,6 +52,7 @@ export function AuthDialog({
             aria-label="Cerrar"
             className="inline-flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-[#20232a] text-[#8f98a7] transition hover:bg-[#252932] hover:text-white"
             onClick={onClose}
+            suppressHydrationWarning
             type="button"
           >
             <CloseIcon />
@@ -65,6 +66,7 @@ export function AuthDialog({
           />
           <button
             className="inline-flex h-[3.25rem] w-full items-center justify-center gap-2 rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#131720]"
+            suppressHydrationWarning
             type="button"
           >
             <AppleIcon />
@@ -87,14 +89,14 @@ export function AuthDialog({
           {mode === "login" ? (
             <>
               No tienes cuenta?{" "}
-              <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("register")} type="button">
+              <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("register")} suppressHydrationWarning type="button">
                 Registrate
               </button>
             </>
           ) : (
             <>
               Ya tienes cuenta?{" "}
-              <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("login")} type="button">
+              <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("login")} suppressHydrationWarning type="button">
                 Inicia sesion
               </button>
             </>

@@ -50,6 +50,7 @@ export function Input({
             inputClassName,
             className,
           )}
+          suppressHydrationWarning
           {...props}
         />
       </div>

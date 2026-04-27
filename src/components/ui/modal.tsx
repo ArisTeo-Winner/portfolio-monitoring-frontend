@@ -23,6 +23,7 @@ export function Modal({ children, onClose, overlayClassName, panelClassName, hid
             aria-label="Close"
             className="absolute right-2.5 top-2.5 rounded-full p-1.5 text-[1.35rem] leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 md:right-3 md:top-3"
             onClick={onClose}
+            suppressHydrationWarning
             type="button"
           >
             &times;

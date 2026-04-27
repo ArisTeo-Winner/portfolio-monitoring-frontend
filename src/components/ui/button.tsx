@@ -20,6 +20,7 @@ export function Button({ className, variant = "primary", block = false, icon, ch
         variant === "outline" && "bg-white/92 text-slate-800 shadow-[0_10px_28px_rgba(15,23,42,0.08)] hover:bg-white",
         className,
       )}
+      suppressHydrationWarning
       {...props}
     >
       {icon}

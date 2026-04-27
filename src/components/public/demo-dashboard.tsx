@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AuthDialog } from "@/components/auth/auth-dialog";
 import {
@@ -52,11 +52,19 @@ export function DemoDashboard({
     : null;
   const authMessage = sessionExpiredMessage ?? oauthErrorMessage;
 
-  const initialOpen = openOnLoad || !!oauthError || !!sessionExpired;
+  const initialOpen = openOnLoad;
 
   const [authOpen, setAuthOpen] = useState(initialOpen);
   const [authMode, setAuthMode] = useState<Mode>(initialAuthMode);
   const [prefilledEmail, setPrefilledEmail] = useState("");
+
+  useEffect(() => {
+    if (!openOnLoad) {
+      return;
+    }
+
+    setAuthOpen(true);
+  }, [openOnLoad]);
 
   const tickerQuery = useQuery({
     queryKey: ["public-home", "ticker"],
@@ -139,6 +147,7 @@ export function DemoDashboard({
               <button
                 className="hidden text-sm font-medium text-[#d0d7e2] transition hover:text-white sm:inline-flex"
                 onClick={() => openAuth("login")}
+                suppressHydrationWarning
                 type="button"
               >
                 Iniciar sesión
@@ -146,6 +155,7 @@ export function DemoDashboard({
               <button
                 className="flex items-center justify-center rounded-lg bg-[#19c37d] px-4 py-2 text-sm font-bold text-[#04120c] shadow-[0_18px_40px_rgba(25,195,125,0.22)] transition hover:bg-[#28d389]"
                 onClick={() => openAuth("register")}
+                suppressHydrationWarning
                 type="button"
               >
                 Empieza gratis
@@ -158,6 +168,24 @@ export function DemoDashboard({
           <div className="pointer-events-none absolute inset-x-0 top-0 h-[620px] bg-[radial-gradient(circle_at_top,rgba(18,148,95,0.18),transparent_58%)]" />
           <div className="mx-auto max-w-[1200px] px-6">
             <div className="mx-auto max-w-[900px] text-center">
+              {authMessage ? (
+                <div className="mx-auto mb-8 flex max-w-[760px] items-center justify-between gap-4 rounded-[1.35rem] border border-[#3a252b] bg-[#1b1014] px-5 py-4 text-left shadow-[0_18px_45px_rgba(0,0,0,0.18)]">
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[#ff7f95]">
+                      Estado de sesión
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#f0c7d0]">{authMessage}</p>
+                  </div>
+                  <button
+                    className="shrink-0 rounded-xl bg-[#19c37d] px-4 py-2 text-sm font-semibold text-[#04120c] transition hover:bg-[#28d389]"
+                    onClick={() => openAuth("login")}
+                    type="button"
+                  >
+                    Inicia sesión
+                  </button>
+                </div>
+              ) : null}
+
               <div className="inline-flex items-center gap-2 rounded-full border border-[#18231f] bg-[#0d1512] px-4 py-2 text-xs font-medium text-[#1fd68a] shadow-[inset_0_0_0_1px_rgba(31,214,138,0.08)]">
                 <PulseIcon className="h-4 w-4" />
                 Rastreo en tiempo real garantizado
@@ -180,6 +208,7 @@ export function DemoDashboard({
                 <button
                   className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-2xl bg-[#19c37d] px-7 py-4 text-lg font-semibold text-[#04120c] shadow-[0_26px_60px_rgba(25,195,125,0.24)] transition hover:bg-[#28d389]"
                   onClick={() => openAuth("register")}
+                  suppressHydrationWarning
                   type="button"
                 >
                   Crea tu cuenta gratis
@@ -356,6 +385,7 @@ export function DemoDashboard({
               <button
                 className="rounded-xl bg-[#12161d] px-5 py-3 text-sm font-semibold text-[#dbe3ee] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] transition hover:bg-[#171c24]"
                 onClick={() => openAuth("register")}
+                suppressHydrationWarning
                 type="button"
               >
                 Salta directo y crea tu cuenta

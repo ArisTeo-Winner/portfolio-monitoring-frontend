@@ -107,6 +107,7 @@ export function RegisterForm({ onRegistered }: Props) {
           <button
             className="font-medium text-[#77808d] transition hover:text-[#19c37d]"
             onClick={() => setShowPassword((value) => !value)}
+            suppressHydrationWarning
             type="button"
           >
             {showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}

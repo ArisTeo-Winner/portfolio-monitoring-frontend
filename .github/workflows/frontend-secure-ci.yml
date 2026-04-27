@@ -16,6 +16,7 @@ jobs:
 
     env:
       NODE_ENV: production
+      TRIVY_VERSION: v0.69.3
 
     steps:
       - name: Checkout
@@ -52,7 +53,9 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+          trivy --version
 
       - name: Trivy dependency scan
         run: |

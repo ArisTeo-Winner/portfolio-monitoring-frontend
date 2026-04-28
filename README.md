@@ -1,21 +1,73 @@
 # Crypto Portfolio Monitoring Frontend
 
-Frontend Next.js para el monitor de portfolio conectado al backend Spring Boot.
+Frontend Next.js del monitor de portfolio conectado al backend Spring Boot.
 
-Ruta local:
+**Ruta local**
 `C:\Users\Ortiz\OneDrive\Documentos\eclipse-workspace\crypto-portfolio-monitoring-frontend`
 
+## Vista rapida
+
+| Quiero... | Comando / archivo |
+| --- | --- |
+| correr en local | `npm install` y `npm run dev` |
+| validar sin mezclar `.next` | `npm run build:isolated` |
+| correr tests | `npm run test` |
+| levantar en Docker | `docker compose up -d --build` |
+| detener Docker | `docker compose down` |
+| revisar CI | [.github/workflows/frontend-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-ci.yml) |
+| revisar secure CI | [.github/workflows/frontend-secure-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-secure-ci.yml) |
+
 ## Stack
+
 - Next.js App Router
 - TypeScript
 - Tailwind CSS
 - TanStack Query
 - React Hook Form
 - Zod
+- Vitest
+
+## Antes de empezar
+
+- Node.js 22 recomendado
+- npm 10+
+- backend disponible en `http://localhost:8080` para desarrollo local
+- Docker Desktop si vas a usar contenedores
+
+## Arranque rapido
+
+### Opcion 1: desarrollo local
+
+```powershell
+npm install
+npm run dev
+```
+
+Frontend:
+`http://localhost:3000`
+
+Backend esperado:
+`http://localhost:8080`
+
+### Opcion 2: contenedor Docker
+
+```powershell
+docker compose up -d --build
+```
+
+App disponible en:
+`http://localhost:3000`
+
+Para detener:
+
+```powershell
+docker compose down
+```
 
 ## Variables de entorno
 
 ### Desarrollo local
+
 Usa [.env.local.example](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.env.local.example):
 
 ```env
@@ -24,6 +76,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 ### Staging / Render
+
 Usa [.env.render.example](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.env.render.example):
 
 ```env
@@ -31,91 +84,184 @@ NEXT_PUBLIC_API_BASE_URL=https://crypto-portfolio-monitoring.onrender.com
 NEXT_PUBLIC_APP_URL=https://your-frontend-staging.example.com
 ```
 
-## Guardrails de entorno ya activos
+<details>
+<summary><strong>Que valida el frontend en runtime</strong></summary>
 
-El frontend ahora valida en runtime:
+- un frontend publicado no puede apuntar a una API `localhost`
+- un frontend publicado no puede apuntar a una API sin `https`
+- `NEXT_PUBLIC_APP_URL` debe coincidir con el origen real del navegador
+- la sesion queda namespaced por `apiOrigin` para no mezclar tokens entre ambientes
 
-- que un frontend publicado no apunte a una API `localhost`
-- que un frontend publicado no apunte a una API sin `https`
-- que `NEXT_PUBLIC_APP_URL` coincida con el dominio real del navegador
-- que las sesiones no se mezclen entre ambientes
+</details>
 
-La sesión en `localStorage` queda namespaced por `apiOrigin`, así staging y producción no comparten tokens por accidente.
+## Scripts utiles
 
-## Auth y sesión
+```powershell
+npm run dev
+npm run build
+npm run build:isolated
+npm run test
+npm run lint
+npm run ci:verify
+```
+
+<details>
+<summary><strong>Que hace cada script</strong></summary>
+
+- `dev`: levanta Next.js en desarrollo
+- `build`: build normal de produccion
+- `build:isolated`: build hacia `.next-build` para no contaminar `.next`
+- `test`: corre Vitest
+- `lint`: corre lint del proyecto
+- `ci:verify`: ejecuta test + build aislado
+
+</details>
+
+## Auth y sesion
 
 Flujos soportados:
+
 - registro
 - login por credenciales
 - refresh token
 - logout
-- callback OAuth2
+- callback OAuth2 Google
 
 Notas:
+
 - el frontend usa `Authorization: Bearer ...`
 - el refresh se hace con `X-Refresh-Token`
-- si la sesión expira, redirige a `/login?session_expired=1`
+- si la sesion expira, redirige a `/login?session_expired=1`
 
-## Desarrollo
+## Docker
 
-```powershell
-npm install
-npm run dev
-```
-
-Frontend local:
-`http://localhost:3000`
-
-## Build estable sin contaminar `.next`
-
-Para validar sin romper `next dev`, usa:
+Construir imagen manualmente:
 
 ```powershell
-npm run build:isolated
+docker build --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 --build-arg NEXT_PUBLIC_APP_URL=http://localhost:3000 -t crypto-portfolio-monitoring-frontend:local .
 ```
 
-Eso genera el build en `.next-build` y evita mezclar artefactos de desarrollo con producción.
+Levantar con Compose:
 
-## Workflows
+```powershell
+docker compose up -d --build
+```
 
-El repo ya queda listo para CI en GitHub Actions con [.github/workflows/frontend-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-ci.yml).
+Variables usadas por Compose:
 
-Ese workflow hace:
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_APP_URL`
+- `FRONTEND_PORT`
+
+<details>
+<summary><strong>Comandos de operacion rapida</strong></summary>
+
+Rebuild:
+
+```powershell
+docker compose up -d --build
+```
+
+Detener:
+
+```powershell
+docker compose down
+```
+
+Ver contenedores:
+
+```powershell
+docker ps
+```
+
+</details>
+
+## GitHub Actions
+
+### Frontend CI
+
+Workflow: [.github/workflows/frontend-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-ci.yml)
+
+Hace:
+
 - `npm ci`
 - `npm audit --audit-level=high`
 - `npm test`
 - `npm run build:isolated`
-- build de imagen Docker
-- smoke test levantando el contenedor y validando `GET /login`
+- build Docker
+- smoke test con `GET /login`
 
-Variables recomendadas en GitHub Actions (`Repository Variables`):
+Variables recomendadas en `Repository Variables`:
+
 - `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_APP_URL`
 
-Si no existen, el workflow usa defaults seguros de staging para no quedar bloqueado.
+### Frontend Secure CI
 
-## Docker
+Workflow: [.github/workflows/frontend-secure-ci.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/.github/workflows/frontend-secure-ci.yml)
+
+Hace:
+
+- `npm ci --include=dev`
+- chequeo TypeScript estricto
+- lint estricto
+- build
+- SBOM CycloneDX
+- `npm audit --audit-level=high`
+- Trivy dependency scan
+- Trivy secret scan
+- CodeQL
+
+## Publicacion en Git
+
+El repo ya queda preparado con:
+
+- `.gitignore` afinado para Next.js, logs, caches e IDE
+- `.gitattributes` para normalizar finales de linea
+
+Secuencia tipica:
 
 ```powershell
-docker build --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 -t crypto-portfolio-monitoring-frontend:local .
-docker compose up -d --build
+git init
+git add .
+git commit -m "chore: initial frontend setup"
+git branch -M main
+git remote add origin <URL_DEL_REPOSITORIO>
+git push -u origin main
 ```
 
-## Checklist antes de conectar directo a producción
+## Checklist antes de conectar a produccion
 
 ### Frontend
+
 - `NEXT_PUBLIC_API_BASE_URL` apunta al backend correcto
 - `NEXT_PUBLIC_APP_URL` apunta al dominio real del frontend
 - no quedan referencias activas a `localhost`
 - login, refresh y logout funcionan en navegador
-- las rutas protegidas redirigen si la sesión expira
+- las rutas protegidas redirigen si la sesion expira
 
-### Backend / integración
+### Backend / integracion
+
 - CORS solo permite el dominio real del frontend
 - callbacks OAuth registran el dominio real del frontend
-- cookies / headers / CSP revisados por ambiente
-- Redis / PostgreSQL / JWT ya validados en staging
+- `APP_FRONTEND_BASE_URL` del backend apunta al frontend real
+- Redis, PostgreSQL y JWT ya fueron validados en staging
 
-## Pendiente recomendado AppSec
+## Mapa del repo
 
-El flujo actual funciona bien con `localStorage`, pero si luego quieres endurecer más la sesión en producción, el siguiente paso recomendado es migrar a cookies `HttpOnly` seguras.
+<details>
+<summary><strong>Archivos que mas vas a tocar</strong></summary>
+
+- [src/app](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/src/app): rutas App Router
+- [src/components](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/src/components): UI y pantallas
+- [src/features](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/src/features): auth, portfolio, marketdata, transactions
+- [src/lib](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/src/lib): cliente API, config y utilidades
+- [tests](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/tests): estructura de pruebas
+- [Dockerfile](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/Dockerfile): imagen de produccion
+- [docker-compose.yml](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/docker-compose.yml): ejecucion local en contenedor
+
+</details>
+
+## Nota de seguridad
+
+El flujo actual usa `localStorage` para tokens. Si luego quieres endurecer aun mas la sesion en produccion, el siguiente paso recomendado es migrar a cookies `HttpOnly` seguras.

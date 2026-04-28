@@ -13,9 +13,7 @@ permissions:
 jobs:
   secure-build:
     runs-on: ubuntu-latest
-
     env:
-      NODE_ENV: production
       TRIVY_VERSION: v0.69.3
 
     steps:
@@ -29,15 +27,17 @@ jobs:
           cache: 'npm'
 
       - name: Clean install
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: TypeScript strict check
-        run: npx tsc --noEmit
+        run: ./node_modules/.bin/tsc --noEmit
 
       - name: ESLint strict
         run: npm run lint -- --max-warnings=0
 
       - name: Production build
+        env:
+          NODE_ENV: test
         run: npm run build
 
       - name: Generate SBOM (CycloneDX)

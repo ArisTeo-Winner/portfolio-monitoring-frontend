@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
 
 const DISTRIBUTION_COLORS = ["#f7931a", "#5b8ff9", "#22c55e", "#a855f7", "#14b8a6"];
+type BackendHealthState = "idle" | "checking" | "up" | "slow" | "unreachable";
 
 export default function DashboardPage() {
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
@@ -133,6 +134,7 @@ export default function DashboardPage() {
 
   return (
     <main className="space-y-5">
+      <DashboardWarmupNotice active={loading || Boolean(error)} />
       {loading ? <DashboardLoadingState /> : null}
       {!loading && error ? <DashboardErrorState message={error} /> : null}
       {!loading && !error ? (
@@ -203,6 +205,92 @@ export default function DashboardPage() {
         </>
       ) : null}
     </main>
+  );
+}
+
+function DashboardWarmupNotice({ active }: { active: boolean }) {
+  const [healthState, setHealthState] = useState<BackendHealthState>("idle");
+  const [showNotice, setShowNotice] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      setShowNotice(false);
+      setHealthState("idle");
+      return;
+    }
+
+    const controller = new AbortController();
+    let mounted = true;
+
+    setHealthState("checking");
+    const timerId = window.setTimeout(() => {
+      if (mounted) {
+        setShowNotice(true);
+      }
+    }, 1200);
+
+    void fetch("/api/health", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as
+          | { status?: string }
+          | null;
+
+        if (!mounted) {
+          return;
+        }
+
+        if (response.ok && payload?.status === "UP") {
+          setHealthState("up");
+          setShowNotice(false);
+          return;
+        }
+
+        setHealthState("slow");
+        setShowNotice(true);
+      })
+      .catch(() => {
+        if (!mounted) {
+          return;
+        }
+
+        setHealthState("unreachable");
+        setShowNotice(true);
+      })
+      .finally(() => {
+        window.clearTimeout(timerId);
+      });
+
+    return () => {
+      mounted = false;
+      controller.abort();
+      window.clearTimeout(timerId);
+    };
+  }, [active]);
+
+  if (!showNotice || healthState === "up") {
+    return null;
+  }
+
+  const statusLabel =
+    healthState === "unreachable" ? "Verificando backend..." : "Backend iniciando...";
+
+  return (
+    <section className="rounded-[1.1rem] border border-[#1c2a24] bg-[#0f1714] px-5 py-4 shadow-[0_18px_44px_rgba(0,0,0,0.18)]">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#5fdda5]">Version demo</p>
+          <p className="mt-1 text-[0.9rem] leading-6 text-[#b7c7c0]">
+            El backend puede tardar unos segundos en responder tras periodos de inactividad.
+          </p>
+        </div>
+        <span className="inline-flex w-fit rounded-full bg-[#11211b] px-3 py-1 text-[0.76rem] font-medium text-[#8ec8ae]">
+          {statusLabel}
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -725,4 +813,3 @@ function ArrowDownIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

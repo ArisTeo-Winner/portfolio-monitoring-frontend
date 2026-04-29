@@ -176,6 +176,23 @@ docker ps
 
 </details>
 
+## Jenkins
+
+El [Jenkinsfile](C:/Users/Ortiz/OneDrive/Documentos/eclipse-workspace/crypto-portfolio-monitoring-frontend/Jenkinsfile) ejecuta:
+
+- `npm ci`
+- `npm test`
+- `npm run build`
+- `docker build`
+- smoke test de la imagen
+- despliegue opcional del contenedor
+
+Parametros del pipeline:
+
+- `NEXT_PUBLIC_API_BASE_URL`
+- `FRONTEND_PORT`
+- `DEPLOY_CONTAINER`
+
 ## GitHub Actions
 
 ### Frontend CI

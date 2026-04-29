@@ -59,19 +59,11 @@ export function AuthDialog({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <GoogleAuthButton
             className="h-[3.25rem] rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] py-3 font-semibold text-white shadow-none hover:bg-[#131720]"
             label="Google"
           />
-          <button
-            className="inline-flex h-[3.25rem] w-full items-center justify-center gap-2 rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#131720]"
-            suppressHydrationWarning
-            type="button"
-          >
-            <AppleIcon />
-            <span>Apple</span>
-          </button>
         </div>
 
         <ProblemAlert
@@ -116,17 +108,6 @@ function CloseIcon() {
         stroke="currentColor"
         strokeLinecap="round"
         strokeWidth="2"
-      />
-    </svg>
-  );
-}
-
-function AppleIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
-      <path
-        d="M15.3 3.7c-.9.1-1.9.7-2.5 1.5-.5.7-.9 1.7-.8 2.7 1 .1 1.9-.5 2.5-1.2.6-.8 1-1.8.8-3ZM18.6 12.6c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.7-1.7-3.3-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.6 0-3 .9-3.8 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.8 2.2 1.1 0 1.5-.7 2.9-.7 1.3 0 1.7.7 2.9.7 1.2 0 2-1.1 2.8-2.2.8-1.2 1.2-2.4 1.2-2.5-.1 0-2.1-.8-2.1-3.5Z"
-        fill="currentColor"
       />
     </svg>
   );

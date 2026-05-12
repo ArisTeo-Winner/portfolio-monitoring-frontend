@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProblemAlert } from "@/components/ui/problem-alert";
 import { registerUser } from "@/features/auth/api/register";
-import { ApiError, getProblemMessage } from "@/lib/api/problem-details";
+import { registerSchema } from "@/core/validation/schemas/auth.schemas";
+import { mapApiError, mapZodError } from "@/core/validation/error-mapper";
 
 type Props = {
   onRegistered: (email: string) => void;
@@ -33,75 +34,80 @@ export function RegisterForm({ onRegistered }: Props) {
     [password],
   );
   const passwordScore = passwordChecks.filter((rule) => rule.valid).length;
-  const passwordValid = passwordChecks.every((rule) => rule.valid);
   const strength = getPasswordStrength(password, passwordScore);
+  const disabled = useMemo(
+    () => !username.trim() || !email.trim() || !password.trim() || pending,
+    [email, password, pending, username],
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
-    if (!passwordValid) {
-      setError("La contrasena debe incluir mayuscula, minuscula, numero y simbolo antes de enviarse.");
+    const parsed = registerSchema.safeParse({
+      username: username.trim(),
+      email: email.trim(),
+      password,
+    });
+
+    if (!parsed.success) {
+      setError(mapZodError(parsed.error));
       return;
     }
 
     setPending(true);
 
     try {
-      await registerUser({
-        username: username.trim(),
-        email: email.trim(),
-        password,
-      });
-      onRegistered(email.trim());
+      await registerUser(parsed.data);
+      onRegistered(parsed.data.email);
     } catch (err) {
-      setError(err instanceof ApiError ? getProblemMessage(err) : "No fue posible crear la cuenta.");
+      setError(mapApiError(err, "No fue posible crear la cuenta."));
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
+    <form className="space-y-3 md:space-y-4" noValidate onSubmit={handleSubmit}>
       <ProblemAlert
-        className="rounded-[1rem] border border-[#4b1d28] bg-[#241217] px-4 py-3 text-sm text-[#ff8ea5] shadow-none"
+        className="rounded-xl border border-[#4b1d28] bg-[#241217] px-3 py-2 text-[0.8125rem] text-[#ff8ea5] shadow-none md:rounded-[1rem] md:px-4 md:py-3 md:text-sm"
         message={error}
       />
       <Input
         autoComplete="username"
         hideLabel
         icon={<UserIcon />}
-        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
         label="Nombre completo"
         onChange={(event) => setUsername(event.target.value)}
         placeholder="Nombre completo"
         value={username}
-        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+        wrapperClassName="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] px-3 py-0 shadow-none transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.18)] md:h-auto md:rounded-[1rem] md:px-4 md:py-[1.02rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] md:focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
       />
       <Input
         autoComplete="email"
         hideLabel
         icon={<MailIcon />}
-        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
         label="Correo"
         onChange={(event) => setEmail(event.target.value)}
         placeholder="tucorreo@ejemplo.com"
         type="email"
         value={email}
-        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+        wrapperClassName="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] px-3 py-0 shadow-none transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.18)] md:h-auto md:rounded-[1rem] md:px-4 md:py-[1.02rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] md:focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
       />
-      <div className="space-y-3">
+      <div className="space-y-2 md:space-y-3">
         <Input
           autoComplete="new-password"
           hideLabel
           icon={<LockIcon />}
-          inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+          inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
           label="Contrasena"
           onChange={(event) => setPassword(event.target.value)}
           placeholder=".............."
           type={showPassword ? "text" : "password"}
           value={password}
-          wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+          wrapperClassName="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] px-3 py-0 shadow-none transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.18)] md:h-auto md:rounded-[1rem] md:px-4 md:py-[1.02rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] md:focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
         />
         <div className="flex items-center justify-between gap-3 text-xs">
           <button
@@ -114,21 +120,21 @@ export function RegisterForm({ onRegistered }: Props) {
           </button>
           <span className={strength.badgeClass}>{strength.label}</span>
         </div>
-        <div className="rounded-[1rem] border border-[#232831] bg-[#12151b] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
-          <div className="h-1.5 overflow-hidden rounded-full bg-[#1b2028]">
+        <div className="rounded-xl border border-[#232831] bg-[#11151b] px-3 py-2 shadow-none md:rounded-[1rem] md:px-4 md:py-3 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+          <div className="h-1 overflow-hidden rounded-full bg-[#1b2028] md:h-1.5">
             <div className={strength.barClass} style={{ width: `${strength.width}%` }} />
           </div>
-          <p className="mt-3 text-xs leading-5 text-[#727986]">
-            Usa mayuscula, minuscula, numero y simbolo para cumplir la validacion del backend.
+          <p className="mt-2 text-[0.6875rem] leading-4 text-[#727986] md:mt-3 md:text-xs md:leading-5">
+            Usa mayuscula, minuscula, numero y simbolo.
           </p>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:mt-3 md:gap-2">
             {passwordChecks.map((rule) => (
-              <div className="flex items-center gap-2.5 text-xs" key={rule.label}>
+              <div className="flex items-center gap-2 text-[0.6875rem] md:gap-2.5 md:text-xs" key={rule.label}>
                 <span
                   className={
                     rule.valid
-                      ? "flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full bg-[#17392b] text-[10px] font-bold text-[#34d399]"
-                      : "flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full bg-[#1d2128] text-[10px] font-bold text-[#7b8390]"
+                      ? "flex h-4 w-4 items-center justify-center rounded-full bg-[#17392b] text-[9px] font-bold text-[#34d399] md:h-[1.125rem] md:w-[1.125rem] md:text-[10px]"
+                      : "flex h-4 w-4 items-center justify-center rounded-full bg-[#1d2128] text-[9px] font-bold text-[#7b8390] md:h-[1.125rem] md:w-[1.125rem] md:text-[10px]"
                   }
                 >
                   {rule.valid ? "Y" : "-"}
@@ -141,8 +147,8 @@ export function RegisterForm({ onRegistered }: Props) {
       </div>
       <Button
         block
-        className="h-[3.55rem] rounded-[1rem] bg-[#19c37d] py-4 text-[1.02rem] font-bold text-[#07130d] shadow-[0_18px_40px_rgba(25,195,125,0.2)] hover:bg-[#22d08a] disabled:bg-[#205c45] disabled:text-[#98bea9]"
-        disabled={!username.trim() || !email.trim() || !password.trim() || !passwordValid || pending}
+        className="h-12 rounded-xl bg-[#19c37d] py-0 text-[0.875rem] font-bold text-[#07130d] shadow-none hover:bg-[#22d08a] disabled:bg-[#205c45] disabled:text-[#98bea9] md:h-[3.55rem] md:rounded-[1rem] md:py-4 md:text-[1.02rem] md:shadow-[0_18px_40px_rgba(25,195,125,0.2)]"
+        disabled={disabled}
         icon={<ArrowRightIcon />}
         type="submit"
       >

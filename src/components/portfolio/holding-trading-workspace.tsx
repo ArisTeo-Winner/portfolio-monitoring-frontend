@@ -11,6 +11,7 @@ import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
+import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
 
 type TradeRange = "1D" | "1W" | "1M" | "YTD" | "ALL";
@@ -39,9 +40,9 @@ const RANGE_OPTIONS: Array<{ key: TradeRange; label: string }> = [
   { key: "ALL", label: "All" },
 ];
 
-const POSITIVE = "#16c784";
-const NEGATIVE = "#ff5b6e";
-const GRID = "#1a2029";
+const POSITIVE = tokens.positive;
+const NEGATIVE = tokens.loss;
+const GRID = tokens.grid;
 const EMPTY_CANDLES: TradeCandle[] = [];
 
 const transactionSchema = z.object({
@@ -335,7 +336,7 @@ export function HoldingTradingWorkspace({
                       {entry.assetType}
                     </span>
                   </div>
-                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.2em] text-[#7f8aa3]">
+                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.2em] text-fintech-muted">
                     Terminal de analisis del activo
                   </p>
                 </div>
@@ -387,17 +388,17 @@ export function HoldingTradingWorkspace({
                     top: `clamp(14px, calc(${tooltip.y}px - 86px), calc(100% - 92px))`,
                   }}
                 >
-                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">{tooltip.date}</p>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">{tooltip.date}</p>
                   <p className="mt-2 text-[0.98rem] font-semibold text-white">{tooltip.close}</p>
                   <p className="mt-1 text-[0.76rem] text-[#90a0b8]">Volumen: {tooltip.volume}</p>
                 </div>
               ) : null}
 
               <div className="mb-3 flex items-center justify-between px-2">
-                <div className="text-[0.78rem] text-[#7f8aa3]">
+                <div className="text-[0.78rem] text-fintech-muted">
                   Evolucion de {entry.assetSymbol} basada en tus movimientos y precio actual.
                 </div>
-                <div className="text-[0.78rem] font-medium text-[#7f8aa3]">
+                <div className="text-[0.78rem] font-medium text-fintech-muted">
                   Holdings: <span className="text-white">{formatQuantity(holdings)}</span>
                 </div>
               </div>
@@ -405,7 +406,7 @@ export function HoldingTradingWorkspace({
               {candles.length ? (
                 <div className="h-[30rem] w-full" ref={chartContainerRef} />
               ) : (
-                <div className="flex h-[30rem] items-center justify-center rounded-[1.2rem] bg-[#0d1015] text-center text-[0.9rem] text-[#7f8aa3] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                <div className="flex h-[30rem] items-center justify-center rounded-[1.2rem] bg-[#0d1015] text-center text-[0.9rem] text-fintech-muted shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
                   Registra mas movimientos para visualizar este activo en modo terminal.
                 </div>
               )}
@@ -419,7 +420,7 @@ export function HoldingTradingWorkspace({
                 <ModeButton active={mode === "SELL"} label="Sell" onClick={() => setMode("SELL")} />
               </div>
               <div className="mt-4 space-y-1">
-                <p className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">
+                <p className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">
                   Panel de registro
                 </p>
                 <p className="text-[0.9rem] text-[#c7d0de]">
@@ -493,7 +494,7 @@ export function HoldingTradingWorkspace({
               ) : null}
 
               <div className="rounded-[1rem] bg-[#0c1015] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-                <div className="flex items-center justify-between text-[0.82rem] text-[#7f8aa3]">
+                <div className="flex items-center justify-between text-[0.82rem] text-fintech-muted">
                   <span>Total estimado</span>
                   <span className="text-white">{formatCurrency(mode === "BUY" ? netValue : grossValue)}</span>
                 </div>
@@ -679,7 +680,7 @@ function WorkspaceStat({
   return (
     <div className="rounded-[0.9rem] bg-[#0f1217] px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#74829a]">{label}</p>
-      <p className={`mt-2 text-[1rem] font-semibold ${tone === "positive" ? "text-[#16c784]" : tone === "negative" ? "text-[#ff5b6e]" : "text-white"}`}>{value}</p>
+      <p className={`mt-2 text-[1rem] font-semibold ${tone === "positive" ? "text-fintech-positive" : tone === "negative" ? "text-fintech-loss" : "text-white"}`}>{value}</p>
     </div>
   );
 }
@@ -687,7 +688,7 @@ function WorkspaceStat({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between rounded-[0.95rem] bg-[#0c1015] px-4 py-3 text-[0.84rem] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-      <span className="text-[#7f8aa3]">{label}</span>
+      <span className="text-fintech-muted">{label}</span>
       <span className="max-w-[60%] truncate text-right font-semibold text-white">{value}</span>
     </div>
   );
@@ -704,7 +705,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-2">
-      <span className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">{label}</span>
+      <span className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">{label}</span>
       {children}
       {error ? <span className="block text-[0.76rem] text-[#ff9aa8]">{error}</span> : null}
     </label>

@@ -11,7 +11,7 @@ export function ProblemAlert({ message, className }: Props) {
   }
 
   return (
-    <div className={className ?? "rounded-2xl bg-red-50/95 px-4 py-3 text-sm text-red-700 shadow-[0_12px_28px_rgba(239,68,68,0.12)]"}>
+    <div className={className ?? "rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"}>
       {message}
     </div>
   );

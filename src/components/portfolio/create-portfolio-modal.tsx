@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { ProblemAlert } from "@/components/ui/problem-alert";
-import { PORTFOLIO_DEFINITIONS } from "@/components/portfolio/portfolio-sidebar";
+import { PORTFOLIO_DEFINITIONS } from "@/components/portfolio/portfolio-sidebar-data";
 import { savePortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 
 type Props = {

@@ -20,8 +20,8 @@ export function PortfolioSummary({
   entries: PortfolioEntry[];
 }) {
   return (
-    <section className="space-y-5">
-      <PortfolioHoldingsOverview entries={entries} portfolioId={portfolioId} />
+    <section className="space-y-5 max-sm:space-y-0">
+      <PortfolioHoldingsOverview collapsibleOnMobile entries={entries} portfolioId={portfolioId} />
     </section>
   );
 }
@@ -78,17 +78,17 @@ export function PortfolioTable({
   }
 
   return (
-    <section className="overflow-hidden rounded-[1.65rem] bg-[#111317] shadow-[0_30px_84px_rgba(0,0,0,0.32)]">
-      <div className={activeTab === "history" ? "px-6 pb-0 pt-5" : "px-6 py-5"}>
-          <div className={`flex items-center justify-between border-b border-zinc-800/60 bg-[#121214] px-6 ${activeTab === "history" ? "pb-0" : ""}`}>
-            <div className="flex items-center gap-6">
+    <section className="overflow-hidden rounded-[1.65rem] bg-[#111317] shadow-[0_30px_84px_rgba(0,0,0,0.32)] max-sm:rounded-none max-sm:bg-[#0F1116] max-sm:shadow-none">
+      <div className={activeTab === "history" ? "px-6 pb-0 pt-5 max-sm:px-3 max-sm:pt-3" : "px-6 py-5 max-sm:px-3 max-sm:py-3"}>
+          <div className={`flex items-center justify-between border-b border-zinc-800/60 bg-[#121214] px-6 max-sm:border-[#262D3D] max-sm:bg-[#0F1116] max-sm:px-0 max-sm:pb-2 ${activeTab === "history" ? "pb-0" : ""}`}>
+            <div className="flex items-center gap-6 max-sm:gap-4">
             <TabButton active={activeTab === "assets"} label="Activos" onClick={() => onTabChange("assets")} />
             <TabButton active={activeTab === "history"} label="Transacciones" onClick={() => onTabChange("history")} />
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {activeTab === "assets" ? (
-              <label className="group relative">
+              <label className="group relative max-sm:hidden">
                 <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f7b90] transition-colors group-focus-within:text-[#17c784]" />
                 <input
                   className="w-full rounded-[0.95rem] bg-[#0f1217] py-3 pl-10 pr-4 text-[0.9rem] text-white shadow-[0_16px_34px_rgba(0,0,0,0.18)] outline-none transition placeholder:text-[#6f7b90] focus:bg-[#13161b] focus:shadow-[0_18px_38px_rgba(0,0,0,0.24),0_0_0_6px_rgba(23,199,132,0.05)] sm:w-[18rem]"
@@ -99,7 +99,7 @@ export function PortfolioTable({
               </label>
             ) : null}
 
-            <div className="flex items-center gap-3 rounded-[0.95rem] bg-[#0f1217] px-4 py-3 text-[0.84rem] shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
+            <div className="flex items-center gap-3 rounded-[0.95rem] bg-[#0f1217] px-4 py-3 text-[0.84rem] shadow-[0_16px_34px_rgba(0,0,0,0.16)] max-sm:hidden">
               <span className="text-[#7f8aa3]">{activeTab === "assets" ? "Activos" : "Pnl"}</span>
               <span className="font-semibold text-white">
                 {activeTab === "assets" ? visibleEntries.length : formatSignedCurrency(totalProfitLoss)}
@@ -109,7 +109,7 @@ export function PortfolioTable({
         </div>
 
         {activeTab === "assets" ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-[0.82rem] text-[#7f8aa3]">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-[0.82rem] text-[#7f8aa3] max-sm:hidden">
             <span className="rounded-full bg-[#0f1217] px-3 py-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
               Invertido: <strong className="ml-1 text-white">{formatCurrency(totalInvested)}</strong>
             </span>
@@ -120,11 +120,43 @@ export function PortfolioTable({
         ) : null}
       </div>
 
-      <div className={activeTab === "history" ? "px-6 pb-6 pt-0" : "px-6 py-6"}>
+      <div className={activeTab === "history" ? "px-6 pb-6 pt-0 max-sm:px-3 max-sm:pb-3" : "px-6 py-6 max-sm:px-3 max-sm:py-2"}>
         {activeTab === "history" ? (
           <TransactionsTable assetType={assetType} onDeleted={onHistoryChanged} />
         ) : visibleEntries.length ? (
-          <div className="overflow-x-auto">
+          <div data-testid="portfolio-assets">
+          <div className="space-y-2 sm:hidden">
+            {visibleEntries.map((entry) => {
+              const profitLoss = Number(entry.totalProfitLoss);
+              const totalInvestedEntry = Number(entry.totalInvested);
+              const changePercent = totalInvestedEntry > 0 ? (profitLoss / totalInvestedEntry) * 100 : 0;
+
+              return (
+                <button
+                  className="flex h-14 w-full items-center justify-between gap-3 rounded-[0.75rem] px-3 py-2 text-left active:bg-[#151922]"
+                  key={entry.portfolioEntryId}
+                  onClick={() => openHoldingDetail(entry.assetSymbol)}
+                  type="button"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} />
+                    <div className="min-w-0">
+                      <p className="max-w-[7.5rem] truncate text-[0.875rem] font-medium leading-[1.35] text-white">{entry.assetSymbol}</p>
+                      <p className="mt-0.5 max-w-[7.5rem] truncate text-[0.75rem] font-normal leading-[1.4] text-[#7D8596]">{getAssetDisplayName(entry.assetSymbol)}</p>
+                    </div>
+                  </div>
+                  <div className="min-w-[7.5rem] text-right">
+                    <p className="truncate text-[0.9375rem] font-semibold leading-[1.25] text-white">{formatCurrency(entry.currentValue)}</p>
+                    <p className={`mt-0.5 text-[0.75rem] font-medium leading-[1.35] ${changePercent >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
+                      {changePercent >= 0 ? "+" : "-"}{Math.abs(changePercent).toFixed(2)}%
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[880px] border-collapse">
               <thead>
                 <tr className="text-left text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b] [box-shadow:inset_0_-1px_0_#13161c]">
@@ -191,6 +223,7 @@ export function PortfolioTable({
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         ) : (
           <div className="rounded-[1.35rem] bg-[#0d0f13] px-6 py-16 text-center shadow-[0_20px_42px_rgba(0,0,0,0.18)]">
@@ -269,7 +302,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
-      className={`relative pb-3 text-[0.96rem] font-semibold transition ${active ? "text-white" : "text-[#7f8aa3] hover:text-white"}`}
+      className={`relative pb-3 text-[0.96rem] font-semibold transition max-sm:pb-2 max-sm:text-[1.125rem] max-sm:font-medium ${active ? "text-white" : "text-[#7D8596] hover:text-white"}`}
       onClick={onClick}
       type="button"
     >
@@ -288,7 +321,7 @@ function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: stri
     return (
       <Image
         alt={symbol}
-        className="h-12 w-12 shrink-0 rounded-full bg-[#0f131b] object-cover"
+        className="h-12 w-12 shrink-0 rounded-full bg-[#0f131b] object-cover max-sm:h-6 max-sm:w-6"
         height={48}
         onError={() => setFailed(true)}
         src={logoUrl}
@@ -300,7 +333,7 @@ function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: stri
 
   return (
     <span
-      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[0.86rem] font-bold shadow-[0_12px_28px_rgba(0,0,0,0.24)]"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[0.86rem] font-bold shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-sm:h-6 max-sm:w-6 max-sm:text-[0.6875rem] max-sm:shadow-none"
       style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
     >
       {initials}

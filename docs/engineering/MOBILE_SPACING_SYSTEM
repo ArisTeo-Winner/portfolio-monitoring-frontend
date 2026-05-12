@@ -1,0 +1,266 @@
+# MOBILE_SPACING_SYSTEM
+## Portfolio Monitoring Frontend
+Version: 1.0  
+Scope: sm ≤ 640px  
+Mode: Ultra Compact Fintech Spacing Model  
+
+---
+
+## 1. Purpose
+
+Define a strict mobile-first spacing system optimized for:
+
+- High financial data density  
+- Reduced vertical scroll  
+- Predictable layout rhythm  
+- Compact exchange-style interface  
+- Elimination of decorative whitespace  
+
+This specification applies ONLY to mobile (≤640px).  
+Tablet and desktop breakpoints must remain unaffected.
+
+---
+
+## 2. Core Principles
+
+1. Use a 4px grid system.  
+2. Minimize vertical whitespace.  
+3. Keep sections tightly grouped.  
+4. Avoid marketing-style spacing.  
+5. Maintain consistent rhythm across components.  
+
+Mobile spacing must prioritize information per pixel.
+
+---
+
+## 3. Base Grid System
+
+Base unit: 4px  
+
+Allowed spacing increments:
+
+4px  
+8px  
+12px  
+16px  
+
+Avoid spacing above 20px on mobile.
+
+---
+
+## 4. Section Vertical Spacing
+
+Between major sections:
+
+12px–16px maximum  
+
+Implementation reference:
+
+- mt-3  
+- mb-3  
+- mt-4  
+- mb-4  
+
+Never use:
+
+- mt-8  
+- mb-8  
+- space-y-10  
+- my-12  
+
+---
+
+## 5. Internal Block Spacing
+
+Label to value: 4px  
+Value to change indicator: 4px  
+Section title to content: 8px  
+Card header to body: 8px  
+
+Keep internal grouping tight.
+
+---
+
+## 6. Card Padding
+
+Mobile cards must use:
+
+p-3  
+
+or
+
+px-3 py-3  
+
+Avoid:
+
+p-6  
+p-8  
+
+Cards must feel compact and dense.
+
+---
+
+## 7. Header Spacing
+
+Header height:
+
+56px maximum  
+
+Padding:
+
+px-3 py-2  
+
+Remove excess vertical padding.
+
+---
+
+## 8. Balance Block Spacing
+
+Structure:
+
+Label  
+Balance  
+Change indicator  
+
+Spacing:
+
+6–8px between elements  
+12px bottom margin  
+
+Avoid excessive vertical expansion.
+
+---
+
+## 9. Chart Container Spacing
+
+Chart height:
+
+160px–200px  
+
+Margins:
+
+mt-3  
+mb-3  
+
+Internal padding:
+
+px-3 py-2  
+
+Remove unnecessary wrapper div spacing.
+
+---
+
+## 10. Button Spacing
+
+Button height:
+
+h-9  
+
+Spacing between buttons:
+
+gap-2  
+
+Maximum vertical gap between button group and next section:
+
+12px  
+
+Avoid oversized CTA spacing.
+
+---
+
+## 11. Asset Row Spacing
+
+Target row height:
+
+48px–56px  
+
+Row padding:
+
+px-3 py-2  
+
+Spacing between rows:
+
+8px  
+
+No large gaps between asset items.
+
+---
+
+## 12. Viewport Density Requirement
+
+Above-the-fold must include:
+
+✓ Portfolio balance  
+✓ Chart  
+✓ At least 2–3 assets  
+
+If first viewport shows excessive empty space, spacing is incorrect.
+
+---
+
+## 13. Forbidden Mobile Patterns
+
+Do NOT use:
+
+py-8  
+py-10  
+my-10  
+my-12  
+space-y-12  
+empty spacer divs  
+
+No artificial whitespace blocks.
+
+---
+
+## 14. Layout Rhythm Pattern
+
+Recommended stacking pattern:
+
+Header  
+↓ 8px  
+Balance  
+↓ 12px  
+Chart  
+↓ 12px  
+Buttons  
+↓ 12px  
+Asset List  
+
+Maintain consistency throughout.
+
+---
+
+## 15. Implementation Strategy
+
+Mobile-first Tailwind structure:
+
+<div className="px-3 py-2 md:px-6 md:py-4">
+
+Mobile is default.  
+Larger breakpoints override upward.
+
+Never shrink desktop spacing into mobile.  
+Always build upward from compact mobile.
+
+---
+
+## 16. Performance Considerations
+
+Spacing must:
+
+- Avoid layout shift  
+- Avoid cumulative large margins  
+- Maintain scroll efficiency  
+- Keep first viewport dense  
+
+---
+
+## 17. Final Constraint
+
+Spacing is a structural rule, not aesthetic preference.  
+Do not increase vertical whitespace on mobile for visual comfort.
+
+Financial dashboards require density, clarity, and precision.
+
+END

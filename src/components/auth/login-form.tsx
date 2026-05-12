@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { ProblemAlert } from "@/components/ui/problem-alert";
 import { login } from "@/features/auth/api/login";
 import { persistSession } from "@/features/auth/lib/session";
-import { ApiError } from "@/lib/api/problem-details";
+import { loginSchema } from "@/core/validation/schemas/auth.schemas";
+import { mapApiError, mapZodError } from "@/core/validation/error-mapper";
 
 type Props = {
   initialEmail?: string;
@@ -26,54 +27,63 @@ export function LoginForm({ initialEmail = "" }: Props) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
     setError(null);
 
+    const parsed = loginSchema.safeParse({ email: email.trim(), password });
+    if (!parsed.success) {
+      setError(mapZodError(parsed.error));
+      return;
+    }
+
+    setPending(true);
+
     try {
-      const tokens = await login({ email: email.trim(), password });
-      persistSession(tokens);
+      const accessToken = await login(parsed.data);
+      persistSession(accessToken);
       router.push("/portfolio");
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No fue posible iniciar sesion.");
+      setError(mapApiError(err, "No fue posible iniciar sesion."));
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
+    <form className="space-y-3 md:space-y-4" noValidate onSubmit={handleSubmit}>
       <ProblemAlert
-        className="rounded-[1rem] border border-[#4b1d28] bg-[#241217] px-4 py-3 text-sm text-[#ff8ea5] shadow-none"
+        className="rounded-xl border border-[#4b1d28] bg-[#241217] px-3 py-2 text-[0.8125rem] text-[#ff8ea5] shadow-none md:rounded-[1rem] md:px-4 md:py-3 md:text-sm"
         message={error}
       />
       <Input
         autoComplete="email"
+        data-testid="email-input"
         hideLabel
         icon={<MailIcon />}
-        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
         label="Correo"
         onChange={(event) => setEmail(event.target.value)}
         placeholder="tucorreo@ejemplo.com"
         type="email"
         value={email}
-        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+        wrapperClassName="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] px-3 py-0 shadow-none transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.18)] md:h-auto md:rounded-[1rem] md:px-4 md:py-[1.02rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] md:focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
       />
       <Input
         autoComplete="current-password"
+        data-testid="password-input"
         hideLabel
         icon={<LockIcon />}
-        inputClassName="text-[1.02rem] text-white placeholder:text-[#636c7a]"
+        inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
         label="Contrasena"
         onChange={(event) => setPassword(event.target.value)}
         placeholder=".............."
         type={showPassword ? "text" : "password"}
         value={password}
-        wrapperClassName="rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] px-4 py-[1.02rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
+        wrapperClassName="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] px-3 py-0 shadow-none transition focus-within:border-[#246f54] focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.18)] md:h-auto md:rounded-[1rem] md:px-4 md:py-[1.02rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] md:focus-within:shadow-[0_0_0_1px_rgba(25,195,125,0.24)]"
       />
       <div className="flex justify-end">
         <button
-          className="text-xs font-medium text-[#77808d] transition hover:text-[#19c37d]"
+          className="text-[0.75rem] font-medium text-[#77808d] transition hover:text-[#19c37d]"
           onClick={() => setShowPassword((value) => !value)}
           suppressHydrationWarning
           type="button"
@@ -83,7 +93,8 @@ export function LoginForm({ initialEmail = "" }: Props) {
       </div>
       <Button
         block
-        className="h-[3.55rem] rounded-[1rem] bg-[#19c37d] py-4 text-[1.02rem] font-bold text-[#07130d] shadow-[0_18px_40px_rgba(25,195,125,0.2)] hover:bg-[#22d08a] disabled:bg-[#205c45] disabled:text-[#98bea9]"
+        className="h-12 rounded-xl bg-[#19c37d] py-0 text-[0.875rem] font-bold text-[#07130d] shadow-none hover:bg-[#22d08a] disabled:bg-[#205c45] disabled:text-[#98bea9] md:h-[3.55rem] md:rounded-[1rem] md:py-4 md:text-[1.02rem] md:shadow-[0_18px_40px_rgba(25,195,125,0.2)]"
+        data-testid="submit-login"
         disabled={disabled}
         icon={<ArrowRightIcon />}
         type="submit"

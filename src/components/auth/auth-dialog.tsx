@@ -36,21 +36,21 @@ export function AuthDialog({
       hideDefaultCloseButton
       onClose={onClose}
       overlayClassName="bg-black/78 backdrop-blur-md"
-      panelClassName="max-w-[500px] rounded-[1.65rem] border border-[#262a31] bg-[#16181d] p-6 shadow-[0_32px_95px_rgba(0,0,0,0.56)] md:p-7"
+      panelClassName="max-h-[92vh] max-w-[500px] overflow-y-auto rounded-2xl border border-[#262a31] bg-[#15181d] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.45)] md:rounded-[1.65rem] md:p-7 md:shadow-[0_32px_95px_rgba(0,0,0,0.56)]"
     >
-      <div className="space-y-5">
+      <div className="space-y-3 md:space-y-5">
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="text-[2.1rem] font-bold tracking-[-0.05em] text-white">
+          <div className="space-y-0.5 md:space-y-1">
+            <h2 className="text-[1.45rem] font-bold tracking-[-0.04em] text-white md:text-[2.1rem] md:tracking-[-0.05em]">
               {mode === "login" ? "Bienvenido" : "Crea tu cuenta"}
             </h2>
-            <p className="text-[1.03rem] text-[#9097a3]">
+            <p className="text-[0.875rem] text-[#9097a3] md:text-[1.03rem]">
               {mode === "login" ? "Accede a tu portfolio." : "Empieza a rastrear tu patrimonio."}
             </p>
           </div>
           <button
             aria-label="Cerrar"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-[#20232a] text-[#8f98a7] transition hover:bg-[#252932] hover:text-white"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#20232a] text-[#8f98a7] transition hover:bg-[#252932] hover:text-white md:h-10 md:w-10 md:rounded-[0.95rem]"
             onClick={onClose}
             suppressHydrationWarning
             type="button"
@@ -61,13 +61,13 @@ export function AuthDialog({
 
         <div className="grid grid-cols-1 gap-3">
           <GoogleAuthButton
-            className="h-[3.25rem] rounded-[1rem] border border-[#2a2f37] bg-[#0f1116] py-3 font-semibold text-white shadow-none hover:bg-[#131720]"
+            className="h-12 rounded-xl border border-[#2a2f37] bg-[#0f1116] py-0 text-[0.875rem] font-semibold text-white shadow-none hover:bg-[#131720] md:h-[3.25rem] md:rounded-[1rem] md:py-3 md:text-base"
             label="Google"
           />
         </div>
 
         <ProblemAlert
-          className="rounded-[1rem] border border-[#4b1d28] bg-[#241217] px-4 py-3 text-sm text-[#ff8ea5] shadow-none"
+          className="rounded-xl border border-[#4b1d28] bg-[#241217] px-3 py-2 text-[0.8125rem] text-[#ff8ea5] shadow-none md:rounded-[1rem] md:px-4 md:py-3 md:text-sm"
           message={oauthErrorMessage}
         />
 
@@ -77,7 +77,7 @@ export function AuthDialog({
           <LoginForm initialEmail={prefilledEmail} />
         )}
 
-        <div className="pt-1 text-center text-sm text-[#727a86]">
+        <div className="pt-1 text-center text-[0.8125rem] text-[#727a86] md:text-sm">
           {mode === "login" ? (
             <>
               No tienes cuenta?{" "}

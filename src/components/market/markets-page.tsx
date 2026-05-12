@@ -304,7 +304,7 @@ export function MarketsPage() {
                 leading={`${index + 1}`}
                 subtitle={asset.symbol}
                 title={asset.name}
-                trailing={<span className="font-mono text-[#f3f6fb]">{formatMarketPrice(asset.price)}</span>}
+                trailing={<span className="tabular-nums text-[#f3f6fb]">{formatMarketPrice(asset.price)}</span>}
               />
             ))
           ) : (
@@ -496,16 +496,16 @@ function renderTableBody({
         <td className="px-5 py-5 align-middle">
           <AssetBadge cryptoLogoMap={cryptoLogoMap} logoRegistry={logoRegistry} row={row} />
         </td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[1.02rem] font-semibold text-[#f4f7fb]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[1.02rem] font-semibold text-[#f4f7fb]">
           {formatMarketPrice(row.price)}
         </td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change1h)}</td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change24h)}</td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change7d)}</td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[#cfd6e3]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[#cfd6e3]">
           {formatCompactUsd(row.marketCap)}
         </td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[#cfd6e3]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[#cfd6e3]">
           {formatCompactUsd(row.volume24h)}
         </td>
         <td className="px-5 py-5 align-middle">

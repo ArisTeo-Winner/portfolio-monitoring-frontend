@@ -2,7 +2,6 @@ import { env, ensureClientRuntimeConfig } from "@/lib/config/env";
 import { ApiError, type ProblemDetails } from "@/lib/api/problem-details";
 import { endpoints } from "@/lib/api/endpoints";
 import { expireSession, persistSession, readSession } from "@/features/auth/lib/session";
-import type { JwtResponse } from "@/features/auth/types/auth.types";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -21,14 +20,14 @@ async function doApiRequest<T>(
   ensureClientRuntimeConfig();
 
   const headers = new Headers(options.headers ?? {});
-  const session = options.auth ? readSession() : null;
+  const { accessToken } = options.auth ? readSession() : { accessToken: null };
 
   if (!headers.has("Content-Type") && options.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
 
-  if (session?.accessToken) {
-    headers.set("Authorization", `Bearer ${session.accessToken}`);
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
   const response = await fetch(`${env.apiBaseUrl}${path}`, {
@@ -42,12 +41,10 @@ async function doApiRequest<T>(
   const payload = raw ? safeJsonParse(raw) : null;
 
   if (!response.ok) {
-    const refreshToken = session?.refreshToken;
     const protectedUnauthorized = shouldHandleProtectedUnauthorized(response.status, path, options);
 
-    if (protectedUnauthorized && refreshToken && allowRefresh) {
-      const refreshed = await tryRefreshSession(refreshToken);
-
+    if (protectedUnauthorized && allowRefresh) {
+      const refreshed = await tryRefreshSession();
       if (refreshed) {
         return doApiRequest<T>(path, options, false);
       }
@@ -55,6 +52,10 @@ async function doApiRequest<T>(
 
     if (protectedUnauthorized) {
       expireSession();
+    }
+
+    if (response.status === 403) {
+      throw new ApiError(403, "You do not have permission to perform this action.", undefined);
     }
 
     const problem = isProblemDetails(payload) ? payload : undefined;
@@ -78,39 +79,23 @@ function isRefreshExcludedPath(path: string) {
   );
 }
 
-async function tryRefreshSession(refreshToken: string): Promise<boolean> {
-  ensureClientRuntimeConfig();
+async function tryRefreshSession(): Promise<boolean> {
+  try {
+    const response = await fetch("/api/auth/refresh", {
+      method: "POST",
+      cache: "no-store",
+    });
 
-  const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
-    method: "POST",
-    headers: {
-      "X-Refresh-Token": refreshToken,
-    },
-    cache: "no-store",
-  });
+    if (!response.ok) return false;
 
-  if (!response.ok) {
+    const payload = await response.json() as Record<string, unknown>;
+    if (typeof payload?.accessToken !== "string") return false;
+
+    persistSession(payload.accessToken as string);
+    return true;
+  } catch {
     return false;
   }
-
-  const raw = await response.text();
-  const payload = raw ? safeJsonParse(raw) : null;
-
-  if (!isJwtResponse(payload)) {
-    return false;
-  }
-
-  persistSession(payload);
-  return true;
-}
-
-function isJwtResponse(value: unknown): value is JwtResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as JwtResponse).accessToken === "string" &&
-    typeof (value as JwtResponse).refreshToken === "string"
-  );
 }
 
 function safeJsonParse(value: string) {

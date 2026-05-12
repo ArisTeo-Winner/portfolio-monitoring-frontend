@@ -1,54 +1,80 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { 
-  Search, Bell, Settings, User, LogOut, Globe, 
-  ShieldCheck, ArrowUpRight, Wallet, FileText, Key, Monitor, Moon, Sun, 
-  Menu, X
-} from 'lucide-react';
-
+import {
+  ArrowUpRight,
+  ArrowLeftRight,
+  Bell,
+  Briefcase,
+  ChevronDown,
+  FileText,
+  Globe,
+  Home,
+  Key,
+  LineChart,
+  LogOut,
+  Menu,
+  Monitor,
+  Moon,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sun,
+  User,
+  Wallet,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { logout } from "@/features/auth/api/logout";
 import { clearSession, readSession } from "@/features/auth/lib/session";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
-import { formatSignedCurrency } from "@/lib/utils/format";
 import { getMe } from "@/features/users/api/get-me";
 import type { UserResponse } from "@/features/users/types/user.types";
+import { isMercadosNavEnabled } from "@/lib/navigation/nav-features";
 import { getPortfolioNavBadge } from "@/lib/navigation/release-badges";
+import { formatSignedCurrency } from "@/lib/utils/format";
 
 type NavItem = {
   href: string;
   label: string;
+  mobileLabel: string;
+  description: string;
+  icon: LucideIcon;
   badge?: string;
 };
 
-const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/portfolio", label: "Portfolio", badge: getPortfolioNavBadge() },
-];
+type ActiveDropdown =
+  | "locale"
+  | "notifications"
+  | "settings"
+  | "profile"
+  | "search-mobile"
+  | null;
 
 export function ProtectedShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement | null>(null);
+  const marketsEnabled = isMercadosNavEnabled();
+
   const [loggingOut, setLoggingOut] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [portfolioSummary, setPortfolioSummary] = useState<{
     total: string;
     changeValue: string;
     changePercent: string;
     positive: boolean;
   } | null>(null);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  
-  // Navbar state
-  const navRef = useRef<HTMLElement | null>(null);
-  const [activeDropdown, setActiveDropdown] = useState<'locale' | 'notifications' | 'settings' | 'profile' | 'search-mobile' | null>(null);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<UserResponse | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -57,13 +83,10 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
         setActiveDropdown(null);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
-  const toggleDropdown = (name: 'locale' | 'notifications' | 'settings' | 'profile' | 'search-mobile') => {
-    setActiveDropdown((current) => (current === name ? null : name));
-  };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const session = readSession();
@@ -75,6 +98,22 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     setSessionReady(true);
     getMe().then(setUser).catch(console.error);
   }, [router]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setActiveDropdown(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
 
   const refreshPortfolioTotal = useCallback(async (force = false) => {
     try {
@@ -96,17 +135,12 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!sessionReady) {
-      return;
-    }
-
+    if (!sessionReady) return;
     void refreshPortfolioTotal();
   }, [pathname, refreshPortfolioTotal, sessionReady]);
 
   useEffect(() => {
-    if (!sessionReady) {
-      return;
-    }
+    if (!sessionReady) return;
 
     const handleRefresh = () => {
       void refreshPortfolioTotal(true);
@@ -125,18 +159,35 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     };
   }, [refreshPortfolioTotal, sessionReady]);
 
+  const toggleDropdown = (name: Exclude<ActiveDropdown, null>) => {
+    setActiveDropdown((current) => (current === name ? null : name));
+  };
+
+  const handleMobileNavigation = useCallback(
+    (href: string) => {
+      setActiveDropdown(null);
+      setIsMobileMenuOpen(false);
+
+      if (pathname !== href) {
+        router.push(href);
+      }
+
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          window.scrollTo(0, 0);
+        });
+      }
+    },
+    [pathname, router],
+  );
+
   async function handleLogout() {
-    if (loggingOut) {
-      return;
-    }
+    if (loggingOut) return;
 
     setLoggingOut(true);
-    const session = readSession();
 
     try {
-      if (session?.refreshToken) {
-        await logout(session.refreshToken);
-      }
+      await logout();
     } catch {
       // Clear local session even if remote logout fails.
     } finally {
@@ -147,388 +198,438 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     }
   }
 
-  const displayInitial = user?.firstName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U';
-  const displayName = user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.username || 'Usuario';
-  const displayUsername = user?.username || user?.email?.split('@')[0] || 'inv_user';
-  const displayEmail = user?.email || 'usuario@correo.com';
-
+  const displayInitial =
+    user?.firstName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
+  const displayName = user?.firstName
+    ? `${user.firstName} ${user.lastName || ""}`.trim()
+    : user?.username || "Usuario";
+  const displayUsername = user?.username || user?.email?.split("@")[0] || "inv_user";
+  const displayEmail = user?.email || "usuario@correo.com";
+  const navItems = buildPrimaryNav(marketsEnabled);
+  const mobileBottomNav = buildMobileBottomNav(marketsEnabled);
   if (!sessionReady) {
     return (
-      <div className="min-h-screen bg-[#08090d] text-[#f3f6fb]">
-        <div className="mx-auto max-w-[1720px] px-4 py-6 md:px-6 xl:px-8">
-          <div className="h-20 animate-pulse rounded-[1.2rem] bg-[#101216] shadow-[0_16px_40px_rgba(0,0,0,0.45)]" />
+      <div className="min-h-dvh bg-[#08090d] text-zinc-50">
+        <div className="mx-auto max-w-[1440px] px-4 py-4 md:px-6 md:py-6 lg:px-8">
+          <div className="h-20 animate-pulse rounded-2xl bg-[#101216]" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-50 font-sans selection:bg-emerald-500/30 overflow-x-hidden relative">
-
-      <header ref={navRef} className="sticky top-0 z-40 w-full border-b border-zinc-800/60 bg-[#09090b]/80 backdrop-blur-md">
-        <div className="flex h-16 items-center justify-between px-6">
-            <div className="flex items-center gap-2 cursor-pointer group">
-              <div className="bg-zinc-50 rounded-full p-1.5 shadow-[0_0_10px_rgba(255,255,255,0.2)]">
-                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 22H22L12 2Z" fill="#09090b"/></svg>
-              </div>
-              <span className="text-lg font-bold tracking-tight text-zinc-50">TRACKER</span>
+    <div className="relative min-h-dvh overflow-x-hidden bg-[#0F1116] font-sans text-zinc-50 selection:bg-emerald-500/30 md:bg-[#09090b]">
+      <header
+        ref={navRef}
+        className="sticky top-0 z-50 border-b border-[#262D3D] bg-[#0F1116]/95 backdrop-blur-md md:border-zinc-800/60 md:bg-[#09090b]/90"
+      >
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-3 px-3 py-2 md:h-16 md:px-6 md:py-0 lg:px-8">
+          <Link className="flex shrink-0 items-center gap-2" href="/dashboard">
+            <div className="rounded-full bg-zinc-50 p-1.5 shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+              <svg
+                fill="none"
+                height="14"
+                viewBox="0 0 24 24"
+                width="14"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M12 2L2 22H22L12 2Z" fill="#09090b" />
+              </svg>
             </div>
+            <span className="text-[1rem] font-bold tracking-tight text-zinc-50 md:text-lg">TRACKER</span>
+          </Link>
 
-            <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-zinc-400">
+          <nav className="hidden min-w-0 flex-1 items-center gap-1 lg:flex xl:gap-2">
             {navItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const content = (
-                <>
-                  <span>{item.label}</span>
-                  {item.badge ? (
-                    <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-[#c4cede]">
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </>
-              );
               return (
                 <Link
-                  className={`relative flex h-[4.1rem] items-center gap-2 px-4 text-[0.97rem] transition ${
-                    active ? "font-semibold text-white" : "font-medium text-[#8a94a6] hover:text-white"
+                  className={`inline-flex min-w-0 items-center gap-2 rounded-full px-2.5 py-2 text-sm transition xl:px-3 ${
+                    active
+                      ? "bg-[#11161a] font-semibold text-white"
+                      : "font-medium text-zinc-400 hover:bg-[#111317] hover:text-white"
                   }`}
                   href={item.href}
                   key={item.label}
                 >
-                  {content}
-                  <span
-                    className={`absolute bottom-[-1px] left-1/2 h-[2px] -translate-x-1/2 rounded-full transition ${
-                      active ? "bg-[#17c784]" : "bg-transparent"
-                    }`}
-                    style={{ width: item.label === "Portfolio" ? 126 : 88 }}
-                  />
+                  <span className="whitespace-nowrap">{item.label}</span>
+                  {item.badge ? <NavBadge>{item.badge}</NavBadge> : null}
                 </Link>
               );
             })}
           </nav>
 
-          {/* LADO DERECHO: Buscador, Acciones y Perfil */}
-          <div className="hidden lg:flex items-center gap-2">
-            
-            {/* Balance Total */}
-            <div className="hidden xl:flex items-center bg-[#121214] border border-zinc-800 rounded-lg p-1 pr-1.5 mr-2">
-              <div className="px-3">
-                <p className="text-[10px] text-zinc-500 uppercase font-medium">Balance Total</p>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-zinc-50">{portfolioSummary?.total ?? "$0.00"}</span>
-                  <span
-                    className={`rounded-[0.72rem] px-2.5 py-[0.42rem] text-[0.7rem] font-semibold whitespace-nowrap ${
-                    portfolioSummary?.positive === false ? "bg-[#30171d] text-[#ff5d73]" : "bg-[#103427] text-[#24d58f]"
-                  }`}
-                  >
-                  {portfolioSummary ? `${portfolioSummary.changeValue} ${portfolioSummary.changePercent}` : "+$0.00 +0.00%"}
-                  </span>
-                </div>
-              </div>
-              <button
-                className="flex h-8 items-center justify-center rounded-md bg-emerald-500 px-3 text-xs font-medium text-zinc-950 hover:bg-emerald-400 transition-all shadow-[0_0_10px_rgba(34,197,94,0.2)]"
-                onClick={() => setAddModalOpen(true)}
-                type="button"
-              >
-                + Añadir Activo
-              </button>
-            </div>
+          <div className="hidden shrink-0 items-center gap-1.5 lg:flex xl:gap-2">
+            <DesktopBalanceSummary
+              onAddAsset={() => setAddModalOpen(true)}
+              summary={portfolioSummary}
+            />
 
-            {/* Buscador Global */}
-            <div className="relative mr-2">
+            <div className="relative hidden w-44 xl:block xl:w-56 2xl:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <input 
-                type="text" 
-                placeholder="Buscar activos, txs..." 
-                className="h-9 w-56 rounded-lg border border-zinc-800 bg-zinc-900/50 pl-9 pr-12 text-sm text-zinc-300 placeholder:text-zinc-500 focus:border-zinc-600 focus:bg-[#09090b] focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all"
-                value={searchValue}
+              <input
+                className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-900/60 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-700"
                 onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="Buscar activos, txs..."
+                type="text"
+                value={searchValue}
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <kbd className="hidden sm:inline-flex h-5 items-center rounded border border-zinc-800 bg-zinc-900 px-1.5 font-mono text-[10px] font-medium text-zinc-500">
-                  Ctrl+K
-                </kbd>
+            </div>
+
+            <DesktopIconButton
+              active={activeDropdown === "locale"}
+              ariaLabel="Idioma y moneda"
+              onClick={() => toggleDropdown("locale")}
+            >
+              <Globe className="h-5 w-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              active={activeDropdown === "notifications"}
+              ariaLabel="Notificaciones"
+              onClick={() => toggleDropdown("notifications")}
+            >
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-[#09090b] bg-emerald-500" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              active={activeDropdown === "settings"}
+              ariaLabel="Configuracion"
+              onClick={() => toggleDropdown("settings")}
+            >
+              <Settings className="h-5 w-5" />
+            </DesktopIconButton>
+
+            <button
+              className={`ml-1 inline-flex items-center gap-2 rounded-full border px-2 py-1 transition ${
+                activeDropdown === "profile"
+                  ? "border-zinc-700 bg-zinc-800"
+                  : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-800"
+              }`}
+              onClick={() => toggleDropdown("profile")}
+              type="button"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-xs font-bold text-emerald-500">
+                {displayInitial}
               </div>
-            </div>
-
-            <div className="h-5 w-px bg-zinc-800 mx-1"></div>
-
-            {/* Selector de Idioma / Moneda */}
-            <div className="relative">
-              <button 
-                onClick={() => toggleDropdown('locale')}
-                className={`p-2 rounded-lg transition-colors ${activeDropdown === 'locale' ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-900/80'}`}
-                title="Idioma y Moneda"
-              >
-                <Globe className="h-5 w-5" />
-              </button>
-              {activeDropdown === 'locale' && (
-                <div className="absolute right-0 mt-2 w-48 bg-[#121214] border border-zinc-800 rounded-xl shadow-2xl p-2 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-2 py-1.5 text-xs font-bold text-zinc-600 uppercase tracking-wider">Idioma</div>
-                  <button className="w-full text-left px-3 py-2 text-sm text-zinc-50 bg-zinc-800/50 rounded-md mb-1">ES Español</button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50 rounded-md">US English</button>
-                  <div className="border-t border-zinc-800/60 my-2"></div>
-                  <div className="px-2 py-1.5 text-xs font-bold text-zinc-600 uppercase tracking-wider">Moneda Base</div>
-                  <button className="w-full text-left px-3 py-2 text-sm text-zinc-50 bg-zinc-800/50 rounded-md mb-1">USD - Dólar</button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50 rounded-md">EUR - Euro</button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/50 rounded-md">MXN - Peso Mex</button>
-                </div>
-              )}
-            </div>
-
-            {/* Notificaciones (Campana) */}
-            <div className="relative">
-              <button 
-                onClick={() => toggleDropdown('notifications')}
-                className={`p-2 rounded-lg transition-colors relative ${activeDropdown === 'notifications' ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-900/80'}`}
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border border-[#09090b]"></span>
-              </button>
-              {activeDropdown === 'notifications' && (
-                <div className="absolute right-0 mt-2 w-80 bg-[#121214] border border-zinc-800 rounded-xl shadow-2xl py-2 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-zinc-50">Notificaciones</h4>
-                    <button className="text-xs font-medium text-emerald-500 hover:text-emerald-400">Marcar leídas</button>
-                  </div>
-                  <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                    {/* Dummy Notifications */}
-                    <div className="px-4 py-3 border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors flex gap-3 cursor-pointer">
-                      <div className="mt-0.5 bg-zinc-900 p-1.5 rounded-full border border-zinc-800 h-fit">
-                        <ArrowUpRight className="h-4 w-4 text-emerald-500" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-zinc-50">Sincronización Exitosa</p>
-                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Tus transacciones están al día.</p>
-                        <p className="text-[10px] text-zinc-500 mt-1">Hace 2 min</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="px-4 py-2 border-t border-zinc-800/60 text-center">
-                    <button className="text-xs font-medium text-zinc-400 hover:text-zinc-50">Ver todas las notificaciones</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Engrane (Configuración) */}
-            <div className="relative">
-              <button 
-                onClick={() => toggleDropdown('settings')}
-                className={`p-2 rounded-lg transition-colors ${activeDropdown === 'settings' ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-900/80'}`}
-                title="Configuración"
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-              {activeDropdown === 'settings' && (
-                <div className="absolute right-0 mt-2 w-64 bg-[#121214] border border-zinc-800 rounded-xl shadow-2xl py-2 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-4 py-2 text-xs font-bold text-zinc-600 uppercase tracking-wider">Preferencias</div>
-                  <div className="px-4 py-2 flex items-center justify-between">
-                    <span className="text-sm text-zinc-300">Tema Visual</span>
-                    <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
-                      <button className="p-1 rounded-md text-zinc-500 hover:text-zinc-300"><Sun className="h-3.5 w-3.5"/></button>
-                      <button className="p-1 rounded-md bg-zinc-800 text-zinc-50 shadow-sm"><Moon className="h-3.5 w-3.5"/></button>
-                      <button className="p-1 rounded-md text-zinc-500 hover:text-zinc-300"><Monitor className="h-3.5 w-3.5"/></button>
-                    </div>
-                  </div>
-                  <div className="border-t border-zinc-800/60 my-2"></div>
-                  <div className="px-4 py-2 text-xs font-bold text-zinc-600 uppercase tracking-wider">Gestión</div>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors"><Monitor className="h-4 w-4 text-zinc-400"/> Integraciones Activas</a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors"><ShieldCheck className="h-4 w-4 text-zinc-400"/> Seguridad (2FA, Tokens)</a>
-                </div>
-              )}
-            </div>
-
-            {/* Perfil de Usuario */}
-            <div className="relative ml-2">
-              <button 
-                onClick={() => toggleDropdown('profile')}
-                className={`flex items-center gap-2 p-1 pl-1.5 pr-3 rounded-full border transition-all ${activeDropdown === 'profile' ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-900/50 hover:bg-zinc-800 border-zinc-800/60 hover:border-zinc-700'}`}
-              >
-                <div className="h-7 w-7 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-xs font-bold border border-emerald-500/30">
-                  {displayInitial}
-                </div>
-                <div className="flex flex-col items-start hidden xl:flex">
-                    <span className="text-xs font-bold text-zinc-200 leading-tight">{displayName}</span>
-                    <span className="text-[10px] text-zinc-500 font-mono leading-tight">{displayUsername}</span>
-                </div>
-              </button>
-
-              {activeDropdown === 'profile' && (
-                <div className="absolute right-0 mt-2 w-64 bg-[#121214] border border-zinc-800 rounded-xl shadow-2xl py-2 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-4 py-3 border-b border-zinc-800/60 mb-2 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-base font-bold border border-emerald-500/30">
-                      {displayInitial}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-zinc-50">{displayName}</p>
-                      <p className="text-xs text-zinc-500">{displayEmail}</p>
-                    </div>
-                  </div>
-                  
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors">
-                    <User className="h-4 w-4 text-zinc-400" /> Resumen de Cuenta
-                  </a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors">
-                    <Wallet className="h-4 w-4 text-zinc-400" /> Mis Carteras
-                  </a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors">
-                    <FileText className="h-4 w-4 text-zinc-400" /> Importar CSV
-                  </a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800/50 transition-colors">
-                    <Key className="h-4 w-4 text-zinc-400" /> API Keys de Lectura
-                  </a>
-                  
-                  <div className="border-t border-zinc-800/60 my-2"></div>
-                  <button 
-                    disabled={loggingOut}
-                    onClick={() => { setActiveDropdown(null); void handleLogout(); }}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-rose-500 hover:bg-rose-500/10 transition-colors font-medium cursor-pointer"
-                  >
-                    <LogOut className="h-4 w-4" /> {loggingOut ? "Cerrando..." : "Cerrar sesión"}
-                  </button>
-                </div>
-              )}
-            </div>
+              <div className="hidden min-w-0 text-left 2xl:block">
+                <p className="truncate text-xs font-semibold text-zinc-100">{displayName}</p>
+                <p className="truncate text-[11px] text-zinc-500">{displayUsername}</p>
+              </div>
+            </button>
           </div>
 
-          {/* VISTA MOBILE */}
-          <div className="lg:hidden flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:hidden">
             <button
-              className="rounded-[0.95rem] bg-[#0e7a4f] px-3 py-2 text-[0.84rem] font-semibold text-white shadow-[0_14px_30px_rgba(14,122,79,0.28)] transition hover:bg-[#11945f]"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#0e7a4f] px-3 text-[0.875rem] font-medium text-white transition active:brightness-110 md:h-10 md:px-4 md:text-sm md:font-semibold md:hover:bg-[#11945f]"
               onClick={() => setAddModalOpen(true)}
               type="button"
             >
-              + Activo
+              <Plus className="h-4 w-4" />
+              Activo
             </button>
-            <div className="flex items-center gap-1">
-              <button onClick={() => toggleDropdown('search-mobile')} className="p-2 text-zinc-400 hover:text-zinc-50 transition-colors">
-                <Search className="h-5 w-5" />
-              </button>
-              <button 
-                onClick={() => toggleDropdown('notifications')}
-                className="p-2 text-zinc-400 hover:text-zinc-50 transition-colors relative"
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border border-[#09090b]"></span>
-              </button>
-              <div className="h-5 w-px bg-zinc-800 mx-1"></div>
-              <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className={`p-2 rounded-lg transition-colors ${isMobileMenuOpen ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'}`}
-              >
-                {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-              </button>
-            </div>
+
+            <MobileIconButton
+              ariaLabel="Buscar"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                toggleDropdown("search-mobile");
+              }}
+            >
+              <Search className="h-5 w-5" />
+            </MobileIconButton>
+
+            <MobileIconButton
+              ariaLabel="Notificaciones"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                toggleDropdown("notifications");
+              }}
+            >
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-[#09090b] bg-emerald-500" />
+            </MobileIconButton>
+
+            <MobileIconButton
+              active={isMobileMenuOpen}
+              ariaLabel={isMobileMenuOpen ? "Cerrar menu" : "Abrir menu"}
+              onClick={() => {
+                setActiveDropdown(null);
+                setIsMobileMenuOpen((current) => !current);
+              }}
+              testId="mobile-menu-btn"
+            >
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </MobileIconButton>
           </div>
         </div>
 
-        {/* --- DESPLEGABLES MOVILES --- */}
-        {activeDropdown === 'search-mobile' && (
-          <div className="lg:hidden absolute top-16 left-0 w-full bg-[#09090b] border-b border-zinc-800 p-4 shadow-2xl animate-in slide-in-from-top-2 duration-200">
-             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <input 
-                autoFocus
-                type="text" 
-                placeholder="Buscar activos, transacciones..." 
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                className="h-10 w-full rounded-lg border border-emerald-500/50 bg-[#121214] pl-10 pr-4 text-sm text-zinc-50 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all"
-              />
-            </div>
+        {activeDropdown === "locale" ? (
+          <div className="hidden lg:block">
+            <DesktopPopover align="right">
+              <PopoverSectionTitle>Idioma</PopoverSectionTitle>
+              <PopoverAction active>ES Espanol</PopoverAction>
+              <PopoverAction>US English</PopoverAction>
+              <div className="my-2 border-t border-zinc-800/60" />
+              <PopoverSectionTitle>Moneda Base</PopoverSectionTitle>
+              <PopoverAction active>USD - Dolar</PopoverAction>
+              <PopoverAction>EUR - Euro</PopoverAction>
+              <PopoverAction>MXN - Peso Mex</PopoverAction>
+            </DesktopPopover>
           </div>
-        )}
+        ) : null}
 
-        {/* Dropdown Notificaciones Movil */}
-        {activeDropdown === 'notifications' && (
-          <div className="lg:hidden absolute top-16 left-0 w-full bg-[#09090b] border-b border-zinc-800 p-4 shadow-2xl animate-in slide-in-from-top-2 duration-200">
-             <h4 className="text-sm font-bold text-zinc-50 mb-3">Notificaciones</h4>
-             <div className="px-4 py-3 border border-zinc-800/40 bg-[#121214] rounded-lg flex gap-3">
-                <div className="mt-0.5 bg-zinc-900 p-1.5 rounded-full border border-zinc-800 h-fit">
-                  <ArrowUpRight className="h-4 w-4 text-emerald-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-50">Sincronización Exitosa</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">Tus transacciones están al día.</p>
-                </div>
+        {activeDropdown === "notifications" ? (
+          <div className="hidden lg:block">
+            <DesktopPopover align="right" wide>
+              <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
+                <h4 className="text-sm font-bold text-zinc-50">Notificaciones</h4>
+                <button className="text-xs font-medium text-emerald-500 hover:text-emerald-400" type="button">
+                  Marcar leidas
+                </button>
               </div>
+              <div className="px-4 py-3">
+                <NotificationItem />
+              </div>
+              <div className="border-t border-zinc-800/60 px-4 py-2 text-center">
+                <button className="text-xs font-medium text-zinc-400 hover:text-zinc-50" type="button">
+                  Ver todas las notificaciones
+                </button>
+              </div>
+            </DesktopPopover>
           </div>
-        )}
+        ) : null}
 
-        {/* Menu Principal Movil */}
-        {isMobileMenuOpen && (
-          <div className="lg:hidden absolute top-16 left-0 w-full h-[calc(100vh-64px)] bg-[#09090b] border-t border-zinc-800/60 flex flex-col overflow-y-auto animate-in slide-in-from-top-4 duration-300">
-            <div className="p-6 pb-2 border-b border-zinc-800/40">
-               <p className="text-xs text-zinc-500 uppercase font-medium mb-2">Balance Total</p>
-               <div className="flex items-center gap-3">
-                  <span className="font-mono text-xl font-medium text-zinc-50">{portfolioSummary?.total ?? "$0.00"}</span>
-                  <span
-                    className={`rounded-[0.72rem] px-2.5 py-[0.42rem] text-[0.7rem] font-semibold whitespace-nowrap ${
-                    portfolioSummary?.positive === false ? "bg-[#30171d] text-[#ff5d73]" : "bg-[#103427] text-[#24d58f]"
-                  }`}
-                  >
-                  {portfolioSummary ? `${portfolioSummary.changeValue} ${portfolioSummary.changePercent}` : "+$0.00 +0.00%"}
-                  </span>
-               </div>
-            </div>
-            <div className="flex-1 px-6 py-4 space-y-4">
-              <nav className="flex flex-col gap-4 text-base font-medium">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="border-b border-zinc-800/60 pb-3 text-zinc-400 transition-colors hover:text-zinc-50"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                <div className="bg-[#121214] p-4 rounded-xl border border-zinc-800">
-                  <p className="text-xs font-bold text-zinc-600 uppercase mb-2">Moneda Base</p>
-                  <select className="w-full bg-transparent text-sm text-zinc-50 focus:outline-none">
-                    <option>USD - Dólar</option>
-                    <option>EUR - Euro</option>
-                    <option>MXN - Peso</option>
-                  </select>
-                </div>
-                <div className="bg-[#121214] p-4 rounded-xl border border-zinc-800">
-                  <p className="text-xs font-bold text-zinc-600 uppercase mb-2">Tema</p>
-                  <select className="w-full bg-transparent text-sm text-zinc-50 focus:outline-none">
-                    <option>Oscuro</option>
-                    <option>Claro</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="p-6 bg-[#121214] border-t border-zinc-800/60 mt-auto">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-lg font-bold border border-emerald-500/30">
-                    {displayInitial}
-                  </div>
-                  <div>
-                    <p className="text-base font-bold text-zinc-50">{displayName}</p>
-                    <p className="text-sm text-zinc-500 font-mono">{displayUsername}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors">
-                    <Settings className="h-4 w-4"/> Config.
+        {activeDropdown === "settings" ? (
+          <div className="hidden lg:block">
+            <DesktopPopover align="right">
+              <PopoverSectionTitle>Preferencias</PopoverSectionTitle>
+              <div className="flex items-center justify-between px-4 py-2">
+                <span className="text-sm text-zinc-300">Tema visual</span>
+                <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
+                  <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
+                    <Sun className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => { setIsMobileMenuOpen(false); void handleLogout(); }} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-lg text-sm font-medium transition-colors">
-                    <LogOut className="h-4 w-4"/> Salir
+                  <button className="rounded-md bg-zinc-800 p-1 text-zinc-50" type="button">
+                    <Moon className="h-3.5 w-3.5" />
+                  </button>
+                  <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
+                    <Monitor className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
+              <div className="my-2 border-t border-zinc-800/60" />
+              <PopoverSectionTitle>Gestion</PopoverSectionTitle>
+              <PopoverLink href="/settings/preferences">
+                <Monitor className="h-4 w-4 text-zinc-400" />
+                Preferencias
+              </PopoverLink>
+              <PopoverLink href="/settings/security">
+                <ShieldCheck className="h-4 w-4 text-zinc-400" />
+                Seguridad (2FA, Tokens)
+              </PopoverLink>
+            </DesktopPopover>
+          </div>
+        ) : null}
+
+        {activeDropdown === "profile" ? (
+          <div className="hidden lg:block">
+            <DesktopPopover align="right">
+              <div className="mb-2 flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-base font-bold text-emerald-500">
+                  {displayInitial}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-zinc-50">{displayName}</p>
+                  <p className="truncate text-xs text-zinc-500">{displayEmail}</p>
+                </div>
+              </div>
+              <PopoverLink href="/settings/account">
+                <User className="h-4 w-4 text-zinc-400" />
+                Resumen de Cuenta
+              </PopoverLink>
+              <PopoverLink href="#">
+                <Wallet className="h-4 w-4 text-zinc-400" />
+                Mis Carteras
+              </PopoverLink>
+              <PopoverLink href="#">
+                <FileText className="h-4 w-4 text-zinc-400" />
+                Importar CSV
+              </PopoverLink>
+              <PopoverLink href="/settings/preferences">
+                <Key className="h-4 w-4 text-zinc-400" />
+                Preferencias
+              </PopoverLink>
+              <div className="my-2 border-t border-zinc-800/60" />
+              <button
+                className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-rose-500 transition hover:bg-rose-500/10"
+                disabled={loggingOut}
+                onClick={() => {
+                  setActiveDropdown(null);
+                  void handleLogout();
+                }}
+                type="button"
+              >
+                <LogOut className="h-4 w-4" />
+                {loggingOut ? "Cerrando..." : "Cerrar sesion"}
+              </button>
+            </DesktopPopover>
+          </div>
+        ) : null}
+
+        {activeDropdown === "search-mobile" ? (
+          <div className="border-b border-zinc-800 bg-[#09090b] px-4 py-4 lg:hidden">
+            <div className="mx-auto max-w-[1440px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <input
+                  autoFocus
+                  className="h-11 w-full rounded-xl border border-zinc-700 bg-[#121214] pl-10 pr-4 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  placeholder="Buscar activos, transacciones..."
+                  type="text"
+                  value={searchValue}
+                />
+              </div>
             </div>
           </div>
-        )}
+        ) : null}
+
+        {activeDropdown === "notifications" ? (
+          <div className="border-b border-zinc-800 bg-[#09090b] px-4 py-4 lg:hidden">
+            <div className="mx-auto max-w-[1440px]">
+              <h4 className="mb-3 text-sm font-bold text-zinc-50">Notificaciones</h4>
+              <NotificationItem />
+            </div>
+          </div>
+        ) : null}
+
       </header>
 
-      <div className="mx-auto max-w-[1720px] px-4 py-6 md:px-6 xl:px-8">{children}</div>
+      {isMobileMenuOpen ? (
+        <>
+          <button
+            aria-label="Cerrar menu"
+            className="fixed inset-0 z-[59] bg-black/70 backdrop-blur-[2px] lg:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+            type="button"
+          />
+          <div className="fixed inset-0 z-[60] overflow-y-auto bg-[#0b0c10] pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] text-white lg:hidden">
+            <div className="min-h-full px-4">
+              <div className="flex min-h-[72px] items-center gap-3 border-b border-zinc-800/60 py-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/18 text-[0.8125rem] font-bold text-emerald-400">
+                  {displayInitial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[0.875rem] font-semibold text-zinc-50">{displayName}</p>
+                  <p className="mt-0.5 truncate text-[0.75rem] text-zinc-500">{displayEmail}</p>
+                </div>
+                <button
+                  aria-label="Cerrar perfil"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition active:bg-zinc-800 active:text-white"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  type="button"
+                >
+                  <X className="h-[18px] w-[18px]" />
+                </button>
+              </div>
+
+              <ProfileSectionLabel>Preferencias</ProfileSectionLabel>
+              <div>
+                <ProfileRow
+                  icon={<Globe className="h-[18px] w-[18px]" />}
+                  label="Moneda base"
+                  onClick={() => handleMobileNavigation("/settings/preferences")}
+                  value="USD - Dolar"
+                />
+                <ProfileRow
+                  icon={<Moon className="h-[18px] w-[18px]" />}
+                  label="Tema"
+                  onClick={() => handleMobileNavigation("/settings/preferences")}
+                  value="Oscuro"
+                />
+              </div>
+
+              <ProfileSectionLabel>Cuenta</ProfileSectionLabel>
+              <div>
+                <ProfileRow
+                  icon={<User className="h-[18px] w-[18px]" />}
+                  label="Email"
+                  onClick={() => handleMobileNavigation("/settings/account")}
+                  value={displayEmail}
+                />
+                <ProfileRow
+                  icon={<Key className="h-[18px] w-[18px]" />}
+                  label="Cambiar contrasena"
+                  onClick={() => handleMobileNavigation("/settings/security")}
+                  value="Password"
+                />
+                <ProfileRow
+                  icon={<ShieldCheck className="h-[18px] w-[18px]" />}
+                  label="Seguridad / 2FA"
+                  onClick={() => handleMobileNavigation("/settings/security")}
+                  value="Configurar"
+                />
+              </div>
+
+              <ProfileSectionLabel>Soporte</ProfileSectionLabel>
+              <div>
+                <ProfileRow icon={<FileText className="h-[18px] w-[18px]" />} label="FAQ" />
+                <ProfileRow icon={<FileText className="h-[18px] w-[18px]" />} label="Terminos" />
+                <ProfileRow icon={<FileText className="h-[18px] w-[18px]" />} label="Politica" />
+              </div>
+
+              <div className="mt-4">
+                <button
+                  className="flex min-h-12 w-full items-center gap-3 border-t border-zinc-800/60 py-2.5 text-left text-[0.875rem] font-medium text-rose-500 transition active:bg-rose-500/10"
+                  data-testid="logout-button"
+                  disabled={loggingOut}
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    void handleLogout();
+                  }}
+                  type="button"
+                >
+                  <LogOut className="h-[18px] w-[18px] shrink-0" />
+                  <span>{loggingOut ? "Cerrando..." : "Salir"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      <div className="mx-auto max-w-[1440px] px-3 py-2 pb-24 md:px-6 md:py-6 md:pb-28 lg:px-8 lg:pb-6">
+        {children}
+      </div>
+
+      <nav data-testid="bottom-navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-[#262D3D] bg-[#0F1116]/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 backdrop-blur-xl lg:hidden">
+        <div className="mx-auto grid max-w-[1440px] grid-cols-4 gap-2">
+          {mobileBottomNav.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const ItemIcon = item.icon;
+
+            return (
+              <button
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-[4rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-center transition ${
+                  active
+                    ? "bg-[#151922] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+                    : "text-[#7D8596] hover:bg-[#151922] hover:text-[#B0B6C3]"
+                }`}
+                data-testid={`nav-${item.href.slice(1)}`}
+                key={item.href}
+                onClick={() => handleMobileNavigation(item.href)}
+                type="button"
+              >
+                <ItemIcon className={`h-5 w-5 ${active ? "text-[#2ee59d]" : ""}`} />
+                <span className="text-[0.6875rem] font-medium">{item.mobileLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       <AddTransactionModal
         isOpen={addModalOpen}
@@ -544,6 +645,242 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
   );
 }
 
+function DesktopBalanceSummary({
+  summary,
+  onAddAsset,
+}: {
+  summary: {
+    total: string;
+    changeValue: string;
+    changePercent: string;
+    positive: boolean;
+  } | null;
+  onAddAsset: () => void;
+}) {
+  return (
+    <div className="mr-1 hidden h-10 items-center rounded-xl border border-zinc-800 bg-[#121214] p-1 2xl:flex">
+      <div className="px-2">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          Balance total
+        </p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <span className="tabular-nums text-sm font-medium text-zinc-50">
+            {summary?.total ?? "$0.00"}
+          </span>
+          <SummaryPill summary={summary} />
+        </div>
+      </div>
+      <button
+        className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg bg-emerald-500 px-2.5 text-xs font-medium leading-none text-zinc-950 transition hover:bg-emerald-400"
+        onClick={onAddAsset}
+        type="button"
+      >
+        + Activo
+      </button>
+    </div>
+  );
+}
+
+function SummaryPill({
+  summary,
+}: {
+  summary: {
+    changeValue: string;
+    changePercent: string;
+    positive: boolean;
+  } | null;
+}) {
+  const positive = summary?.positive !== false;
+  return (
+    <span
+      className={`whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-semibold ${
+        positive ? "bg-[#103427] text-[#24d58f]" : "bg-[#30171d] text-[#ff5d73]"
+      }`}
+    >
+      {summary ? `${summary.changeValue} ${summary.changePercent}` : "+$0.00 +0.00%"}
+    </span>
+  );
+}
+
+function DesktopIconButton({
+  children,
+  active = false,
+  ariaLabel,
+  onClick,
+}: {
+  children: ReactNode;
+  active?: boolean;
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${
+        active
+          ? "bg-zinc-800 text-zinc-50"
+          : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-50"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MobileIconButton({
+  children,
+  active = false,
+  ariaLabel,
+  onClick,
+  testId,
+}: {
+  children: ReactNode;
+  active?: boolean;
+  ariaLabel: string;
+  onClick: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-xl transition md:h-10 md:w-10 ${
+        active
+          ? "bg-[#262D3D] text-white"
+          : "bg-[#151922] text-[#B0B6C3] hover:bg-[#1B2130] hover:text-white"
+      }`}
+      data-testid={testId}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function DesktopPopover({
+  children,
+  align,
+  wide = false,
+}: {
+  children: ReactNode;
+  align: "right";
+  wide?: boolean;
+}) {
+  return (
+    <div
+      className={`absolute ${align}-4 top-full z-50 mt-2 rounded-2xl border border-zinc-800 bg-[#121214] py-2 shadow-2xl md:${align}-6 lg:${align}-8 ${
+        wide ? "w-80" : "w-64"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PopoverSectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-zinc-600">
+      {children}
+    </div>
+  );
+}
+
+function PopoverAction({
+  children,
+  active = false,
+}: {
+  children: ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <button
+      className={`mx-2 block w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-sm transition ${
+        active
+          ? "bg-zinc-800/50 text-zinc-50"
+          : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-50"
+      }`}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function PopoverLink({
+  children,
+  href,
+}: {
+  children: ReactNode;
+  href: string;
+}) {
+  return (
+    <a
+      className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800/50 hover:text-zinc-50"
+      href={href}
+    >
+      {children}
+    </a>
+  );
+}
+
+function NotificationItem() {
+  return (
+    <div className="flex gap-3 rounded-xl border border-zinc-800/40 bg-[#121214] px-4 py-3">
+      <div className="mt-0.5 h-fit rounded-full border border-zinc-800 bg-zinc-900 p-1.5">
+        <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-zinc-50">Sincronizacion Exitosa</p>
+        <p className="mt-0.5 text-xs text-zinc-400">Tus transacciones estan al dia.</p>
+        <p className="mt-1 text-[11px] text-zinc-500">Hace 2 min</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="mt-4 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-zinc-600">
+      {children}
+    </p>
+  );
+}
+
+function ProfileRow({
+  icon,
+  label,
+  onClick,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+  value?: string;
+}) {
+  return (
+    <button
+      className="flex min-h-12 w-full items-center gap-3 border-b border-zinc-800/60 py-2.5 text-left last:border-b-0 active:bg-zinc-900/70"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="shrink-0 text-zinc-500">{icon}</span>
+      <span className="min-w-0 flex-1 truncate text-[0.875rem] font-medium text-zinc-100">{label}</span>
+      {value ? <span className="max-w-[48%] truncate text-right text-[0.8125rem] text-zinc-500">{value}</span> : null}
+      <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-zinc-700" />
+    </button>
+  );
+}
+
+function NavBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#c4cede]">
+      {children}
+    </span>
+  );
+}
+
 function formatHeaderCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -551,4 +888,52 @@ function formatHeaderCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+function buildPrimaryNav(marketsEnabled: boolean): NavItem[] {
+  const items: NavItem[] = [
+    {
+      href: "/dashboard",
+      label: "Dashboard",
+      mobileLabel: "Inicio",
+      description: "Resumen general de tu patrimonio",
+      icon: Home,
+    },
+    {
+      href: "/portfolio",
+      label: "Portfolio",
+      mobileLabel: "Portafolio",
+      description: "Holdings, rendimiento y distribucion",
+      icon: Briefcase,
+      badge: getPortfolioNavBadge(),
+    },
+    {
+      href: "/transactions",
+      label: "Transacciones",
+      mobileLabel: "Movimientos",
+      description: "Compras, ventas y actividad reciente",
+      icon: ArrowLeftRight,
+    },
+  ];
+
+  if (marketsEnabled) {
+    items.splice(1, 0, {
+      href: "/mercados",
+      label: "Mercados",
+      mobileLabel: "Mercados",
+      description: "Radar de precios, tendencias y watchlist",
+      icon: LineChart,
+    });
+  }
+
+  return items;
+}
+
+function buildMobileBottomNav(marketsEnabled: boolean) {
+  return buildPrimaryNav(marketsEnabled).filter((item) =>
+    item.href === "/dashboard" ||
+    item.href === "/mercados" ||
+    item.href === "/portfolio" ||
+    item.href === "/transactions",
+  ).slice(0, 4);
 }

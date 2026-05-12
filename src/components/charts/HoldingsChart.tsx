@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEventParams, Time } from "lightweight-charts";
+import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import {
   type HoldingsPerformancePeriod,
   useHoldingsPerformance,
@@ -46,6 +47,14 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
   const [tooltip, setTooltip] = useState<TooltipState>(INITIAL_TOOLTIP_STATE);
   const chartShellRef = useRef<HTMLDivElement | null>(null);
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 640);
+    handleResize(); // Initialize on mount
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     setSelectedPeriod(period);
@@ -67,7 +76,7 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
     let cleanupChart: (() => void) | undefined;
 
     async function mountChart(payload: HoldingsPerformanceResponse) {
-      if (!chartContainerRef.current || !chartShellRef.current || payload.series.length === 0) {
+      if (isMobile || !chartContainerRef.current || !chartShellRef.current || payload.series.length === 0) {
         setTooltip(INITIAL_TOOLTIP_STATE);
         return;
       }
@@ -174,7 +183,15 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
       disposed = true;
       cleanupChart?.();
     };
-  }, [normalizedData, pointsByTime]);
+  }, [normalizedData, pointsByTime, isMobile]);
+
+  const rechartsData = useMemo(() => {
+    if (!isMobile || !normalizedData) return [];
+    return normalizedData.series.map((point) => ({
+      time: point.time * 1000,
+      value: point.value,
+    }));
+  }, [normalizedData, isMobile]);
 
   return (
     <section className="rounded-[1.4rem] bg-[#101216] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.28)]">
@@ -233,18 +250,59 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
             onMouseLeave={() => setTooltip(INITIAL_TOOLTIP_STATE)}
             ref={chartShellRef}
           >
-            {tooltip.visible && tooltip.point ? (
-              <div
-                className="pointer-events-none absolute z-10 min-w-[210px] rounded-xl bg-[#0f172a] px-4 py-3 text-sm shadow-[0_16px_36px_rgba(0,0,0,0.36)]"
-                data-testid="holdings-chart-tooltip"
-                style={{ left: tooltip.left, top: tooltip.top }}
-              >
-                <p className="font-medium text-white">{formatChartDate(tooltip.point.time)}</p>
-                <p className="mt-1 text-[#cbd5e1]">Total Value: {formatCurrency(tooltip.point.value)}</p>
+            {isMobile ? (
+              <div className="h-[22rem] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={rechartsData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorValueAlt" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={lineColor} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" domain={["dataMin", "dataMax"]} hide type="number" />
+                    <YAxis domain={["auto", "auto"]} hide />
+                    <RechartsTooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm shadow-[0_16px_36px_rgba(0,0,0,0.36)]">
+                              <p className="font-medium text-white">{formatChartDate(data.time / 1000)}</p>
+                              <p className="mt-1 text-[#cbd5e1]">Total Value: {formatCurrency(data.value)}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Area
+                      dataKey="value"
+                      fill="url(#colorValueAlt)"
+                      fillOpacity={1}
+                      stroke={lineColor}
+                      strokeWidth={3}
+                      type="monotone"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-            ) : null}
+            ) : (
+              <>
+                {tooltip.visible && tooltip.point ? (
+                  <div
+                    className="pointer-events-none absolute z-10 min-w-[210px] rounded-xl bg-[#0f172a] px-4 py-3 text-sm shadow-[0_16px_36px_rgba(0,0,0,0.36)]"
+                    data-testid="holdings-chart-tooltip"
+                    style={{ left: tooltip.left, top: tooltip.top }}
+                  >
+                    <p className="font-medium text-white">{formatChartDate(tooltip.point.time)}</p>
+                    <p className="mt-1 text-[#cbd5e1]">Total Value: {formatCurrency(tooltip.point.value)}</p>
+                  </div>
+                ) : null}
 
-            <div className="h-[22rem] w-full" ref={chartContainerRef} />
+                <div className="h-[22rem] w-full" ref={chartContainerRef} />
+              </>
+            )}
           </div>
         </div>
       )}

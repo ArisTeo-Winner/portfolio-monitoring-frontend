@@ -132,7 +132,7 @@ export function DemoDashboard({
         <TopTicker assets={tickerAssets} />
 
         <header className="sticky top-0 z-40 border-b border-[#0f141b] bg-[#05070a]/92 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-6 px-6">
+          <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-6 px-6">
             <Link className="flex items-center gap-3" href="/">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1fd68a] text-[#03120c] shadow-[0_12px_30px_rgba(31,214,138,0.18)]">
                 <TriangleIcon className="h-5 w-5" />
@@ -148,7 +148,8 @@ export function DemoDashboard({
 
             <div className="flex items-center gap-3">
               <button
-                className="hidden text-sm font-medium text-[#d0d7e2] transition hover:text-white sm:inline-flex"
+                className="flex items-center justify-center rounded-lg bg-[#19c37d] px-4 py-2 text-sm font-bold text-[#04120c] transition hover:bg-[#28d389] sm:hidden"
+                data-testid="open-login-btn"
                 onClick={() => openAuth("login")}
                 suppressHydrationWarning
                 type="button"
@@ -156,7 +157,16 @@ export function DemoDashboard({
                 Iniciar sesión
               </button>
               <button
-                className="flex items-center justify-center rounded-lg bg-[#19c37d] px-4 py-2 text-sm font-bold text-[#04120c] shadow-[0_18px_40px_rgba(25,195,125,0.22)] transition hover:bg-[#28d389]"
+                className="hidden text-sm font-medium text-[#d0d7e2] transition hover:text-white sm:inline-flex"
+                data-testid="open-login-btn"
+                onClick={() => openAuth("login")}
+                suppressHydrationWarning
+                type="button"
+              >
+                Iniciar sesión
+              </button>
+              <button
+                className="hidden items-center justify-center rounded-lg bg-[#19c37d] px-4 py-2 text-sm font-bold text-[#04120c] shadow-[0_18px_40px_rgba(25,195,125,0.22)] transition hover:bg-[#28d389] sm:flex"
                 onClick={() => openAuth("register")}
                 suppressHydrationWarning
                 type="button"
@@ -169,7 +179,7 @@ export function DemoDashboard({
 
         <section className="relative overflow-hidden pb-32 pt-24">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-[620px] bg-[radial-gradient(circle_at_top,rgba(18,148,95,0.18),transparent_58%)]" />
-          <div className="mx-auto max-w-[1200px] px-6">
+          <div className="mx-auto max-w-[1440px] px-6">
             <div className="mx-auto max-w-[900px] text-center">
               {authMessage ? (
                 <div className="mx-auto mb-8 flex max-w-[760px] items-center justify-between gap-4 rounded-[1.35rem] border border-[#3a252b] bg-[#1b1014] px-5 py-4 text-left shadow-[0_18px_45px_rgba(0,0,0,0.18)]">
@@ -234,7 +244,7 @@ export function DemoDashboard({
         </section>
 
         <section className="border-y border-[#0f141b] bg-[#07090d] py-12" id="preview">
-          <div className="mx-auto max-w-[1200px] px-6">
+          <div className="mx-auto max-w-[1440px] px-6">
             <div className="overflow-hidden rounded-[2rem] bg-[#0d1117] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] ring-1 ring-[#171c24] md:p-6">
               <div className="mb-5 flex items-center gap-2 px-2">
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
@@ -276,7 +286,7 @@ export function DemoDashboard({
                           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                           <span className="text-[#dfe5ee]">{item.name}</span>
                         </div>
-                        <span className="font-mono text-[#9ca6b5]">{item.share.toFixed(0)}%</span>
+                        <span className="tabular-nums text-[#9ca6b5]">{item.share.toFixed(0)}%</span>
                       </div>
                     ))}
                   </div>
@@ -287,7 +297,7 @@ export function DemoDashboard({
         </section>
 
         <section className="py-24" id="features">
-          <div className="mx-auto max-w-[1200px] px-6">
+          <div className="mx-auto max-w-[1440px] px-6">
             <div className="mx-auto max-w-[820px] text-center">
               <h2 className="text-[2.4rem] font-bold tracking-[-0.05em] text-white">
                 Diseñado para la claridad. Construido para la seguridad.
@@ -319,7 +329,7 @@ export function DemoDashboard({
         </section>
 
         <section className="border-y border-[#0f141b] py-20" id="integrations">
-          <div className="mx-auto grid max-w-[1200px] gap-16 px-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="mx-auto grid max-w-[1440px] gap-16 px-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <div className="inline-flex rounded-full bg-[#0f171d] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8ba2ff] shadow-[inset_0_0_0_1px_rgba(139,162,255,0.12)]">
                 Integraciones
@@ -356,7 +366,7 @@ export function DemoDashboard({
         </section>
 
         <section className="py-20" id="community">
-          <div className="mx-auto max-w-[1200px] px-6">
+          <div className="mx-auto max-w-[1440px] px-6">
             <div className="mx-auto max-w-[820px] text-center">
               <h2 className="text-[2.35rem] font-bold tracking-[-0.05em] text-white">
                 Entiende la diferencia. Toma el control.
@@ -404,7 +414,7 @@ export function DemoDashboard({
         </section>
 
         <footer className="border-t border-[#0f141b] py-10">
-          <div className="mx-auto grid max-w-[1200px] gap-8 px-6 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
+          <div className="mx-auto grid max-w-[1440px] gap-8 px-6 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
             <div>
               <div className="flex items-center gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#19c37d] text-[#04120c]">
@@ -456,7 +466,7 @@ function TopTicker({ assets }: { assets: MarketRow[] }) {
           {[...rows, ...rows, ...rows].map((asset, index) => (
             <div className="flex items-center gap-3" key={`${asset.id}-${index}`}>
               <span className="text-[#909caf]">{asset.symbol}</span>
-              <span className="font-mono text-white">{formatUsd(asset.price)}</span>
+              <span className="tabular-nums text-white">{formatUsd(asset.price)}</span>
               <span className={(asset.change24h ?? 0) >= 0 ? "text-[#1fd68a]" : "text-[#ff5c7c]"}>
                 {formatSignedPercent(asset.change24h)}
               </span>

@@ -8,11 +8,23 @@ export const endpoints = {
   users: {
     me: "/api/v1/users/me",
   },
+  settings: {
+    account: "/api/v1/users/me",
+    changePassword: "/api/v1/users/password/change",
+    sessions: "/api/v1/me/sessions",
+    session: (sessionId: string) => `/api/v1/me/sessions/${encodeURIComponent(sessionId)}`,
+    preferences: "/api/v1/me/preferences",
+  },
   portfolio: {
     me: "/api/v1/me/portfolio",
     bySymbol: (symbol: string) => `/api/v1/me/portfolio/${symbol}`,
     holdingsPerformance: (portfolioId: string) =>
       `/api/v1/me/portfolio/${encodeURIComponent(portfolioId)}/holdings-performance`,
+    history: "/api/v1/me/portfolio/history",
+    assetHistory: (symbol: string) =>
+      `/api/v1/me/portfolio/assets/${encodeURIComponent(symbol)}/history`,
+    assetMarkers: (symbol: string) =>
+      `/api/v1/me/portfolio/assets/${encodeURIComponent(symbol)}/markers`,
   },
   transactions: {
     me: "/api/v1/me/transactions",

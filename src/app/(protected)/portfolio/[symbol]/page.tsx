@@ -5,10 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-modal";
 import { PortfolioDetailCard } from "@/components/portfolio/portfolio-widgets";
-import { PortfolioSidebar, buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar";
+import { PortfolioSidebar } from "@/components/portfolio/portfolio-sidebar";
+import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-data";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import type { AssetOption } from "@/features/assets/types/asset.types";
+import { AssetChartContainer } from "@/features/portfolio-chart/components/ChartContainer";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
 import {
@@ -306,6 +308,7 @@ export default function PortfolioSymbolPage() {
 
           {loading ? <HoldingDetailSkeleton /> : null}
           {!loading && entry ? <PortfolioDetailCard entry={entry} /> : null}
+          {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && error ? (
             <section className="glass rounded-[1.6rem] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
               <h1 className="text-[1.35rem] font-bold text-slate-950">Holding unavailable</h1>

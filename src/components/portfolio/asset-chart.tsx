@@ -16,7 +16,7 @@ import type {
   UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef } from "react";
-import type { AssetMarker, HistoryPoint } from "../types";
+import type { AssetMarker, HistoryPoint } from "@/features/portfolio/types/asset-chart.types";
 
 const LINE_COLOR = "#16C784";
 const TOP_COLOR = "rgba(22,199,132,0.3)";

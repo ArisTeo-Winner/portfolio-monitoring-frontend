@@ -2,9 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { getAssetHistory } from "../api/getAssetHistory";
-import { getAssetMarkers } from "../api/getAssetMarkers";
-import type { AssetChartRange, AssetMarker, HistoryPoint } from "../types";
+import { getAssetHistory } from "@/features/portfolio/api/get-asset-history";
+import { getAssetMarkers } from "@/features/portfolio/api/get-asset-markers";
+import type { AssetChartRange, AssetMarker, HistoryPoint } from "@/features/portfolio/types/asset-chart.types";
 
 export function useAssetChartData(symbol: string, range: AssetChartRange) {
   const historyQuery = useQuery({

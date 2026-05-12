@@ -10,7 +10,7 @@ import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-dat
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import type { AssetOption } from "@/features/assets/types/asset.types";
-import { AssetChartContainer } from "@/features/portfolio-chart/components/ChartContainer";
+import { AssetChartContainer } from "@/components/portfolio/asset-chart-container";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
 import {

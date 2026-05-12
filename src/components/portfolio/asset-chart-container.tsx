@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useAssetChartData } from "../hooks/useAssetChartData";
-import type { AssetChartRange } from "../types";
-import { AssetChart } from "./AssetChart";
+import { useAssetChartData } from "@/features/portfolio/hooks/useAssetChartData";
+import type { AssetChartRange } from "@/features/portfolio/types/asset-chart.types";
+import { AssetChart } from "@/components/portfolio/asset-chart";
 
 const RANGES: { label: string; value: AssetChartRange }[] = [
   { label: "24h", value: "24h" },

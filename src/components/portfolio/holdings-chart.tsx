@@ -4,24 +4,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEventParams, Time } from "lightweight-charts";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
-import {
-  useHoldingsPerformance,
-  type HoldingsPerformancePeriod,
-} from "@/features/portfolio/api/get-holdings-performance";
-import type { HoldingsPerformancePoint } from "@/features/portfolio/types/holdings-performance.types";
+import { usePortfolioHistory } from "@/features/portfolio/hooks/usePortfolioHistory";
+import type { PortfolioHistoryPoint } from "@/features/portfolio/types/portfolio-history.types";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatSignedCurrency } from "@/lib/utils/format";
+
+type HistoryRange = "24h" | "7d" | "30d" | "90d" | "ALL";
 
 type TooltipState = {
   visible: boolean;
   left: number;
   top: number;
-  point: HoldingsPerformancePoint | null;
+  point: PortfolioHistoryPoint | null;
   value: number;
 };
 
-const HISTORY_RANGES: Array<{ key: HoldingsPerformancePeriod; label: string }> = [
+const HISTORY_RANGES: Array<{ key: HistoryRange; label: string }> = [
   { key: "24h", label: "24h" },
   { key: "7d", label: "7d" },
   { key: "30d", label: "30d" },
@@ -31,7 +30,7 @@ const HISTORY_RANGES: Array<{ key: HoldingsPerformancePeriod; label: string }> =
 
 const POSITIVE_COLOR = tokens.positive;
 const NEGATIVE_COLOR = tokens.negative;
-const EMPTY_SERIES: HoldingsPerformancePoint[] = [];
+const EMPTY_SERIES: PortfolioHistoryPoint[] = [];
 const INITIAL_TOOLTIP_STATE: TooltipState = {
   visible: false,
   left: 0,
@@ -42,16 +41,16 @@ const INITIAL_TOOLTIP_STATE: TooltipState = {
 
 export function HoldingsChart({
   collapsibleOnMobile = false,
-  portfolioId,
+  portfolioId: _portfolioId,
   entries,
 }: {
   collapsibleOnMobile?: boolean;
-  portfolioId: string;
+  portfolioId?: string;
   entries: PortfolioEntry[];
 }) {
-  const [range, setRange] = useState<HoldingsPerformancePeriod>("ALL");
+  const [range, setRange] = useState<HistoryRange>("ALL");
   const [isChartExpanded, setIsChartExpanded] = useState(true);
-  const { data, error, isLoading } = useHoldingsPerformance(portfolioId, range);
+  const { data, error, isLoading } = usePortfolioHistory(range);
   const [tooltip, setTooltip] = useState<TooltipState>(INITIAL_TOOLTIP_STATE);
   const chartShellRef = useRef<HTMLDivElement | null>(null);
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
@@ -59,16 +58,17 @@ export function HoldingsChart({
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 640);
-    handleResize(); // Initialize on mount
+    handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const series = useMemo(() => normalizeHoldingsSeries(data?.series ?? EMPTY_SERIES), [data?.series]);
-  const lineColor = data?.isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
+  const series = useMemo<PortfolioHistoryPoint[]>(() => data?.series ?? EMPTY_SERIES, [data?.series]);
+  const isProfit = series.length > 0 ? series[series.length - 1].value >= series[0].value : true;
+  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
-  const allTimeProfit = data?.allTimeProfit ?? 0;
-  const costBasis = data?.costBasis ?? 0;
+  const allTimeProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
+  const costBasis = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const profitPercent = costBasis > 0 ? (allTimeProfit / costBasis) * 100 : 0;
   const profitBreakdown = useMemo(() => {
     const profitable = entries.filter((entry) => Number(entry.totalProfitLoss) > 0).length;
@@ -102,7 +102,7 @@ export function HoldingsChart({
 
       const chart = charts.createChart(container, {
         autoSize: true,
-        height: window.innerWidth < 768 ? 256 : 340, // 16rem = 256px, 22rem = 340px (approx)
+        height: window.innerWidth < 768 ? 256 : 340,
         layout: {
           background: { type: charts.ColorType.Solid, color: "transparent" },
           textColor: tokens.muted,
@@ -215,6 +215,7 @@ export function HoldingsChart({
       value: roundCurrency(point.value),
     }));
   }, [series, isMobile]);
+
   return (
     <div className="grid gap-3 sm:gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.82fr)]">
       <article className="flex flex-col overflow-hidden rounded-[1.65rem] bg-[#111317] p-6 shadow-[0_30px_84px_rgba(0,0,0,0.32)] transition-all duration-300 max-sm:rounded-none max-sm:border-b max-sm:border-[#262D3D] max-sm:bg-[#0F1116] max-sm:p-3 max-sm:pb-2 max-sm:shadow-none">
@@ -286,7 +287,6 @@ export function HoldingsChart({
             isChartExpanded ? "max-sm:mt-0 max-sm:max-h-[13rem] max-sm:opacity-100" : "max-sm:mt-0 max-sm:max-h-0 max-sm:opacity-0"
           }`}
         >
-          {/* Vista Expandida: Gráfica Principal */}
           <div className="grid grid-rows-[1fr] opacity-100 transition-all duration-500 ease-in-out">
             <div className="overflow-hidden">
               <div className="relative overflow-hidden rounded-[1.35rem] bg-[radial-gradient(circle_at_top_left,_rgba(23,199,132,0.16),_transparent_34%),linear-gradient(180deg,#0d1016_0%,#090b10_100%)] px-4 py-4 shadow-[0_20px_42px_rgba(0,0,0,0.24)] max-sm:rounded-none max-sm:bg-transparent max-sm:px-0 max-sm:py-0 max-sm:shadow-none">
@@ -346,14 +346,14 @@ export function HoldingsChart({
                               <RechartsTooltip
                                 content={({ active, payload }) => {
                                   if (active && payload && payload.length) {
-                                    const data = payload[0].payload;
+                                    const d = payload[0].payload;
                                     return (
                                       <div className="rounded-[0.75rem] bg-[#151922]/95 px-3 py-2 text-[0.75rem] shadow-none">
                                         <p className="text-[0.6875rem] font-normal leading-[1.4] text-[#7D8596]">
-                                          {formatTooltipDate(data.time / 1000)}
+                                          {formatTooltipDate(d.time / 1000)}
                                         </p>
                                         <p className="mt-1 text-[0.75rem] font-semibold leading-[1.25] text-white">
-                                          Total Value: {formatCurrency(data.value)}
+                                          Total Value: {formatCurrency(d.value)}
                                         </p>
                                       </div>
                                     );
@@ -396,7 +396,6 @@ export function HoldingsChart({
                 )}
               </div>
 
-              {/* MOBILE RANGES (Shown only on mobile, inside expanded view) */}
               <div className="mt-2 flex items-center justify-between px-2 sm:hidden">
                 {HISTORY_RANGES.map((item) => {
                   const active = item.key === range;
@@ -466,34 +465,13 @@ export function HoldingsChart({
   );
 }
 
-function buildTimePointMap(points: HoldingsPerformancePoint[]) {
-  const lookup = new Map<number, HoldingsPerformancePoint>();
+function buildTimePointMap(points: PortfolioHistoryPoint[]) {
+  const lookup = new Map<number, PortfolioHistoryPoint>();
   points.forEach((point) => lookup.set(point.time, point));
   return lookup;
 }
 
-function normalizeHoldingsSeries(points: HoldingsPerformancePoint[]) {
-  if (points.length <= 1) {
-    return points;
-  }
-
-  const sorted = [...points].sort((left, right) => left.time - right.time);
-  const normalized: HoldingsPerformancePoint[] = [];
-
-  sorted.forEach((point) => {
-    const previous = normalized[normalized.length - 1];
-    if (previous && previous.time === point.time) {
-      normalized[normalized.length - 1] = point;
-      return;
-    }
-
-    normalized.push(point);
-  });
-
-  return normalized;
-}
-
-function getNearestPoint(points: HoldingsPerformancePoint[], time: number) {
+function getNearestPoint(points: PortfolioHistoryPoint[], time: number) {
   if (!points.length) return null;
   let nearest = points[0];
   let distance = Math.abs(points[0].time - time);

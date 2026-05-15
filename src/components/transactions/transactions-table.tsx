@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddTransactionModal, type InitialTransactionDraft } from "@/components/transactions/add-transaction-modal";
 import { Modal } from "@/components/ui/modal";
@@ -11,6 +10,8 @@ import { deleteTransaction } from "@/features/transactions/api/create-transactio
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionDetailsResponse, TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { getAssetDisplayName } from "@/lib/utils/asset";
+import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
 
@@ -699,44 +700,6 @@ function TransactionTypeBadge({ type }: { type: TransactionFilter }) {
   );
 }
 
-function AssetAvatar({
-  logoUrl,
-  size = "default",
-  symbol,
-}: {
-  logoUrl: string | null;
-  size?: "default" | "compact";
-  symbol: string;
-}) {
-  const [failed, setFailed] = useState(false);
-  const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
-  const sizeClass = size === "compact" ? "h-7 w-7" : "h-8 w-8";
-  const textClass = size === "compact" ? "text-[0.64rem]" : "text-[0.72rem]";
-
-  if (logoUrl && !failed) {
-    return (
-      <Image
-        alt={symbol}
-        className={`${sizeClass} shrink-0 rounded-full bg-[#0f131b] object-cover`}
-        height={32}
-        onError={() => setFailed(true)}
-        src={logoUrl}
-        unoptimized
-        width={32}
-      />
-    );
-  }
-
-  return (
-    <span
-      className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full ${textClass} font-bold`}
-      style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
-    >
-      {initials}
-    </span>
-  );
-}
 
 function IconButton({
   children,
@@ -788,7 +751,7 @@ function MobileAssetActionRow({
     >
       <div className="grid h-9 grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_auto] items-center gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <AssetAvatar logoUrl={asset.logoUrl} size="compact" symbol={asset.symbol} />
+          <AssetAvatar logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
           <div className="min-w-0">
             <p className="truncate text-[0.8125rem] font-medium leading-none text-white">{asset.symbol}</p>
             <p className="mt-0.5 truncate text-[10px] leading-none text-slate-500">{asset.name}</p>
@@ -940,7 +903,7 @@ function MobileAssetActionPanel({
       <div className="px-4 pb-4 pt-3">
         <div className="flex max-h-14 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <AssetAvatar logoUrl={asset.logoUrl} size="compact" symbol={asset.symbol} />
+            <AssetAvatar logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
             <div className="min-w-0">
               <p className="truncate text-[1rem] font-semibold text-white">{asset.name}</p>
               <p className="mt-0.5 text-[0.6875rem] uppercase tracking-[0.05em] text-[#7f8aa3]">{asset.symbol}</p>
@@ -1102,40 +1065,6 @@ function ActionPanelButton({
   );
 }
 
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}
-
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-  };
-
-  return names[key] ?? key;
-}
 
 function resolveTransactionLogo(
   symbol: string,

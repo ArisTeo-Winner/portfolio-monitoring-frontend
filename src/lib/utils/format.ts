@@ -19,3 +19,20 @@ export function formatSignedCurrency(value: string | number) {
   const prefix = amount >= 0 ? "+" : "-";
   return `${prefix}${formatCurrency(Math.abs(amount))}`;
 }
+
+export function formatMarketPrice(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "--";
+  if (Math.abs(value) >= 1) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 8,
+  }).format(value);
+}

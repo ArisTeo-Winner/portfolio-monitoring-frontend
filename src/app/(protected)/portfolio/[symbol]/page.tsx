@@ -26,6 +26,7 @@ import { getUserTransactions } from "@/features/transactions/api/get-transaction
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { getAssetDisplayName } from "@/lib/utils/asset";
 
 const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF"]);
 const HOLDING_DETAIL_MEASURE_TYPES = {
@@ -512,30 +513,6 @@ function formatTransactionType(value: string) {
   }
 }
 
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft Corp.",
-    GOOGL: "Alphabet Inc.",
-    NVDA: "NVIDIA Corp",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-    META: "Meta Platforms",
-    HYPE: "Hyperliquid",
-  };
-
-  return names[key] ?? key;
-}
 
 function getHoldingDetailMarkName(symbol: string, markType: (typeof HOLDING_DETAIL_MEASURE_TYPES)[keyof typeof HOLDING_DETAIL_MEASURE_TYPES]) {
   return `holding-detail:${symbol}:${markType}`;

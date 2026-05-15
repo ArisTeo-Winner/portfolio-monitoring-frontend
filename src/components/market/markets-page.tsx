@@ -29,6 +29,8 @@ import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
+import { normalizeAssetType } from "@/lib/utils/asset";
+import { formatMarketPrice } from "@/lib/utils/format";
 
 type MarketTab = "CRYPTO" | "STOCK" | "ETF" | "WATCHLIST";
 
@@ -938,12 +940,6 @@ function toggleWatchlist(current: string[], rowId: string) {
   return current.includes(rowId) ? current.filter((value) => value !== rowId) : [...current, rowId];
 }
 
-function normalizeAssetType(assetType: string) {
-  const normalized = assetType.trim().toUpperCase();
-  if (normalized === "STOCKS") return "STOCK";
-  if (normalized === "ETFS") return "ETF";
-  return normalized;
-}
 
 function renderChange(value: number | null, variant: "default" | "compact" = "default") {
   if (value === null || !Number.isFinite(value)) {
@@ -975,26 +971,6 @@ function formatCompactUsd(value: number | null | undefined) {
   }).format(value);
 }
 
-function formatMarketPrice(value: number | null) {
-  if (value === null || !Number.isFinite(value)) {
-    return "--";
-  }
-
-  if (Math.abs(value) >= 1) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 8,
-  }).format(value);
-}
 
 function formatPercentValue(value: number | null | undefined, digits = 2) {
   if (value === null || value === undefined || !Number.isFinite(value)) {

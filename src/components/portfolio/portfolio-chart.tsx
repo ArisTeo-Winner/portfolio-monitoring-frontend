@@ -1,33 +1,25 @@
 "use client";
 
-import { AreaSeries, createChart, createSeriesMarkers } from "lightweight-charts";
-import type {
-  IChartApi,
-  ISeriesApi,
-  ISeriesMarkersPluginApi,
-  Time,
-  UTCTimestamp,
-} from "lightweight-charts";
+import { AreaSeries, createChart } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import { areaSeriesOptions, baseChartOptions, CHART_THEME } from "@/lib/chart/lightweight-config";
-import { mapMarkersToLightweight } from "@/lib/chart/marker-adapter";
-import { useAssetChart } from "@/features/portfolio/hooks/use-asset-chart";
+import { usePortfolioChart } from "@/features/portfolio/hooks/use-portfolio-chart";
 import type { ChartRange } from "@/types/portfolio-chart";
+import { tokens } from "@/lib/design-tokens";
 
 const CHART_HEIGHT = "h-[240px] md:h-[300px] lg:h-[360px]";
 
 type Props = {
-  symbol: string;
   range: ChartRange;
 };
 
-export function AssetChart({ symbol, range }: Props) {
-  const { history, markers, loading, error } = useAssetChart(symbol, range);
+export function PortfolioChart({ range }: Props) {
+  const { response, loading, error } = usePortfolioChart(range);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
-  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   // Initialize chart once on mount — never recreate
   useEffect(() => {
@@ -39,7 +31,6 @@ export function AssetChart({ symbol, range }: Props) {
 
     const series = chart.addSeries(AreaSeries, areaSeriesOptions);
     seriesRef.current = series;
-    markersPluginRef.current = createSeriesMarkers(series);
 
     const ro = new ResizeObserver(() => {
       chart.timeScale().fitContent();
@@ -48,47 +39,45 @@ export function AssetChart({ symbol, range }: Props) {
 
     return () => {
       ro.disconnect();
-      markersPluginRef.current?.detach();
-      markersPluginRef.current = null;
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
   }, []);
 
-  // Update series data when history changes — no sorting (backend guarantees order)
+  // Update series when backend response changes — no sorting (backend guarantees order)
   useEffect(() => {
     const series = seriesRef.current;
     const chart = chartRef.current;
     if (!series || !chart) return;
 
-    if (!history || history.points.length === 0) {
+    if (!response || response.points.length === 0) {
       series.setData([]);
       return;
     }
 
+    const first = response.points[0].value;
+    const last = response.points[response.points.length - 1].value;
+    const isPositive = last >= first;
+    const lineColor = isPositive ? tokens.positive : tokens.negative;
+
+    series.applyOptions({
+      lineColor,
+      topColor: `${lineColor}28`,
+      bottomColor: `${lineColor}00`,
+      crosshairMarkerBorderColor: lineColor,
+      crosshairMarkerBackgroundColor: lineColor,
+    });
+
     series.setData(
-      history.points.map((p) => ({
+      response.points.map((p) => ({
         time: p.time as UTCTimestamp,
         value: p.value,
       })),
     );
 
     chart.timeScale().fitContent();
-  }, [history]);
-
-  // Update markers when markers response changes
-  useEffect(() => {
-    const plugin = markersPluginRef.current;
-    if (!plugin) return;
-
-    if (!markers || markers.markers.length === 0) {
-      plugin.setMarkers([]);
-      return;
-    }
-
-    plugin.setMarkers(mapMarkersToLightweight(markers.markers));
-  }, [markers]);
+  }, [response]);
 
   if (loading) {
     return (
@@ -103,13 +92,13 @@ export function AssetChart({ symbol, range }: Props) {
     return (
       <div className={`${CHART_HEIGHT} flex items-center justify-center`}>
         <p className="text-[0.82rem] text-fintech-muted">
-          No fue posible cargar el historial de precio.
+          No fue posible cargar el historial.
         </p>
       </div>
     );
   }
 
-  if (!history || history.points.length === 0) {
+  if (!response || response.points.length === 0) {
     return (
       <div className={`${CHART_HEIGHT} flex items-center justify-center`}>
         <p className="text-[0.82rem] text-fintech-muted">

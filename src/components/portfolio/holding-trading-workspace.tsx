@@ -13,6 +13,7 @@ import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { getAssetDisplayName, getAssetPalette } from "@/lib/utils/asset";
 
 type TradeRange = "1D" | "1W" | "1M" | "YTD" | "ALL";
 type TradeMode = "BUY" | "SELL";
@@ -643,30 +644,6 @@ function toDateTimeLocal(date: Date) {
   return local.toISOString().slice(0, 16);
 }
 
-function getAssetDisplayName(symbol: string) {
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    DOGE: "Dogecoin",
-    PEPE: "Pepe",
-    HYPE: "Hyperliquid",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    NVDA: "NVIDIA Corp",
-    AMZN: "Amazon",
-    TSLA: "Tesla",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-  };
-
-  return names[symbol.toUpperCase()] ?? symbol.toUpperCase();
-}
 
 function WorkspaceStat({
   label,
@@ -729,7 +706,7 @@ function ModeButton({ active, label, onClick }: { active: boolean; label: string
 function AssetOrb({ logoUrl, symbol }: { logoUrl: string | null; symbol: string }) {
   const [failed, setFailed] = useState(false);
   const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
+  const palette = getAssetPalette(symbol);
 
   if (logoUrl && !failed) {
     return (
@@ -755,15 +732,3 @@ function AssetOrb({ logoUrl, symbol }: { logoUrl: string | null; symbol: string 
   );
 }
 
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}

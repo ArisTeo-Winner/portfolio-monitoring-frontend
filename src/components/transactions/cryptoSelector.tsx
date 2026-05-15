@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { formatMarketPrice } from "@/lib/utils/format";
 
 export type Crypto = {
   id: string;
@@ -183,7 +184,7 @@ export function CryptoSelector({ onChange, value }: CryptoSelectorProps) {
 
                 <div className="text-right">
                   <p className="text-[0.8125rem] font-medium text-white md:text-[0.85rem]">
-                    {formatMarketPrice(crypto.currentPrice)}
+                    {formatMarketPrice(crypto.currentPrice ?? null)}
                   </p>
                   <p className="mt-0.5 text-[0.6875rem] text-[#6f7a8f] md:text-[0.73rem]">USD</p>
                 </div>
@@ -259,15 +260,6 @@ function writeCache(items: Crypto[]) {
   }
 }
 
-function formatMarketPrice(value?: number) {
-  if (!value || !Number.isFinite(value)) return "--";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: value >= 100 ? 0 : 2,
-    maximumFractionDigits: value >= 100 ? 0 : 4,
-  }).format(value);
-}
 
 function normalizeSearchValue(value?: string | null) {
   return value?.trim()?.toLowerCase() ?? "";

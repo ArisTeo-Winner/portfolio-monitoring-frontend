@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
@@ -16,6 +15,8 @@ import { getUserTransactions } from "@/features/transactions/api/get-transaction
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
+import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 const DISTRIBUTION_COLORS = ["#f7931a", "#5b8ff9", "#22c55e", "#a855f7", "#14b8a6"];
 type BackendHealthState = "idle" | "checking" | "up" | "slow" | "unreachable";
@@ -591,7 +592,7 @@ function DashboardActivityCard({
 
                 <div className="text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <AssetAvatar logoUrl={logoUrl} symbol={transaction.assetSymbol} small />
+                    <AssetAvatar logoUrl={logoUrl} symbol={transaction.assetSymbol} size="sm" />
                     <p className={`text-[0.8125rem] font-semibold sm:text-[1rem] ${isSell ? "text-[#ea3943]" : "text-[#17c784]"}`}>
                       {isSell ? "-" : "+"}{formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
                     </p>
@@ -618,43 +619,6 @@ function DashboardEmptyState({ title, description }: { title: string; descriptio
   );
 }
 
-function AssetAvatar({
-  logoUrl,
-  symbol,
-  small = false,
-}: {
-  logoUrl: string | null;
-  symbol: string;
-  small?: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
-  const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
-  const sizeClass = small ? "h-7 w-7 text-[0.68rem]" : "h-7 w-7 text-[0.68rem] sm:h-10 sm:w-10 sm:text-[0.8rem]";
-
-  if (logoUrl && !failed) {
-    return (
-      <Image
-        alt={symbol}
-        className={`${sizeClass} shrink-0 rounded-full bg-[#0f131b] object-cover`}
-        onError={() => setFailed(true)}
-        src={logoUrl}
-        unoptimized
-        width={small ? 28 : 40}
-        height={small ? 28 : 40}
-      />
-    );
-  }
-
-  return (
-    <span
-      className={`flex shrink-0 items-center justify-center rounded-full font-bold shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${sizeClass}`}
-      style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
-    >
-      {initials}
-    </span>
-  );
-}
 
 function DistributionDonut({
   assetCount,
@@ -743,46 +707,6 @@ function resolveAssetLogo(
     : null;
 }
 
-function normalizeAssetType(assetType: string) {
-  const normalized = assetType.toUpperCase();
-  if (normalized === "STOCKS") return "STOCK";
-  return normalized;
-}
-
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    NVDA: "NVIDIA Corp",
-    HYPE: "HYPE",
-  };
-
-  return names[key] ?? key;
-}
-
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}
 
 function formatActivityMeta(transaction: TransactionResponse) {
   const exchange = transaction.notes?.trim() ? transaction.notes : "Sin nota";

@@ -1,5 +1,6 @@
 import type { PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
+import { getAssetPalette } from "@/lib/utils/asset";
 
 export const PORTFOLIO_DEFINITIONS = [
   { assetType: "CRYPTO", label: "Crypto", description: "Tokens y monedas", color: "#10b981" },
@@ -19,11 +20,6 @@ export type SidebarGroup = {
   created: boolean;
 };
 
-function getAssetPalette(keyword: string) {
-  const palettes = ["#f97316", "#14b8a6", "#6366f1", "#f43f5e", "#10b981", "#eab308"];
-  const index = keyword.split("").reduce((acc, character) => acc + character.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}
 
 export function buildSidebarGroups(entries: PortfolioEntry[], preferences: PortfolioPreference[]) {
   const groups: SidebarGroup[] = [];
@@ -43,7 +39,7 @@ export function buildSidebarGroups(entries: PortfolioEntry[], preferences: Portf
       assetType,
       label: preference?.label ?? predefined?.label ?? (assetType.charAt(0).toUpperCase() + assetType.slice(1).toLowerCase()),
       description: predefined?.description ?? "User asset",
-      color: predefined?.color ?? getAssetPalette(assetType),
+      color: predefined?.color ?? getAssetPalette(assetType).base,
       totalValue,
       entryCount: portfolioEntries.length,
       changePercent,

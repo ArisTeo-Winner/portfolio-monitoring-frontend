@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
+import { normalizeAssetType } from "@/lib/utils/asset";
 import type { AssetOption, AssetSearchResponse } from "@/features/assets/types/asset.types";
 
 type RawAssetSearchResponse = AssetSearchResponse | RawAssetOption[];
@@ -34,7 +35,7 @@ export async function searchAssets(query: string, limit = 8): Promise<AssetOptio
 function normalizeAssetOption(item: RawAssetOption): AssetOption {
   const symbol = (item.symbol ?? item.asset_symbol ?? "").trim().toUpperCase();
   const name = (item.name ?? item.asset_name ?? symbol).trim();
-  const assetType = normalizeAssetType(item.assetType ?? item.asset_type);
+  const assetType = normalizeAssetType(item.assetType ?? item.asset_type ?? "CRYPTO");
 
   return {
     assetId: (item.assetId ?? item.asset_id ?? item.id ?? symbol).trim(),
@@ -47,9 +48,3 @@ function normalizeAssetOption(item: RawAssetOption): AssetOption {
   };
 }
 
-function normalizeAssetType(assetType?: string | null) {
-  const normalized = assetType?.trim().toUpperCase();
-  if (!normalized) return "CRYPTO";
-  if (normalized === "STOCKS") return "STOCK";
-  return normalized;
-}

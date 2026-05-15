@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
@@ -9,6 +8,8 @@ import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry
 import { startHoldingDetailTrace } from "@/features/portfolio/lib/holding-detail-performance";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { getAssetDisplayName } from "@/lib/utils/asset";
+import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 type WorkspaceTab = "assets" | "history";
 
@@ -139,7 +140,7 @@ export function PortfolioTable({
                   type="button"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} />
+                    <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                     <div className="min-w-0">
                       <p className="max-w-[7.5rem] truncate text-[0.875rem] font-medium leading-[1.35] text-white">{entry.assetSymbol}</p>
                       <p className="mt-0.5 max-w-[7.5rem] truncate text-[0.75rem] font-normal leading-[1.4] text-[#7D8596]">{getAssetDisplayName(entry.assetSymbol)}</p>
@@ -180,7 +181,7 @@ export function PortfolioTable({
                     <tr className="group transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#13161c]" key={entry.portfolioEntryId}>
                       <td className="py-5 pr-4">
                         <button className="flex w-full items-center gap-4 text-left" onClick={() => openHoldingDetail(entry.assetSymbol)} type="button">
-                          <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} />
+                          <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate text-[1rem] font-semibold text-white">{getAssetDisplayName(entry.assetSymbol)}</p>
@@ -265,7 +266,7 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
         <div>
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Holding detail</p>
           <div className="mt-4 flex items-center gap-4">
-            <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} />
+            <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
             <div>
               <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{getAssetDisplayName(entry.assetSymbol)}</h1>
               <p className="mt-1 text-[0.88rem] uppercase tracking-[0.18em] text-[#7f8aa3]">
@@ -312,71 +313,6 @@ function TabButton({ active, label, onClick }: { active: boolean; label: string;
   );
 }
 
-function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: string }) {
-  const [failed, setFailed] = useState(false);
-  const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
-
-  if (logoUrl && !failed) {
-    return (
-      <Image
-        alt={symbol}
-        className="h-12 w-12 shrink-0 rounded-full bg-[#0f131b] object-cover max-sm:h-6 max-sm:w-6"
-        height={48}
-        onError={() => setFailed(true)}
-        src={logoUrl}
-        unoptimized
-        width={48}
-      />
-    );
-  }
-
-  return (
-    <span
-      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[0.86rem] font-bold shadow-[0_12px_28px_rgba(0,0,0,0.24)] max-sm:h-6 max-sm:w-6 max-sm:text-[0.6875rem] max-sm:shadow-none"
-      style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
-    >
-      {initials}
-    </span>
-  );
-}
-
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft Corp.",
-    GOOGL: "Alphabet Inc.",
-    NVDA: "NVIDIA Corp",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-    META: "Meta Platforms",
-  };
-
-  return names[key] ?? key;
-}
-
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}
 
 function SearchIcon({ className }: { className?: string }) {
   return (

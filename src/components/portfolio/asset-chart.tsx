@@ -62,7 +62,7 @@ export function AssetChart({ symbol, range }: Props) {
     const chart = chartRef.current;
     if (!series || !chart) return;
 
-    if (!history || history.points.length === 0) {
+    if (!history?.points?.length) {
       series.setData([]);
       return;
     }
@@ -82,7 +82,7 @@ export function AssetChart({ symbol, range }: Props) {
     const plugin = markersPluginRef.current;
     if (!plugin) return;
 
-    if (!markers || markers.markers.length === 0) {
+    if (!markers?.markers?.length) {
       plugin.setMarkers([]);
       return;
     }
@@ -109,7 +109,7 @@ export function AssetChart({ symbol, range }: Props) {
     );
   }
 
-  if (!history || history.points.length === 0) {
+  if (!history?.points?.length) {
     return (
       <div className={`${CHART_HEIGHT} flex items-center justify-center`}>
         <p className="text-[0.82rem] text-fintech-muted">

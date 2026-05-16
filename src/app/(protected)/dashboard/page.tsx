@@ -3,10 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
-import { ChartToolbar } from "@/features/portfolio-chart/components/ChartToolbar";
-import { PortfolioChart } from "@/features/portfolio-chart/components/PortfolioChart";
-import { usePortfolioHistory } from "@/features/portfolio-chart/hooks/usePortfolioHistory";
-import type { HistoryRange } from "@/features/portfolio-chart/types";
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
@@ -28,9 +24,6 @@ export default function DashboardPage() {
   const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>(() => readCoinGeckoCryptoLogoMap());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [historyRange, setHistoryRange] = useState<HistoryRange>("7d");
-  const { data: historyData, loading: historyLoading } = usePortfolioHistory(historyRange);
-
   const loadDashboard = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
@@ -169,14 +162,6 @@ export default function DashboardPage() {
             totalProfit={totalProfit}
             totalValue={totalValue}
           />
-
-          <section className="rounded-lg bg-[#111317] px-4 py-4 sm:rounded-[1.4rem] sm:px-6 sm:py-5 sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Historial del Portfolio</h2>
-              <ChartToolbar active={historyRange} onChange={setHistoryRange} />
-            </div>
-            <PortfolioChart data={historyData} loading={historyLoading} />
-          </section>
 
           <div className="hidden gap-4 sm:grid xl:grid-cols-4">
             <DashboardStatCard

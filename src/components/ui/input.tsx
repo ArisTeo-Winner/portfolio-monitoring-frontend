@@ -35,7 +35,9 @@ export function Input({
           <span className={cn("text-sm font-semibold text-slate-800", labelClassName)}>{label}</span>
           {action}
         </div>
-      ) : null}
+      ) : (
+        <span className="sr-only">{label}</span>
+      )}
       <div
         data-testid={dataTestId}
         className={cn(

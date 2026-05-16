@@ -22,7 +22,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
     <div data-testid="settings-page" className={settingsDensity.page}>
       <div className="mb-6">
         <label className="block md:hidden">
-          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Settings</span>
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-400">Settings</span>
           <select
             className="h-11 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm font-medium text-neutral-100 outline-none transition duration-150 ease-out focus:border-blue-500"
             data-testid="settings-category-select"

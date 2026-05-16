@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, mockBackendAPIs } from "./helpers";
-import { skipUnlessXsMobile } from "./project-guards";
+import { skipUnlessXsMobile, skipUnlessMobile } from "./project-guards";
 
 test.describe("Transaction History – Fintech Density check", () => {
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }, testInfo) => {
-    skipUnlessXsMobile(testInfo);
+    skipUnlessMobile(testInfo);
     await mockBackendAPIs(page);
     await loginAs(page);
     // Bottom nav mobile usa <button> + router.push (no <a>), preserva Zustand en memoria
@@ -20,7 +20,8 @@ test.describe("Transaction History – Fintech Density check", () => {
     ).toBeVisible({ timeout: 8_000 });
   });
 
-  test("Fintech Density: alto de fila ≤ 60px (mobile card layout)", async ({ page }) => {
+  test("Fintech Density: alto de fila ≤ 60px (mobile card layout)", async ({ page }, testInfo) => {
+    skipUnlessXsMobile(testInfo);
     // Mobile usa cards en lugar de <table>; las filas son MobileAssetActionRow con h-[56px]
     const rows = page.locator("[data-mobile-asset-actions='true'] > div").first();
     await rows.waitFor({ timeout: 8_000 });
@@ -28,7 +29,8 @@ test.describe("Transaction History – Fintech Density check", () => {
     expect(height, `Fila mobile excede 60px (${height}px)`).toBeLessThanOrEqual(60);
   });
 
-  test("Fintech Density: tipografía primaria ≤ 14px", async ({ page }) => {
+  test("Fintech Density: tipografía primaria ≤ 14px", async ({ page }, testInfo) => {
+    skipUnlessXsMobile(testInfo);
     const cell = page.locator("[data-mobile-asset-actions='true'] p").first();
     await cell.waitFor({ timeout: 8_000 });
 
@@ -38,7 +40,8 @@ test.describe("Transaction History – Fintech Density check", () => {
     expect(fontSize, `Font-size debe ser ≤14px, recibido ${fontSize}px`).toBeLessThanOrEqual(14);
   });
 
-  test("screenshot visual regression – transactions mobile", async ({ page }) => {
+  test("screenshot visual regression – transactions mobile", async ({ page }, testInfo) => {
+    skipUnlessXsMobile(testInfo);
     await page.waitForLoadState("networkidle");
     await expect(page).toHaveScreenshot("transactions-mobile.png", { maxDiffPixels: 100 });
   });

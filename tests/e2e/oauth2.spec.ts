@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { mockBackendAPIs } from "./helpers";
-import { skipUnlessXsMobile } from "./project-guards";
+import { skipUnlessMobile } from "./project-guards";
 
 const FAKE_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.dGVzdA.dGVzdA";
 const FAKE_REFRESH_TOKEN = "fake-refresh-token-for-testing";
@@ -9,7 +9,7 @@ test.describe("OAuth2 / Google Login", () => {
   test.setTimeout(30_000);
 
   test.beforeEach(async ({}, testInfo) => {
-    skipUnlessXsMobile(testInfo);
+    skipUnlessMobile(testInfo);
   });
 
   // ─── 1. BOTÓN GOOGLE VISIBLE ──────────────────────────────────────────────
@@ -18,7 +18,7 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.getByTestId("open-login-btn").first().click();
+      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
     }
     await heading.waitFor({ timeout: 8_000 });
 
@@ -53,7 +53,7 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.getByTestId("open-login-btn").first().click();
+      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
     }
     await heading.waitFor({ timeout: 8_000 });
 
@@ -68,7 +68,7 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.getByTestId("open-login-btn").first().click();
+      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
     }
     await heading.waitFor({ timeout: 8_000 });
 

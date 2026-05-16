@@ -69,6 +69,8 @@ const nextConfig: NextConfig = {
   distDir,
   output: "standalone",
   reactStrictMode: true,
+  // Prevent framework fingerprinting via X-Powered-By: Next.js
+  poweredByHeader: false,
   experimental: {
     // Work around a Next.js devtools/segment explorer runtime bug observed in dev
     // that breaks route chunks with `__webpack_modules__[moduleId] is not a function`.

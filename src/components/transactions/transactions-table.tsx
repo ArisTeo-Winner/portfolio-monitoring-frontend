@@ -754,7 +754,7 @@ function MobileAssetActionRow({
           <AssetAvatar logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
           <div className="min-w-0">
             <p className="truncate text-[0.8125rem] font-medium leading-none text-white">{asset.symbol}</p>
-            <p className="mt-0.5 truncate text-[10px] leading-none text-slate-500">{asset.name}</p>
+            <p className="mt-0.5 truncate text-[10px] leading-none text-slate-400">{asset.name}</p>
           </div>
         </div>
 
@@ -763,7 +763,7 @@ function MobileAssetActionRow({
             <MiniSparkline positive={asset.netQuantity >= 0} />
             <p className={`truncate text-[0.75rem] font-medium leading-none ${asset.netQuantity >= 0 ? "text-emerald-400/90" : "text-rose-400/80"}`}>{formatSignedQuantity(asset.netQuantity, asset.symbol)}</p>
           </div>
-          <p className="mt-0.5 text-[10px] leading-none text-slate-500">{formatCurrency(asset.grossValue)}</p>
+          <p className="mt-0.5 text-[10px] leading-none text-slate-400">{formatCurrency(asset.grossValue)}</p>
         </div>
 
         <button

@@ -40,3 +40,15 @@ export function skipUnlessDesktop(testInfo: TestInfo): void {
     "desktop projects only (lg-small-desktop, xl-desktop)",
   );
 }
+
+/**
+ * No-op guard — all five projects run this test. Use for:
+ *  - per-breakpoint visual regression screenshots (snapshot name includes project name)
+ *  - cross-breakpoint layout assertions (overflow, card heights, touch targets)
+ *  - settings responsive density suite
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function skipUnlessResponsive(_testInfo: TestInfo): void {
+  // Intentionally empty: this guard exists for documentation — it signals that
+  // the test is verified at all five configured viewports.
+}

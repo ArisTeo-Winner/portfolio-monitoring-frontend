@@ -21,8 +21,9 @@ export async function openLoginDialog(page: Page) {
     await page.locator('[data-testid="open-login-btn"]:visible').first().click();
   }
 
-  await heading.waitFor({ timeout: 8_000 });
-  await expect(page.getByTestId("email-input")).toBeVisible({ timeout: 8_000 });
+  // 30s to accommodate Vite cold-compile on first navigation in a fresh run
+  await heading.waitFor({ timeout: 30_000 });
+  await expect(page.getByTestId("email-input")).toBeVisible({ timeout: 30_000 });
 }
 
 export async function loginAs(page: Page) {
@@ -48,9 +49,9 @@ export async function mockBackendAPIs(page: Page) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify([
-        { symbol: "BTC", assetSymbol: "BTC", name: "Bitcoin", quantity: 0.5, currentValue: 30000, totalInvested: 25000, totalProfitLoss: 5000, percentageOfPortfolio: 70, assetType: "CRYPTO" },
-        { symbol: "ETH", assetSymbol: "ETH", name: "Ethereum", quantity: 4, currentValue: 12000, totalInvested: 10000, totalProfitLoss: 2000, percentageOfPortfolio: 28, assetType: "CRYPTO" },
-        { symbol: "SOL", assetSymbol: "SOL", name: "Solana", quantity: 10, currentValue: 860, totalInvested: 1500, totalProfitLoss: -640, percentageOfPortfolio: 2, assetType: "CRYPTO" },
+        { portfolioEntryId: "pe-btc", userId: "u1", assetSymbol: "BTC", assetType: "CRYPTO", totalQuantity: "0.5", currentValue: "30000", totalInvested: "25000", totalProfitLoss: "5000", averagePricePerUnit: "50000", lastTransactionPrice: "60000", lastUpdated: "2025-01-15T10:00:00Z", createdAt: "2025-01-01T00:00:00Z", updatedAt: "2025-01-15T10:00:00Z" },
+        { portfolioEntryId: "pe-eth", userId: "u1", assetSymbol: "ETH", assetType: "CRYPTO", totalQuantity: "4", currentValue: "12000", totalInvested: "10000", totalProfitLoss: "2000", averagePricePerUnit: "2500", lastTransactionPrice: "3000", lastUpdated: "2025-01-20T14:30:00Z", createdAt: "2025-01-01T00:00:00Z", updatedAt: "2025-01-20T14:30:00Z" },
+        { portfolioEntryId: "pe-sol", userId: "u1", assetSymbol: "SOL", assetType: "CRYPTO", totalQuantity: "10", currentValue: "860", totalInvested: "1500", totalProfitLoss: "-640", averagePricePerUnit: "150", lastTransactionPrice: "86", lastUpdated: "2025-02-01T09:00:00Z", createdAt: "2025-01-01T00:00:00Z", updatedAt: "2025-02-01T09:00:00Z" },
       ]),
     }),
   );

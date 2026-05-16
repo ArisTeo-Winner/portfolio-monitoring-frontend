@@ -83,7 +83,7 @@ export function LoginForm({ initialEmail = "" }: Props) {
       />
       <div className="flex justify-end">
         <button
-          className="text-[0.75rem] font-medium text-[#77808d] transition hover:text-[#19c37d]"
+          className="text-[0.75rem] font-medium text-[#8896a8] transition hover:text-[#19c37d]"
           onClick={() => setShowPassword((value) => !value)}
           suppressHydrationWarning
           type="button"

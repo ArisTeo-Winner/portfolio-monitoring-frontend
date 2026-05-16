@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 import { loginAs, mockBackendAPIs } from "./helpers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -137,11 +137,18 @@ test.describe("Settings responsive density", () => {
 
   // Pre-warm Next.js dev-server page compilation so the first test does not
   // time out waiting for the cold bundle of /portfolio.
-  test.beforeAll(async ({ browser }) => {
-    const page = await browser.newPage();
-    await page.goto("/portfolio").catch(() => {});
-    await page.close();
-  }, { timeout: 120_000 });
+  // Wrapped in try/catch: Playwright invalidates the `browser` fixture during
+  // project transitions with workers:1 ("Test ended") — safe to swallow because
+  // the bundle is already warm from the xs-mobile project run.
+  test.beforeAll(async ({ browser }: { browser: Browser }) => {
+    try {
+      const page = await browser.newPage();
+      await page.goto("/portfolio").catch(() => {});
+      await page.close();
+    } catch {
+      // pre-warm best-effort only
+    }
+  });
 
   test.beforeEach(async ({ page }) => {
     await mockSessionsAPI(page);

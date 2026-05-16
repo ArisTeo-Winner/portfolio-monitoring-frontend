@@ -540,26 +540,36 @@ export async function expectNoSensitiveTokensInDOM(page: Page) {
 
 ## 14. CI/CD Frontend Quality Gate
 
-A pull request must not be merged unless the following commands pass:
+Full quality gate spec: `docs/quality/frontend-quality-gate.md`
+
+A pull request must not be merged unless all of the following pass:
 
 ```bash
 npm run lint
-npm run build
+npm run typecheck
 npm run test
-npx playwright test
+npm run build:isolated
+npm audit --audit-level=high
+npx playwright test --project=xs-mobile
+npx playwright test tests/e2e/settings-responsive-density.spec.ts
 ```
 
-The pipeline should preserve:
+Convenience aliases:
+
+```bash
+npm run quality        # lint + typecheck + test + build:isolated
+npm run security:deps  # npm audit --audit-level=high
+```
+
+The CI pipeline (`frontend-ci.yml`) preserves artifacts on every run:
 
 ```text
-- Playwright HTML report
-- Screenshots
-- Videos for failed tests
-- Traces for failed tests
-- Test summary
+- Playwright HTML report (always)
+- Screenshots, videos, traces (on failure only)
+- Build artifact: .next-build/standalone
 ```
 
-Recommended Playwright config:
+Playwright config:
 
 ```ts
 use: {
@@ -573,187 +583,79 @@ use: {
 
 ## 15. Definition of Done for Pull Requests
 
-A frontend PR is complete only when all items below are satisfied.
+Full checklist: `docs/quality/frontend-quality-gate.md`
 
-### Build and Static Validation
+A PR is mergeable only when all conditions below are satisfied.
+
+### Automated Gate (CI must be green)
 
 ```text
-- npm run build passes.
-- npm run lint passes.
-- No TypeScript errors.
-- No dead routes or broken imports.
+- lint:         0 ESLint warnings/errors
+- typecheck:    0 TypeScript errors
+- test:         0 Vitest failures
+- build:        build:isolated succeeds
+- audit:        0 high/critical CVEs
+- e2e-xs:       all xs-mobile Playwright tests pass
+- e2e-density:  settings-responsive-density passes all 5 breakpoints
 ```
 
-### Unit and Integration Tests
+### Security Gate (non-negotiable)
 
 ```text
-- All Vitest/Jest tests pass.
-- Global coverage target: >= 80%.
-- Critical modules coverage target: >= 90%.
+- 0 JWTs in DOM, localStorage, or sessionStorage
+- 0 refresh tokens accessible from JavaScript
+- 0 Authorization headers in console logs
+- 0 backend stack traces rendered to user
+- security.spec.ts: 12/12 passing
 ```
 
-Critical modules include:
+### Coverage Targets
 
 ```text
-- auth client
-- session handling
-- protected route guard
-- HTTP interceptor
-- token storage logic
-- OAuth2 callback handling
-```
-
-Do not enforce artificial 100% coverage unless the module is security-critical and small enough to justify it.
-
-### Playwright E2E Suite
-
-The following areas must be covered:
-
-```text
-- JWT login flow.
-- OAuth2 success/error/cancel flows.
-- Refresh-cookie session persistence.
-- Logout.
-- Protected route behavior.
-- 401 global state purge and redirect to /login.
-- 403 controlled access denied behavior.
-- Portfolio distribution.
-- Transaction history.
-- Empty states.
-- API failure states.
-- Visual regression.
-```
-
-### DevSecOps Policy
-
-The PR must verify:
-
-```text
-- 0 refresh tokens in localStorage.
-- 0 refresh tokens in sessionStorage.
-- 0 JWTs in localStorage.
-- 0 sensitive tokens in the DOM.
-- 0 Authorization headers in console logs.
-- No raw backend stack traces shown to the user.
-```
-
-### UX Policy
-
-The PR must verify:
-
-```text
-- No infinite redirect loops.
-- No blank OAuth2 callback page.
-- Clear loading state during auth/session checks.
-- Clear error state for failed API requests.
-- Clear empty states for portfolio and transactions.
-- Mobile layout remains usable at 375x812.
+- Critical modules (auth, session, HTTP interceptor): >= 90%
+- Feature modules (portfolio, transactions):          >= 80%
 ```
 
 ### Visual Regression
 
-The PR must include or preserve approved screenshots for:
-
 ```text
-- Login mobile
-- Portfolio mobile
-- Transactions mobile
-- OAuth2 callback loading
-- Empty portfolio
-- Empty transactions
-- API error state
-```
-
-Snapshot updates are allowed only when the UI change is intentional and reviewed.
-
----
-
-## 16. Current E2E Status
-
-Current observed E2E suite status:
-
-```text
-14 passed
-1 skipped
-```
-
-Covered areas:
-
-```text
-- Login flow
-- Portfolio distribution
-- Transaction history
-- Fintech Density checks
-- Basic visual regression
-- Basic DOM sensitive-token exposure check
-```
-
-Pending areas for production-grade readiness:
-
-```text
-- OAuth2 success/error/cancel flows
-- Refresh token persistence after reload
-- 401 global state purge and redirect to /login
-- 403 controlled access denied handling
-- Logout state purge
-- Protected route anonymous redirect
-- localStorage/sessionStorage security assertions
-- Console log sensitive-token detection
-- Empty state tests
-- API failure state tests
+- No snapshot changes without explicit reviewer sign-off in PR description.
+- Snapshot updates allowed only when the UI change is intentional.
 ```
 
 ---
 
-## 17. Priority Roadmap
+## 16. E2E Suite Status
 
-### Priority 1: Security-Critical
-
-```text
-1. 401 clears auth state and redirects to /login.
-2. localStorage does not contain JWT or refresh token.
-3. sessionStorage does not contain refresh token.
-4. DOM does not contain JWT or refresh token.
-5. Logout clears session state.
-```
-
-### Priority 2: Session Reliability
+Active test specs under `tests/e2e/`:
 
 ```text
-1. Reload keeps authenticated session when refresh cookie is valid.
-2. Expired refresh session redirects to /login.
-3. Protected route redirects anonymous user to /login.
-4. Browser back button does not expose protected page after logout.
+auth.spec.ts                         login flow (xs-mobile, sm-large-mobile)
+session.spec.ts                      session persistence, 401 purge, logout (mobile)
+oauth2.spec.ts                       OAuth2 callback flows (mobile)
+portfolio.spec.ts                    portfolio rendering, security assertions (mobile)
+transactions.spec.ts                 transaction history, density (mobile)
+security.spec.ts                     12 tests: token storage, DOM, console, 401, 403
+settings-responsive-density.spec.ts  Fintech Density at all 5 breakpoints
+settings-visual.spec.ts              visual regression snapshots (xs-mobile)
+accessibility.spec.ts                axe-core accessibility (xs-mobile)
+ux-states.spec.ts                    loading/empty/error UX states (mobile)
+smoke.spec.ts                        20 tests: deployed-env smoke (smoke-mobile, smoke-desktop)
 ```
 
-### Priority 3: OAuth2
+Playwright projects: `xs-mobile` · `sm-large-mobile` · `md-tablet` · `lg-small-desktop` · `xl-desktop`
 
-```text
-1. Google login button exists.
-2. OAuth2 success callback redirects to /portfolio.
-3. OAuth2 error callback redirects to /login.
-4. OAuth2 cancelled flow shows controlled message.
-5. OAuth2 callback loading state is visible.
-6. OAuth2 callback has no infinite redirect loop.
+Smoke config: `playwright.smoke.config.ts` (targets real deployed URL, no webServer).
+
+---
+
+## 17. Security Package Scripts
+
+```bash
+npm run audit:high    # npm audit --audit-level=high (all deps)
+npm run audit:prod    # npm audit --omit=dev --audit-level=high
+npm run audit:snyk    # snyk test --severity-threshold=high (requires SNYK_TOKEN)
+npm run security:deps # alias for audit:high — used by quality:ci
 ```
 
-### Priority 4: UX Resilience
-
-```text
-1. Empty portfolio state.
-2. Empty transactions state.
-3. Portfolio API failure state.
-4. Transactions API failure state.
-5. Controlled 403 access denied state.
-```
-
-### Priority 5: Visual Regression
-
-```text
-1. Login mobile.
-2. Portfolio mobile.
-3. Transactions mobile.
-4. OAuth2 callback loading.
-5. Empty states.
-6. Error states.
-```
+Snyk policy file: `.snyk` (no active ignores — all findings must be resolved).

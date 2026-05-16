@@ -197,7 +197,7 @@ export function SessionsSettings() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-neutral-500">{label}</p>
+      <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
       <p className={`${settingsDensity.sessionDate} font-semibold text-neutral-100 tabular-nums`}>{value}</p>
     </div>
   );

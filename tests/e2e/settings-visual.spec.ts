@@ -1,6 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs, mockBackendAPIs } from "./helpers";
-import { skipUnlessXsMobile } from "./project-guards";
 
 // Screenshots only. Each Playwright project runs this file once at its own
 // configured viewport — the project name is used to name the snapshot so
@@ -55,8 +54,7 @@ async function mockSettingsAPIs(page: Page) {
 test.describe("Settings visual regression", () => {
   test.setTimeout(60_000);
 
-  test.beforeEach(async ({ page }, testInfo) => {
-    skipUnlessXsMobile(testInfo);
+  test.beforeEach(async ({ page }) => {
     await mockSessionsAPI(page);
     await mockSettingsAPIs(page);
     await mockBackendAPIs(page);

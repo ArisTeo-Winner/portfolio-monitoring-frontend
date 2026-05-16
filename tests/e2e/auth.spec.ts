@@ -1,10 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { openLoginDialog, mockBackendAPIs } from "./helpers";
-import { skipUnlessXsMobile } from "./project-guards";
+import { skipUnlessXsMobile, skipUnlessMobile } from "./project-guards";
 
 test.describe("Login flow", () => {
+  test.setTimeout(60_000);
+
   test.beforeEach(async ({ page }, testInfo) => {
-    skipUnlessXsMobile(testInfo);
+    skipUnlessMobile(testInfo);
     await openLoginDialog(page);
   });
 

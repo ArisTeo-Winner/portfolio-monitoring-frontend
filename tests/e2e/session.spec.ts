@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { expectSessionCleared, loginAs, mockBackendAPIs } from "./helpers";
-import { skipUnlessXsMobile } from "./project-guards";
+import { skipUnlessMobile } from "./project-guards";
 
 const ACCESS_TOKEN_KEY = "cpm.accessToken";
 
@@ -8,7 +8,7 @@ test.describe("Session Management", () => {
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }, testInfo) => {
-    skipUnlessXsMobile(testInfo);
+    skipUnlessMobile(testInfo);
     await mockBackendAPIs(page);
 
     await page.route("/api/auth/logout", (route) =>

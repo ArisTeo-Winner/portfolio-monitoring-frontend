@@ -18,7 +18,11 @@ type SettingsSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
 export function SettingsSelect({ className, error, hideLabel = false, label, options, ...props }: SettingsSelectProps) {
   return (
     <label className="block space-y-2">
-      {hideLabel ? null : <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</span>}
+      {hideLabel ? (
+        <span className="sr-only">{label}</span>
+      ) : (
+        <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</span>
+      )}
       <select
         className={cn(
           "h-12 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm font-medium text-neutral-100 outline-none transition duration-150 ease-out focus:border-blue-500",

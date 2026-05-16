@@ -8,11 +8,25 @@
     "build:isolated": "node scripts/run-isolated-build.mjs",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:watch": "vitest",
+    "test:unit:watch": "vitest --reporter=verbose",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts --reporter=verbose",
+    "test:integration:watch": "vitest --config vitest.integration.config.ts --reporter=verbose",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:mobile": "playwright test --project=mobile",
-    "ci:verify": "npm run test && npm run build:isolated"
+    "test:e2e:smoke": "playwright test --config playwright.smoke.config.ts",
+    "ci:verify": "npm run test && npm run build:isolated",
+    "audit:high": "npm audit --audit-level=high",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "audit:snyk": "snyk test --severity-threshold=high",
+    "security:deps": "npm run audit:high",
+    "quality": "npm run lint && npm run typecheck && npm run test && npm run build:isolated",
+    "quality:ci": "npm ci && npm run lint && npm run typecheck && npm run test && npm run build:isolated && npm run security:deps"
   },
   "overrides": {
     "postcss": "^8.5.10"
@@ -32,6 +46,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -40,10 +55,12 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.6",
     "autoprefixer": "^10.4.21",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.4",
     "jsdom": "^29.0.1",
+    "msw": "^2.14.6",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",

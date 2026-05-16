@@ -77,7 +77,7 @@ export function AuthDialog({
           <LoginForm initialEmail={prefilledEmail} />
         )}
 
-        <div className="pt-1 text-center text-[0.8125rem] text-[#727a86] md:text-sm">
+        <div className="pt-1 text-center text-[0.8125rem] text-[#8d98a8] md:text-sm">
           {mode === "login" ? (
             <>
               No tienes cuenta?{" "}

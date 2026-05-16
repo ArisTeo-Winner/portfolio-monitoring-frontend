@@ -235,7 +235,7 @@ export function DemoDashboard({
                 </a>
               </div>
 
-              <p className="mt-6 flex items-center justify-center gap-2 text-sm text-[#677283]">
+              <p className="mt-6 flex items-center justify-center gap-2 text-sm text-[#7d8fa3]">
                 <ShieldIcon className="h-4 w-4 text-[#1fd68a]" />
                 No es un exchange. Tus claves y fondos permanecen 100% seguros contigo.
               </p>

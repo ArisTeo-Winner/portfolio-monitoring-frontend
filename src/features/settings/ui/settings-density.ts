@@ -10,7 +10,7 @@ export const settingsDensity = {
   title: "text-lg",
   description: "leading-5",
   fields: "divide-y divide-neutral-800",
-  field: "grid gap-2 px-5 py-3 sm:px-6 md:gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:px-8 md:py-5 lg:grid-cols-[260px_minmax(0,1fr)]",
+  field: "grid gap-2 px-5 py-2.5 sm:px-6 md:gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:px-8 md:py-5 lg:grid-cols-[260px_minmax(0,1fr)]",
   label: "mb-1 text-sm font-semibold text-zinc-400 md:mb-0 md:pt-3",
   control: "max-w-2xl",
   actions: "mt-4 grid gap-2 px-5 pb-4 sm:px-6 md:flex md:justify-end md:px-8 md:pb-6",

@@ -627,21 +627,34 @@ A PR is mergeable only when all conditions below are satisfied.
 
 ## 16. E2E Suite Status
 
-Active test specs under `tests/e2e/`:
+Active test specs under `tests/e2e/` and their authoritative projects:
 
 ```text
-auth.spec.ts                         login flow (xs-mobile, sm-large-mobile)
-session.spec.ts                      session persistence, 401 purge, logout (mobile)
-oauth2.spec.ts                       OAuth2 callback flows (mobile)
-portfolio.spec.ts                    portfolio rendering, security assertions (mobile)
-transactions.spec.ts                 transaction history, density (mobile)
+── xs-mobile only (375×812 functional + security) ──────────────────────────
+auth.spec.ts                         login flow
+oauth2.spec.ts                       OAuth2 callback flows
+session.spec.ts                      session persistence, 401 purge, logout
+portfolio.spec.ts                    portfolio rendering + security assertions
+transactions.spec.ts                 transaction history, Fintech Density
 security.spec.ts                     12 tests: token storage, DOM, console, 401, 403
-settings-responsive-density.spec.ts  Fintech Density at all 5 breakpoints
-settings-visual.spec.ts              visual regression snapshots (xs-mobile)
-accessibility.spec.ts                axe-core accessibility (xs-mobile)
-ux-states.spec.ts                    loading/empty/error UX states (mobile)
-smoke.spec.ts                        20 tests: deployed-env smoke (smoke-mobile, smoke-desktop)
+ux-states.spec.ts                    loading / empty / error UX states
+accessibility.spec.ts                axe-core accessibility audit
+
+── All 5 projects (xs / sm / md / lg / xl) ─────────────────────────────────
+settings-responsive-density.spec.ts  Fintech Density at every breakpoint
+
+── Visual regression (all 5 projects, stable baselines committed) ───────────
+settings-visual.spec.ts              settings page screenshots
+visual-regression.spec.ts            login, portfolio, transactions screenshots
+
+── Smoke (deployed environment, separate config) ────────────────────────────
+smoke.spec.ts                        critical-path smoke (smoke-mobile, smoke-desktop)
 ```
+
+**Rule:** never run xs-mobile-targeted specs on sm / md / lg / xl projects.
+Test-level guards (`skipUnlessXsMobile`, `test.skip`) enforce this — do not remove them.
+
+Full spec-to-project policy: `docs/quality/frontend-quality-gate.md` §11.
 
 Playwright projects: `xs-mobile` · `sm-large-mobile` · `md-tablet` · `lg-small-desktop` · `xl-desktop`
 

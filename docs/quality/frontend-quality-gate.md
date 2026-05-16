@@ -337,6 +337,78 @@ npm run test:coverage
 
 ---
 
+## 11. Spec-to-Project Execution Standard
+
+This section is the authoritative reference for which Playwright specs run on which projects.
+**Never run xs-mobile-targeted specs across all projects.** Doing so produces false failures,
+stale snapshot conflicts, and meaningless coverage data for layout contracts that only apply at 375px.
+
+### xs-mobile (375×812) — Functional and Security authority
+
+The specs below run **exclusively** on `xs-mobile`. Their assertions (card heights, touch targets,
+Fintech Density row heights, mobile-card visibility) are calibrated for a 375px wide viewport.
+Running them on wider projects is incorrect and will produce misleading results.
+
+```
+auth.spec.ts              login flow (375×812 primary target)
+oauth2.spec.ts            OAuth2 callback flows
+session.spec.ts           session persistence, 401 purge, logout
+portfolio.spec.ts         portfolio rendering + security assertions
+transactions.spec.ts      transaction history, Fintech Density
+security.spec.ts          12 tests: token storage, DOM, console, 401, 403
+ux-states.spec.ts         loading / empty / error UX states
+accessibility.spec.ts     axe-core accessibility audit
+```
+
+CI command:
+```bash
+npx playwright test --project=xs-mobile
+```
+
+### All 5 projects (xs / sm / md / lg / xl) — Responsive authority
+
+This is the **only** spec that must run on all 5 projects. It validates layout density,
+card heights, and touch targets at every official breakpoint.
+
+```
+settings-responsive-density.spec.ts   Fintech Density at all 5 breakpoints
+```
+
+CI command:
+```bash
+npx playwright test tests/e2e/settings-responsive-density.spec.ts
+```
+
+### Visual regression — snapshot-first policy
+
+A visual spec may only run on a project once stable baselines exist for that project.
+Snapshots are stored under `tests/e2e/<spec>-snapshots/` and committed to the repository.
+
+| Spec | xs-mobile | sm-large-mobile | md-tablet | lg-small-desktop | xl-desktop |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `settings-visual.spec.ts` | ✓ stable | ✓ stable | ✓ stable | ✓ stable | ✓ stable |
+| `visual-regression.spec.ts` | ✓ stable | ✓ stable | ✓ stable | ✓ stable | ✓ stable |
+
+To establish baselines for a new project:
+```bash
+npx playwright test <spec> --project=<new-project> --update-snapshots
+# Review every generated screenshot, then commit with sign-off in the PR description
+```
+
+When UI changes cause snapshot mismatches, update **only** the affected projects:
+```bash
+npx playwright test <spec> --project=<affected-project> --update-snapshots
+```
+
+### Rule: preserve xs-mobile guards
+
+Tests that assert 375px contracts are guarded at the spec level with `skipUnlessXsMobile`,
+`skipUnlessMobile`, or `test.skip(...)`. These guards must never be removed to make a
+wider-viewport run pass. If a wider-viewport assertion is needed, write a new test scoped
+to the correct project.
+
+---
+
 ## 10. CI/CD Job Reference
 
 | Job | Trigger | Blocks |

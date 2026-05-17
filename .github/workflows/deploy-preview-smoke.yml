@@ -105,10 +105,12 @@ jobs:
         shell: bash
         run: |
           TARGET_URL="${{ needs.resolve-url.outputs.target_url }}"
-          echo "Waiting for ${TARGET_URL}/api/health ..."
+          # /login is the public landing page — always returns 200 without auth.
+          # /api/health proxies to the backend actuator which requires auth (returns 401).
+          echo "Waiting for ${TARGET_URL}/login ..."
           for i in {1..20}; do
-            HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 "${TARGET_URL}/api/health" || echo "000")
-            if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "504" ]]; then
+            HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 "${TARGET_URL}/login" || echo "000")
+            if [[ "$HTTP_STATUS" == "200" ]]; then
               echo "Service ready (HTTP ${HTTP_STATUS}) after $((i * 3))s"
               exit 0
             fi

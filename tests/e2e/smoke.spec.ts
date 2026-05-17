@@ -151,12 +151,15 @@ test.describe("Smoke: Console health", () => {
         const text = msg.text();
         // Ignore benign network errors: backend may be cold-starting (Render free tier)
         // or the health probe may timeout on first load.
+        // vercel.live is injected by Vercel into preview deployments and blocked by our
+        // strict CSP — this is expected infra noise, not an app error.
         const benign =
           text.includes("net::ERR_") ||
           text.includes("Failed to fetch") ||
           text.includes("NetworkError") ||
           text.includes("favicon") ||
-          text.includes("actuator/health"); // upstream health probe
+          text.includes("actuator/health") || // upstream health probe
+          text.includes("vercel.live"); // Vercel preview tooling blocked by CSP
         if (!benign) {
           criticalErrors.push(text);
         }

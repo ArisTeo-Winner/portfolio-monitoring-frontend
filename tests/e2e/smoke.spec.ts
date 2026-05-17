@@ -89,7 +89,10 @@ test.describe("Smoke: Static assets", () => {
     });
 
     await page.goto("/login");
-    await page.waitForLoadState("networkidle");
+    // JS bundles load during page fetch. waitForLoadState("networkidle") covers lazy-
+    // loaded chunks; timeout is capped so a slow CoinGecko proxy call (public page
+    // fires market-data queries on mount) never aborts the assertion.
+    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
 
     expect(jsRequests.length, "At least one /_next/static/ JS bundle must load").toBeGreaterThan(0);
   });
@@ -161,7 +164,9 @@ test.describe("Smoke: Console health", () => {
     });
 
     await page.goto("/login");
-    await page.waitForLoadState("networkidle");
+    // Cap networkidle wait so slow CoinGecko proxy calls (fired on mount by the public
+    // landing page) don't cause the test to time out before errors are checked.
+    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
 
     expect(
       criticalErrors,

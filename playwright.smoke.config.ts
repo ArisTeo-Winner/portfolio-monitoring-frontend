@@ -19,6 +19,16 @@ if (process.env.CI && !process.env.PLAYWRIGHT_BASE_URL) {
   );
 }
 
+// When VERCEL_AUTOMATION_BYPASS_SECRET is set, Playwright automatically adds the
+// bypass header to BrowserContext requests. However, the standalone `request` fixture
+// (APIRequestContext) is separate from BrowserContext and does NOT receive the header
+// automatically. Explicitly setting extraHTTPHeaders here covers both contexts so that
+// request.get() calls in smoke tests also bypass Vercel Deployment Protection.
+const vercelBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+const extraHTTPHeaders: Record<string, string> = vercelBypass
+  ? { "x-vercel-protection-bypass": vercelBypass }
+  : {};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/smoke.spec.ts",
@@ -35,6 +45,7 @@ export default defineConfig({
 
   use: {
     baseURL,
+    extraHTTPHeaders,
     screenshot: "only-on-failure",
     video: "retain-on-failure",
     trace: "retain-on-failure",

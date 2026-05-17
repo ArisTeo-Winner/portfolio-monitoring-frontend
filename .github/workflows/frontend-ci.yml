@@ -102,8 +102,11 @@ jobs:
         run: |
           [[ -z "${NEXT_PUBLIC_API_BASE_URL}" ]] && \
             echo "NEXT_PUBLIC_API_BASE_URL=https://crypto-portfolio-monitoring.onrender.com" >> "$GITHUB_ENV"
+          # E2E jobs run the dev server on localhost:3000. Setting APP_URL to localhost
+          # prevents ensureClientRuntimeConfig() from throwing "origin mismatch" which
+          # would surface as console.error and fail the console-errors spec.
           [[ -z "${NEXT_PUBLIC_APP_URL}" ]] && \
-            echo "NEXT_PUBLIC_APP_URL=https://frontend-staging.example.com" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -163,7 +166,7 @@ jobs:
           [[ -z "${NEXT_PUBLIC_API_BASE_URL}" ]] && \
             echo "NEXT_PUBLIC_API_BASE_URL=https://crypto-portfolio-monitoring.onrender.com" >> "$GITHUB_ENV"
           [[ -z "${NEXT_PUBLIC_APP_URL}" ]] && \
-            echo "NEXT_PUBLIC_APP_URL=https://frontend-staging.example.com" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci

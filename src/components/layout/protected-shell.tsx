@@ -96,7 +96,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     }
 
     setSessionReady(true);
-    getMe().then(setUser).catch(console.error);
+    getMe().then(setUser).catch(() => {});
   }, [router]);
 
   useEffect(() => {

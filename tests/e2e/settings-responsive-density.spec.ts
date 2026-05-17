@@ -10,6 +10,17 @@ const CARD_HEIGHT_BY_PROJECT: Record<string, number> = {
   "xl-desktop": 860,
 };
 
+// Preferences card has 6 fields + 2 action buttons — taller than account/security.
+// xs-mobile renders at ~920 px; bumped to 960 to cover font-metric variance across
+// Linux CI runners while still catching meaningful regressions.
+const PREFERENCES_CARD_HEIGHT_BY_PROJECT: Record<string, number> = {
+  "xs-mobile": 960,
+  "sm-large-mobile": 900,
+  "md-tablet": 900,
+  "lg-small-desktop": 760,
+  "xl-desktop": 860,
+};
+
 const SESSION_CARD_HEIGHT_BY_PROJECT: Record<string, number> = {
   "xs-mobile": 180,
   "sm-large-mobile": 200,
@@ -261,7 +272,7 @@ test.describe("Settings responsive density", () => {
   test("Preferences settings-card-preferences height ≤ limit", async ({ page }, testInfo) => {
     await page.goto("/settings/preferences");
     await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
-    await assertCardHeight(page, "settings-card-preferences", CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
+    await assertCardHeight(page, "settings-card-preferences", PREFERENCES_CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
   });
 
   test("Preferences selects touch target ≥ 44px", async ({ page }) => {

@@ -101,4 +101,19 @@ export async function mockBackendAPIs(page: Page) {
   await page.route("/api/auth/refresh", (route) =>
     route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "No refresh token" }) }),
   );
+
+  // Sessions mock — needed by settings/sessions page; included here so any test
+  // that calls mockBackendAPIs has the route covered even if the real Render backend
+  // is cold (30-50 s cold start would otherwise timeout the 10 s toBeVisible check).
+  await page.route(/\/api\/v1\/me\/sessions/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: "s1", device: "Chrome on Windows", ipAddress: "192.168.1.1", createdAt: "2026-05-01T10:00:00.000Z", lastActiveAt: "2026-05-06T08:15:00.000Z", current: true, location: null },
+        { id: "s2", device: "Safari iPhone", ipAddress: "10.0.0.23", createdAt: "2026-04-28T14:30:00.000Z", lastActiveAt: "2026-05-05T22:10:00.000Z", current: false, location: null },
+        { id: "s3", device: "Firefox Linux", ipAddress: "172.16.4.8", createdAt: "2026-04-21T09:45:00.000Z", lastActiveAt: "2026-05-04T18:20:00.000Z", current: false, location: null },
+      ]),
+    }),
+  );
 }

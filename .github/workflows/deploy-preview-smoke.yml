@@ -105,11 +105,15 @@ jobs:
         shell: bash
         run: |
           TARGET_URL="${{ needs.resolve-url.outputs.target_url }}"
-          # /login is the public landing page — always returns 200 without auth.
-          # /api/health proxies to the backend actuator which requires auth (returns 401).
+          BYPASS="${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+          # Vercel Deployment Protection blocks all routes with 401.
+          # Pass the bypass secret as a header so the readiness check works on protected previews.
+          # Without the secret the header is omitted and public deployments work unchanged.
+          BYPASS_HEADER=""
+          [[ -n "$BYPASS" ]] && BYPASS_HEADER="-H x-vercel-protection-bypass:${BYPASS}"
           echo "Waiting for ${TARGET_URL}/login ..."
           for i in {1..20}; do
-            HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 "${TARGET_URL}/login" || echo "000")
+            HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 $BYPASS_HEADER "${TARGET_URL}/login" || echo "000")
             if [[ "$HTTP_STATUS" == "200" ]]; then
               echo "Service ready (HTTP ${HTTP_STATUS}) after $((i * 3))s"
               exit 0
@@ -125,6 +129,8 @@ jobs:
         env:
           CI: "true"
           PLAYWRIGHT_BASE_URL: ${{ needs.resolve-url.outputs.target_url }}
+          # Playwright 1.41+ sends x-vercel-protection-bypass header automatically when set.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       # Report is always uploaded so failures are reviewable.
       - name: Upload smoke report

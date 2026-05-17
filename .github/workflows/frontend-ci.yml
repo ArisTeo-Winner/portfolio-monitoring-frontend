@@ -192,15 +192,18 @@ jobs:
 
   # ══════════════════════════════════════════════════════════════════════════
   # JOB 4 — Security: Snyk (optional — requires SNYK_TOKEN secret)
-  # Only runs when the secret is configured. Fails CI on high/critical CVEs.
-  # To activate: Settings → Secrets → SNYK_TOKEN = <token from app.snyk.io>
+  # Only runs when the opt-in variable is set to 'true'.
+  # To activate:
+  #   Settings → Variables → Actions → SNYK_ENABLED = true
+  #   Settings → Secrets  → Actions → SNYK_TOKEN = <token from app.snyk.io>
+  # secrets context is not available in job-level if expressions;
+  # use a repository variable as the feature flag instead.
   # ══════════════════════════════════════════════════════════════════════════
   security-snyk:
     name: Security — Snyk dependency scan
     runs-on: ubuntu-latest
     needs: quality
-    # Skip gracefully when the org hasn't wired up Snyk yet.
-    if: ${{ secrets.SNYK_TOKEN != '' }}
+    if: ${{ vars.SNYK_ENABLED == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

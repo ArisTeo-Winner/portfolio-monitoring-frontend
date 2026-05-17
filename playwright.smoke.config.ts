@@ -3,11 +3,14 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Smoke test configuration — targets a REAL deployed environment.
  *
- * Usage:
+ * Usage (deployed):
  *   PLAYWRIGHT_BASE_URL=https://cpm-frontend.onrender.com npm run test:e2e:smoke
  *
- * No webServer is started — the runner expects the app to be already live.
- * PLAYWRIGHT_BASE_URL MUST be set; if omitted it defaults to localhost:3000.
+ * Usage (local):
+ *   npm run test:e2e:smoke
+ *   (starts `next dev` automatically on localhost:3000)
+ *
+ * PLAYWRIGHT_BASE_URL MUST be set in CI; if omitted locally the dev server is started.
  */
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL?.trim() || "http://localhost:3000";
@@ -28,6 +31,17 @@ const vercelBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 const extraHTTPHeaders: Record<string, string> = vercelBypass
   ? { "x-vercel-protection-bypass": vercelBypass }
   : {};
+
+// When no deployed URL is provided, spin up the dev server locally.
+// In CI this path is never reached because the check above throws first.
+const webServer = !process.env.PLAYWRIGHT_BASE_URL
+  ? {
+      command: "npm run dev",
+      url: "http://localhost:3000/login",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    }
+  : undefined;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -72,5 +86,7 @@ export default defineConfig({
       },
     },
   ],
-  // No webServer block — smoke tests hit an already-running deployed instance.
+  // webServer is only set when running locally (no PLAYWRIGHT_BASE_URL).
+  // Against a deployed environment the variable is set and this stays undefined.
+  webServer,
 });

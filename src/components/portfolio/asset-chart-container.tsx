@@ -9,11 +9,13 @@ const RANGES: { label: string; value: ChartRange }[] = [
   { label: "7d", value: "7d" },
   { label: "30d", value: "30d" },
   { label: "90d", value: "90d" },
+  { label: "180d", value: "180d" },
+  { label: "1y", value: "1y" },
   { label: "All", value: "ALL" },
 ];
 
 export function AssetChartContainer({ symbol }: { symbol: string }) {
-  const [range, setRange] = useState<ChartRange>("ALL");
+  const [range, setRange] = useState<ChartRange>("90d");
 
   return (
     <section className="overflow-hidden rounded-[1.65rem] bg-[#0B0E11] shadow-[0_30px_84px_rgba(0,0,0,0.32)] max-sm:rounded-none">

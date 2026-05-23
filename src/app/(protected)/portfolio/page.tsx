@@ -13,12 +13,14 @@ import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
 import { readPortfolioPreferences, type PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
+import { usePortfolioStore } from "@/state/portfolio.store";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { ApiError } from "@/lib/api/problem-details";
 
 function PortfolioPageContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const syncStore = usePortfolioStore((s) => s.syncFromEntries);
   const requestedType = (searchParams.get("type") ?? "").toUpperCase();
   const isOverviewScope = !requestedType;
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
@@ -41,12 +43,13 @@ function PortfolioPageContent() {
       }
       const data = await getPortfolio({ force });
       setEntries(data);
+      syncStore(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No fue posible cargar el portfolio.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncStore]);
 
   const loadPreferences = useCallback(() => {
     setPreferences(readPortfolioPreferences());
@@ -120,7 +123,7 @@ function PortfolioPageContent() {
           {!loading && error ? <PortfolioErrorState message={error} onOpenModal={() => setModalOpen(true)} transactionsEnabled={transactionsEnabled} /> : null}
           {!loading && !error ? (
             <>
-              <PortfolioCompactIntro />
+              <PortfolioCompactIntro onAddTransaction={() => setModalOpen(true)} />
               <PortfolioSummary entries={filteredEntries} portfolioId={holdingsPortfolioId} />
               <MobilePortfolioActions
                 onAddTransaction={() => setModalOpen(true)}
@@ -206,14 +209,24 @@ function PortfolioErrorState({ message, onOpenModal, transactionsEnabled }: { me
   );
 }
 
-function PortfolioCompactIntro() {
+function PortfolioCompactIntro({ onAddTransaction }: { onAddTransaction: () => void }) {
   return (
-    <section className="hidden space-y-2 px-1 pt-1 md:block">
-      <p className="text-[0.72rem] font-medium uppercase tracking-[0.28em] text-[#17c784]">Portfolio tracker</p>
-      <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white md:text-[2.3rem]">Vista Consolidada</h1>
-      <p className="max-w-[52rem] text-[0.92rem] leading-7 text-[#7f8aa3]">
-        Administra activos, sigue el rendimiento de tu wallet y mantén tu historial en un solo lugar.
-      </p>
+    <section className="hidden items-start justify-between gap-4 px-1 pt-1 md:flex">
+      <div className="space-y-2">
+        <p className="text-[0.72rem] font-medium uppercase tracking-[0.28em] text-[#17c784]">Portfolio tracker</p>
+        <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white md:text-[2.3rem]">Vista Consolidada</h1>
+        <p className="max-w-[52rem] text-[0.92rem] leading-7 text-[#7f8aa3]">
+          Administra activos, sigue el rendimiento de tu wallet y mantén tu historial en un solo lugar.
+        </p>
+      </div>
+      <button
+        className="mt-1 inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0e7a4f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(14,122,79,0.25)] transition hover:bg-[#11945f] active:brightness-90"
+        onClick={onAddTransaction}
+        type="button"
+      >
+        <Plus className="h-4 w-4" />
+        Add Transaction
+      </button>
     </section>
   );
 }

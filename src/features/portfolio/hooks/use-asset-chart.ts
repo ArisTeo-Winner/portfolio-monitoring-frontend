@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import type {
+  AssetHistoryPoint,
+  AssetMarkerPoint,
   ChartRange,
-  PortfolioAssetHistoryResponse,
-  PortfolioMarkersResponse,
 } from "@/types/portfolio-chart";
 
 type AssetChartState = {
-  history: PortfolioAssetHistoryResponse | null;
-  markers: PortfolioMarkersResponse | null;
+  history: AssetHistoryPoint[] | null;
+  markers: AssetMarkerPoint[] | null;
   loading: boolean;
   error: string | null;
 };
@@ -38,16 +38,17 @@ export function useAssetChart(symbol: string, range: ChartRange): AssetChartStat
 
     const opts = { auth: true, signal: controller.signal };
 
-    Promise.all([
-      apiRequest<PortfolioAssetHistoryResponse>(
-        `${endpoints.portfolio.assetHistory(symbol)}?range=${range}`,
-        opts,
-      ),
-      apiRequest<PortfolioMarkersResponse>(
-        `${endpoints.portfolio.assetMarkers(symbol)}?range=${range}`,
-        opts,
-      ),
-    ])
+    // Markers are optional — a failure there must never block the chart.
+    const historyReq = apiRequest<AssetHistoryPoint[]>(
+      `${endpoints.portfolio.assetHistory(symbol)}?range=${range}`,
+      opts,
+    );
+    const markersReq = apiRequest<AssetMarkerPoint[]>(
+      `${endpoints.portfolio.assetMarkers(symbol)}?range=${range}`,
+      opts,
+    ).catch((): AssetMarkerPoint[] => []);
+
+    Promise.all([historyReq, markersReq])
       .then(([history, markers]) => {
         if (controller.signal.aborted) return;
         setState({ history, markers, loading: false, error: null });

@@ -20,15 +20,23 @@ export type PortfolioTotalHistoryResponse = {
   readonly points: readonly TimeValuePoint[];
 };
 
-export type PortfolioAssetHistoryResponse = {
-  readonly seriesType: "asset_holdings";
-  readonly currency: "USD";
-  readonly range: ChartRange;
-  readonly resolution: ChartResolution;
-  readonly from: number;
-  readonly to: number;
-  readonly points: readonly TimeValuePoint[];
+// Backend returns plain arrays for asset-level endpoints
+export type AssetHistoryPoint = {
+  readonly time: number;
+  readonly value: number;
 };
+
+export type AssetMarkerPoint = {
+  readonly time: number;
+  readonly position: "aboveBar" | "belowBar" | "inBar";
+  readonly color: string;
+  readonly shape: "circle" | "square" | "arrowUp" | "arrowDown";
+  readonly text: string;
+};
+
+// Legacy types kept for portfolio-total history (wrapped format)
+export type PortfolioAssetHistoryResponse = AssetHistoryPoint[];
+export type PortfolioMarkersResponse = AssetMarkerPoint[];
 
 export type BackendMarker = {
   readonly time: number;
@@ -37,13 +45,4 @@ export type BackendMarker = {
   readonly quantity?: number;
   readonly total?: number;
   readonly label?: string;
-};
-
-export type PortfolioMarkersResponse = {
-  readonly seriesType: "asset_markers";
-  readonly asset: {
-    readonly symbol: string;
-    readonly assetType: string;
-  };
-  readonly markers: readonly BackendMarker[];
 };

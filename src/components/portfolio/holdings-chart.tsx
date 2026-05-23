@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEventParams, Time } from "lightweight-charts";
+import type { LogicalRange, MouseEventParams, Time } from "lightweight-charts";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
 import { usePortfolioHistory } from "@/features/portfolio/hooks/usePortfolioHistory";
 import type { PortfolioHistoryPoint } from "@/features/portfolio/types/portfolio-history.types";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
+import { filterSeriesByRange } from "@/features/portfolio/lib/range-utils";
 import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatSignedCurrency } from "@/lib/utils/format";
 
@@ -19,6 +20,13 @@ type TooltipState = {
   point: PortfolioHistoryPoint | null;
   value: number;
 };
+
+const RANGE_ORDER: HistoryRange[] = ["24h", "7d", "30d", "90d", "ALL"];
+
+function getNextRange(current: HistoryRange): HistoryRange | null {
+  const idx = RANGE_ORDER.indexOf(current);
+  return idx < RANGE_ORDER.length - 1 ? RANGE_ORDER[idx + 1] : null;
+}
 
 const HISTORY_RANGES: Array<{ key: HistoryRange; label: string }> = [
   { key: "24h", label: "24h" },
@@ -55,6 +63,11 @@ export function HoldingsChart({
   const chartShellRef = useRef<HTMLDivElement | null>(null);
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const rangeRef = useRef<HistoryRange>(range);
+  useEffect(() => {
+    rangeRef.current = range;
+  }, [range]);
+  const lastExpansionRef = useRef(0);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 640);
@@ -63,10 +76,22 @@ export function HoldingsChart({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const series = useMemo<PortfolioHistoryPoint[]>(() => data?.series ?? EMPTY_SERIES, [data?.series]);
-  const isProfit = series.length > 0 ? series[series.length - 1].value >= series[0].value : true;
-  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
+  const [nowSeconds, setNowSeconds] = useState(0);
+  useEffect(() => {
+    setNowSeconds(Math.floor(Date.now() / 1000));
+  }, [data]);
+
+  const series = useMemo<PortfolioHistoryPoint[]>(() => {
+    const raw = filterSeriesByRange(data?.series ?? EMPTY_SERIES, range, nowSeconds > 0 ? nowSeconds : undefined);
+    if (nowSeconds > 0 && raw.length > 0 && totalValue > 0 && nowSeconds > raw[raw.length - 1].time) {
+      return [...raw, { time: nowSeconds, value: totalValue }];
+    }
+    return raw;
+  }, [data?.series, range, totalValue, nowSeconds]);
+  const firstNonZero = series.find((p) => p.value > 0);
+  const isProfit = firstNonZero ? series[series.length - 1].value >= firstNonZero.value : true;
+  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const allTimeProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const costBasis = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const profitPercent = costBasis > 0 ? (allTimeProfit / costBasis) * 100 : 0;
@@ -102,7 +127,6 @@ export function HoldingsChart({
 
       const chart = charts.createChart(container, {
         autoSize: true,
-        height: window.innerWidth < 768 ? 256 : 340,
         layout: {
           background: { type: charts.ColorType.Solid, color: "transparent" },
           textColor: tokens.muted,
@@ -110,15 +134,35 @@ export function HoldingsChart({
         },
         rightPriceScale: {
           borderVisible: false,
-          scaleMargins: { top: 0.15, bottom: 0.12 },
+          scaleMargins: { top: 0.1, bottom: 0.08 },
+          autoScale: true,
         },
         leftPriceScale: { visible: false },
         timeScale: {
           borderVisible: false,
-          rightOffset: 2,
+          rightOffset: 5,
           timeVisible: true,
           secondsVisible: false,
-          minBarSpacing: 0.35,
+          minBarSpacing: 0.5,
+          lockVisibleTimeRangeOnResize: true,
+        },
+        handleScroll: {
+          mouseWheel: true,
+          pressedMouseMove: true,
+          horzTouchDrag: true,
+          vertTouchDrag: false,
+        },
+        handleScale: {
+          axisPressedMouseMove: {
+            time: true,
+            price: true,
+          },
+          mouseWheel: true,
+          pinch: true,
+        },
+        kineticScroll: {
+          touch: true,
+          mouse: false,
         },
         crosshair: {
           mode: charts.CrosshairMode.Normal,
@@ -153,15 +197,64 @@ export function HoldingsChart({
         crosshairMarkerBackgroundColor: tokens.deep,
       });
 
+      // CoinMarketCap style: draw only from the first non-zero point so the
+      // Y-axis scales tightly around real values, but expand the visible time
+      // range to cover the full API span (blank space before the curve starts).
+      const firstRealIdx = series.findIndex((p) => p.value > 0);
+      const drawPoints = firstRealIdx > 0 ? series.slice(firstRealIdx) : series;
+
       lineSeries.setData(
-        series.map((point) => ({
+        drawPoints.map((point) => ({
           time: point.time as Time,
           value: roundCurrency(point.value),
         })),
       );
 
-      chart.timeScale().fitContent();
-      const pointsByTime = buildTimePointMap(series);
+      const setFullRange = () => {
+        if (firstRealIdx > 0 && series.length > 0) {
+          chart.timeScale().setVisibleRange({
+            from: series[0].time as Time,
+            to: series[series.length - 1].time as Time,
+          });
+        } else {
+          chart.timeScale().fitContent();
+        }
+      };
+      setFullRange();
+
+      if (drawPoints.length > 0) {
+        const lastValue = roundCurrency(drawPoints[drawPoints.length - 1].value);
+        const prevValue =
+          drawPoints.length > 1
+            ? drawPoints[drawPoints.length - 2].value
+            : lastValue;
+        const tickUp = lastValue >= prevValue;
+        const markerColor = tickUp ? POSITIVE_COLOR : NEGATIVE_COLOR;
+
+        lineSeries.createPriceLine({
+          price: lastValue,
+          color: markerColor,
+          lineWidth: 1,
+          lineStyle: charts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          axisLabelColor: markerColor,
+          axisLabelTextColor: "#ffffff",
+          title: "",
+        });
+      }
+
+      const handleLogicalRangeChange = (logicalRange: LogicalRange | null) => {
+        if (!logicalRange || logicalRange.from >= -0.5) return;
+        if (Date.now() - lastExpansionRef.current < 1500) return;
+        const next = getNextRange(rangeRef.current);
+        if (next) {
+          lastExpansionRef.current = Date.now();
+          setRange(next);
+        }
+      };
+      chart.timeScale().subscribeVisibleLogicalRangeChange(handleLogicalRangeChange);
+
+      const pointsByTime = buildTimePointMap(drawPoints);
 
       const crosshairHandler = (param: MouseEventParams<Time>) => {
         if (!param.point || typeof param.time !== "number") {
@@ -169,7 +262,7 @@ export function HoldingsChart({
           return;
         }
 
-        const mappedPoint = pointsByTime.get(param.time) ?? getNearestPoint(series, param.time);
+        const mappedPoint = pointsByTime.get(param.time) ?? getNearestPoint(drawPoints, param.time);
         if (!mappedPoint) {
           setTooltip((previous) => (previous.visible ? { ...previous, visible: false } : previous));
           return;
@@ -190,12 +283,13 @@ export function HoldingsChart({
       };
 
       chart.subscribeCrosshairMove(crosshairHandler);
-      const resizeObserver = new ResizeObserver(() => chart.timeScale().fitContent());
+      const resizeObserver = new ResizeObserver(() => setFullRange());
       resizeObserver.observe(container);
 
       cleanup = () => {
         resizeObserver.disconnect();
         chart.unsubscribeCrosshairMove(crosshairHandler);
+        chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleLogicalRangeChange);
         chart.remove();
       };
     }

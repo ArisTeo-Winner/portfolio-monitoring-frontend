@@ -9,7 +9,7 @@ import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/featu
 import { deleteTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionDetailsResponse, TransactionResponse } from "@/features/transactions/types/transaction.types";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
@@ -466,7 +466,7 @@ export function TransactionsTable({
 
                   <td className="px-5 py-4 text-right">
                     <span className="block text-[0.84rem] font-semibold text-white">
-                      {transaction.fee > 0 ? formatCurrency(transaction.fee) : "--"}
+                      {transaction.fee > 0 ? formatFeeCurrency(transaction.fee) : "--"}
                     </span>
                   </td>
 
@@ -1108,11 +1108,6 @@ function normalizeTransferType(transferType?: string | null): InitialTransaction
   return undefined;
 }
 
-function resolveAmountLabel(type: TransactionFilter) {
-  if (type === "SELL") return "Total Received";
-  if (type === "TRANSFER") return "Transfer Quantity";
-  return "Total Spent";
-}
 
 function resolveSummaryValue(
   details: TransactionDetailsResponse | null,
@@ -1310,8 +1305,9 @@ function TransactionDetailsDialog({
   const pricePerUnit = details?.pricePerUnit ?? transaction.pricePerUnit;
   const fee = details?.fee ?? transaction.fee;
   const notes = details?.notes?.trim() ? details.notes : transaction.notes?.trim() ? transaction.notes : "--";
-  const amountLabel = details?.amountLabel ?? resolveAmountLabel(normalizedType);
   const summaryValue = resolveSummaryValue(details, transaction, normalizedType);
+  // Cost Basis = price × qty without fees (grossAmount from details, totalValue as fallback)
+  const costBasis = details?.grossAmount ?? transaction.totalValue;
 
   return (
     <Modal
@@ -1353,11 +1349,22 @@ function TransactionDetailsDialog({
                 </span>
               )}
             />
-            <DetailRow label="Fees" value={fee > 0 ? formatCurrency(fee) : "--"} />
-            <DetailRow
-              label={amountLabel}
-              value={normalizedType === "TRANSFER" ? `${formatQuantity(quantity)} ${assetSymbol}` : formatCurrency(summaryValue)}
-            />
+            <DetailRow label="Fees" value={fee > 0 ? formatFeeCurrency(fee, details?.feeCurrency ?? "USD") : "--"} />
+            {normalizedType === "TRANSFER" ? (
+              <DetailRow label="Transfer Quantity" value={`${formatQuantity(quantity)} ${assetSymbol}`} />
+            ) : (
+              <>
+                <DetailRow
+                  label={normalizedType === "SELL" ? "Gross Received" : "Cost Basis"}
+                  value={formatCurrency(costBasis)}
+                />
+                <DetailRow
+                  label={normalizedType === "SELL" ? "Net Received" : "Total Spent"}
+                  value={formatCurrency(summaryValue)}
+                  highlight
+                />
+              </>
+            )}
             <DetailRow label="Notes" multiline value={notes} />
 
             {error ? (
@@ -1375,16 +1382,18 @@ function TransactionDetailsDialog({
 function DetailRow({
   label,
   multiline = false,
+  highlight = false,
   value,
 }: {
   label: string;
   multiline?: boolean;
+  highlight?: boolean;
   value: React.ReactNode;
 }) {
   return (
     <div className={`border-b border-[#1a1f29] py-4 last:border-b-0 ${multiline ? "space-y-2" : "flex items-center justify-between gap-4"}`}>
-      <span className="text-[0.82rem] font-semibold text-[#8a94a6]">{label}</span>
-      <div className={`${multiline ? "" : "text-right"} text-[0.95rem] font-semibold text-white`}>{value}</div>
+      <span className={`text-[0.82rem] font-semibold ${highlight ? "text-[#c4cede]" : "text-[#8a94a6]"}`}>{label}</span>
+      <div className={`${multiline ? "" : "text-right"} text-[0.95rem] font-semibold ${highlight ? "text-white" : "text-[#b8c0ce]"}`}>{value}</div>
     </div>
   );
 }

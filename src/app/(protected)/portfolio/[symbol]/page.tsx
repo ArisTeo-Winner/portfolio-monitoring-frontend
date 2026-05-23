@@ -25,7 +25,7 @@ import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types"
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 
 const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF"]);
@@ -443,7 +443,7 @@ function AssetTransactionsSection({
                     </p>
                   </div>
                   <div className="text-[0.82rem] font-medium text-[#c7cedb]">
-                    {Number(transaction.fee) > 0 ? formatCurrency(transaction.fee) : "--"}
+                    {Number(transaction.fee) > 0 ? formatFeeCurrency(transaction.fee) : "--"}
                   </div>
                 </div>
               );

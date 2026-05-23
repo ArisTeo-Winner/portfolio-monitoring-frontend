@@ -2,6 +2,18 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs, mockBackendAPIs } from "./helpers";
 import { skipUnlessResponsive } from "./project-guards";
 
+/**
+ * Bottom-nav visibility contract (driven by Tailwind `lg:hidden`):
+ *
+ *  xs-mobile       (375px)  → visible   ✓
+ *  sm-large-mobile (640px)  → visible   ✓  (sm < lg threshold)
+ *  md-tablet       (768px)  → visible   ✓  (md < lg threshold)
+ *  lg-small-desktop(1024px) → hidden    ✓  lg:hidden activates at 1024px
+ *  xl-desktop      (1280px) → hidden    ✓
+ *
+ * If the design changes the nav to hide earlier (e.g. md:hidden), update
+ * MOBILE_PROJECTS and this comment together.
+ */
 const MOBILE_PROJECTS = ["xs-mobile", "sm-large-mobile", "md-tablet"] as const;
 
 async function assertNoHorizontalOverflow(page: Page, context: string) {

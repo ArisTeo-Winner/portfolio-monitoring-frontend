@@ -658,7 +658,7 @@ function DesktopBalanceSummary({
   onAddAsset: () => void;
 }) {
   return (
-    <div className="mr-1 hidden h-10 items-center rounded-xl border border-zinc-800 bg-[#121214] p-1 2xl:flex">
+    <div className="mr-1 hidden h-10 items-center rounded-xl border border-zinc-800 bg-[#121214] p-1 lg:flex 2xl:hidden">
       <div className="px-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
           Balance total

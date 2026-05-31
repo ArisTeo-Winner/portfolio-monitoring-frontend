@@ -49,7 +49,7 @@ const INITIAL_TOOLTIP_STATE: TooltipState = {
 
 export function HoldingsChart({
   collapsibleOnMobile = false,
-  portfolioId: _portfolioId,
+  portfolioId,
   entries,
 }: {
   collapsibleOnMobile?: boolean;
@@ -57,8 +57,9 @@ export function HoldingsChart({
   entries: PortfolioEntry[];
 }) {
   const [range, setRange] = useState<HistoryRange>("ALL");
+  const [scaleMode, setScaleMode] = useState<"linear" | "log">("linear");
   const [isChartExpanded, setIsChartExpanded] = useState(true);
-  const { data, error, isLoading } = usePortfolioHistory(range);
+  const { data, error, isLoading } = usePortfolioHistory(range, portfolioId);
   const [tooltip, setTooltip] = useState<TooltipState>(INITIAL_TOOLTIP_STATE);
   const chartShellRef = useRef<HTMLDivElement | null>(null);
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
@@ -90,10 +91,13 @@ export function HoldingsChart({
     return raw;
   }, [data?.series, range, totalValue, nowSeconds]);
   const firstNonZero = series.find((p) => p.value > 0);
-  const isProfit = firstNonZero ? series[series.length - 1].value >= firstNonZero.value : true;
-  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const allTimeProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const costBasis = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
+  // Color based on all-time profit/loss from entries (cost basis vs current value),
+  // not on the historical series comparison which can be misleading when the
+  // first non-zero point is a small early position.
+  const isProfit = allTimeProfit >= 0;
+  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const profitPercent = costBasis > 0 ? (allTimeProfit / costBasis) * 100 : 0;
   const profitBreakdown = useMemo(() => {
     const profitable = entries.filter((entry) => Number(entry.totalProfitLoss) > 0).length;
@@ -134,8 +138,9 @@ export function HoldingsChart({
         },
         rightPriceScale: {
           borderVisible: false,
-          scaleMargins: { top: 0.1, bottom: 0.08 },
+          scaleMargins: { top: 0.1, bottom: 0 },
           autoScale: true,
+          mode: scaleMode === "log" ? charts.PriceScaleMode.Logarithmic : charts.PriceScaleMode.Normal,
         },
         leftPriceScale: { visible: false },
         timeScale: {
@@ -210,15 +215,10 @@ export function HoldingsChart({
         })),
       );
 
+      // fitContent() sobre drawPoints (ya sin ceros iniciales) — eje Y escala
+      // sobre valores reales sin saltos prominentes desde $0.
       const setFullRange = () => {
-        if (firstRealIdx > 0 && series.length > 0) {
-          chart.timeScale().setVisibleRange({
-            from: series[0].time as Time,
-            to: series[series.length - 1].time as Time,
-          });
-        } else {
-          chart.timeScale().fitContent();
-        }
+        chart.timeScale().fitContent();
       };
       setFullRange();
 
@@ -300,7 +300,7 @@ export function HoldingsChart({
       disposed = true;
       cleanup?.();
     };
-  }, [lineColor, series, isMobile]);
+  }, [lineColor, series, isMobile, scaleMode]);
 
   const rechartsData = useMemo(() => {
     if (!isMobile) return [];
@@ -355,24 +355,39 @@ export function HoldingsChart({
             </div>
           </div>
 
-          <div data-v-0ffb9b2a className="cursor-pointer text-center mt-12px mb-16px max-sm:hidden sm:mt-0 sm:mb-0">
-            {HISTORY_RANGES.map((item) => {
-              const active = item.key === range;
-              return (
-                <button
-                  className={`rounded-[0.9rem] px-3.5 py-2 text-[0.82rem] font-semibold transition ${
-                    active
-                      ? "bg-[#1a1e24] text-white shadow-[0_14px_28px_rgba(0,0,0,0.18)]"
-                      : "text-fintech-muted hover:bg-white/[0.04] hover:text-white"
-                  }`}
-                  key={item.key}
-                  onClick={() => setRange(item.key)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2 max-sm:hidden">
+            <div className="flex items-center">
+              {HISTORY_RANGES.map((item) => {
+                const active = item.key === range;
+                return (
+                  <button
+                    className={`rounded-[0.9rem] px-3.5 py-2 text-[0.82rem] font-semibold transition ${
+                      active
+                        ? "bg-[#1a1e24] text-white shadow-[0_14px_28px_rgba(0,0,0,0.18)]"
+                        : "text-fintech-muted hover:bg-white/[0.04] hover:text-white"
+                    }`}
+                    key={item.key}
+                    onClick={() => setRange(item.key)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ml-1 h-5 w-px bg-white/10" />
+            <button
+              className={`rounded-[0.9rem] px-3 py-2 text-[0.75rem] font-semibold transition ${
+                scaleMode === "log"
+                  ? "bg-[#1a1e24] text-white shadow-[0_14px_28px_rgba(0,0,0,0.18)]"
+                  : "text-fintech-muted hover:bg-white/[0.04] hover:text-white"
+              }`}
+              onClick={() => setScaleMode((m) => (m === "linear" ? "log" : "linear"))}
+              title={scaleMode === "log" ? "Cambiar a escala lineal" : "Cambiar a escala logarítmica"}
+              type="button"
+            >
+              Log
+            </button>
           </div>
         </div>
 

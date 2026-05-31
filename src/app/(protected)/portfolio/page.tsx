@@ -14,6 +14,7 @@ import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api
 import { readPortfolioPreferences, type PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { usePortfolioStore } from "@/state/portfolio.store";
+import type { SidebarGroup } from "@/components/portfolio/portfolio-sidebar-data";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { ApiError } from "@/lib/api/problem-details";
 
@@ -21,6 +22,9 @@ function PortfolioPageContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const syncStore = usePortfolioStore((s) => s.syncFromEntries);
+  const removePortfolio = usePortfolioStore((s) => s.removePortfolio);
+  const setDefaultPortfolio = usePortfolioStore((s) => s.setDefaultPortfolio);
+  const defaultPortfolio = usePortfolioStore((s) => s.defaultPortfolio);
   const requestedType = (searchParams.get("type") ?? "").toUpperCase();
   const isOverviewScope = !requestedType;
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
@@ -29,7 +33,7 @@ function PortfolioPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [activePortfolioType, setActivePortfolioType] = useState<string>(requestedType);
+  const [editingPortfolio, setEditingPortfolio] = useState<SidebarGroup | null>(null);
   const [activeTab, setActiveTab] = useState<"assets" | "history">("assets");
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
 
@@ -61,36 +65,25 @@ function PortfolioPageContent() {
     setLogoRegistry(readAssetLogoRegistry());
   }, [loadPortfolio, loadPreferences]);
 
-  useEffect(() => {
-    setActivePortfolioType(isOverviewScope ? "" : requestedType);
-  }, [isOverviewScope, requestedType]);
-
   const portfolioGroups = useMemo(() => buildSidebarGroups(entries, preferences), [entries, preferences]);
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
-  const createdCount = preferences.length > 0 ? preferences.length : portfolioGroups.length;
+  const _createdCount = preferences.length > 0 ? preferences.length : portfolioGroups.length;
 
-  useEffect(() => {
-    if (!portfolioGroups.length) {
-      setActivePortfolioType("");
-      return;
-    }
-    if (isOverviewScope) {
-      setActivePortfolioType("");
-      return;
-    }
-    if (!portfolioGroups.some((group) => group.assetType === activePortfolioType)) {
-      setActivePortfolioType(portfolioGroups[0].assetType);
-    }
-  }, [activePortfolioType, isOverviewScope, portfolioGroups]);
+  // Derive active portfolio directly from URL — no intermediate state that can desync
+  const activePortfolio = isOverviewScope
+    ? undefined
+    : portfolioGroups.find((group) => group.assetType === requestedType);
 
-  const activePortfolio = activePortfolioType ? portfolioGroups.find((group) => group.assetType === activePortfolioType) : undefined;
-  const filteredEntries = activePortfolio ? entries.filter((entry) => entry.assetType === activePortfolio.assetType) : entries;
+  const filteredEntries = activePortfolio
+    ? entries.filter((entry) => entry.assetType === activePortfolio.assetType)
+    : entries;
   const hasExistingTransactions = entries.length > 0;
   const transactionsEnabled = true;
   const holdingsPortfolioId = isOverviewScope ? "overview" : normalizePortfolioAssetType(activePortfolio?.assetType || requestedType || "overview");
 
   const refreshHoldingsPerformance = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["portfolio-holdings-performance"] });
+    await queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
   }, [queryClient]);
 
   const suggestedAssets = useMemo<AssetOption[]>(() => {
@@ -111,9 +104,12 @@ function PortfolioPageContent() {
         <div className="hidden md:block">
           <PortfolioSidebar
             activeType={activePortfolio?.assetType ?? ""}
-            createdCount={createdCount}
+            defaultType={defaultPortfolio}
             groups={portfolioGroups}
             onCreatePortfolio={() => setCreateModalOpen(true)}
+            onEditPortfolio={(group) => { setEditingPortfolio(group); setCreateModalOpen(true); }}
+            onRemovePortfolio={(assetType) => { removePortfolio(assetType); loadPreferences(); }}
+            onSetDefault={(assetType) => setDefaultPortfolio(assetType)}
             totalValue={totalValue}
           />
         </div>
@@ -160,10 +156,11 @@ function PortfolioPageContent() {
       />
 
       <CreatePortfolioModal
+        editingPortfolio={editingPortfolio ?? undefined}
         existingAssetTypes={preferences.map((item) => item.assetType)}
         isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onCreated={loadPreferences}
+        onClose={() => { setCreateModalOpen(false); setEditingPortfolio(null); }}
+        onCreated={() => { loadPreferences(); setEditingPortfolio(null); }}
       />
     </>
   );

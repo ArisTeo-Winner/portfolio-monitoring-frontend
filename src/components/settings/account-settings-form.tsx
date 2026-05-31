@@ -13,7 +13,7 @@ import { SettingsActions, SettingsCard, SettingsField, SettingsHeader } from "@/
 import { getAccountSettings, updateAccountSettings } from "@/features/settings/api/settings";
 
 const accountSchema = z.object({
-  baseCurrency: z.enum(["USD", "EUR", "MXN"]),
+  preferredCurrency: z.enum(["USD", "EUR", "MXN"]),
   email: z.string().email("Ingresa un email valido."),
   timezone: z.string().min(1, "Selecciona una zona horaria."),
   username: z.string().min(2, "Minimo 2 caracteres.").max(80, "Maximo 80 caracteres."),
@@ -43,7 +43,7 @@ export function AccountSettingsForm() {
   } = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      baseCurrency: "USD",
+      preferredCurrency: "USD",
       email: "",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       username: "",
@@ -57,7 +57,7 @@ export function AccountSettingsForm() {
       .then((account) => {
         if (!active) return;
         reset({
-          baseCurrency: normalizeCurrency(account.baseCurrency),
+          preferredCurrency: normalizeCurrency(account.preferredCurrency),
           email: account.email ?? "",
           timezone: account.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           username: account.username ?? "",
@@ -82,7 +82,7 @@ export function AccountSettingsForm() {
     try {
       const updated = await updateAccountSettings(values);
       reset({
-        baseCurrency: normalizeCurrency(updated.baseCurrency ?? values.baseCurrency),
+        preferredCurrency: normalizeCurrency(updated.preferredCurrency ?? values.preferredCurrency),
         email: updated.email ?? values.email,
         timezone: updated.timezone ?? values.timezone,
         username: updated.username ?? values.username,
@@ -145,11 +145,11 @@ export function AccountSettingsForm() {
               <SettingsSelect
                 data-testid="base-currency-select"
                 disabled={loading}
-                error={errors.baseCurrency?.message}
+                error={errors.preferredCurrency?.message}
                 hideLabel
                 label="Base Currency"
                 options={currencyOptions}
-                {...register("baseCurrency")}
+                {...register("preferredCurrency")}
               />
             </SettingsField>
             <SettingsField label="Zona horaria">

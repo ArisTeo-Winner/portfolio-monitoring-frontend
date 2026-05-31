@@ -9,6 +9,8 @@ export type RegisterPayload = {
   password: string;
   firstName?: string;
   lastName?: string;
+  preferredCurrency?: string;
+  timezone?: string;
 };
 
 export type JwtResponse = {

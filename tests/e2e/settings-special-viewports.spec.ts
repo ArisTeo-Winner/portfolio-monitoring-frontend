@@ -55,9 +55,15 @@ test.describe("Settings special viewports – Sessions 720×1280", () => {
     test.skip(testInfo.project.name !== "xs-mobile", "Special viewport: runs once under xs-mobile");
     await page.setViewportSize({ width: 720, height: 1280 });
     await mockSessionsAPI(page);
-    await page.addInitScript((token) => {
-      window.sessionStorage.setItem("cpm.accessToken", token);
-    }, FAKE_ACCESS_TOKEN);
+    // Access token is memory-only — inject session via silent refresh mock so
+    // protected-shell recovers the session without a real HttpOnly cookie.
+    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ accessToken: FAKE_ACCESS_TOKEN }),
+      }),
+    );
     await page.goto("/settings/sessions");
     await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: 8_000 });

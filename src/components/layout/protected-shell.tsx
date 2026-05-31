@@ -31,7 +31,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { logout } from "@/features/auth/api/logout";
-import { clearSession, readSession } from "@/features/auth/lib/session";
+import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
+import { env } from "@/lib/config/env";
+import { endpoints } from "@/lib/api/endpoints";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getMe } from "@/features/users/api/get-me";
 import type { UserResponse } from "@/features/users/types/user.types";
@@ -46,6 +48,7 @@ type NavItem = {
   description: string;
   icon: LucideIcon;
   badge?: string;
+  comingSoon?: boolean;
 };
 
 type ActiveDropdown =
@@ -89,14 +92,56 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const session = readSession();
-    if (!session?.accessToken) {
-      router.replace("/login");
-      return;
+    let cancelled = false;
+
+    async function bootstrap() {
+      const session = readSession();
+
+      if (session?.accessToken) {
+        // Access token already in memory — session is live.
+        if (!cancelled) {
+          setSessionReady(true);
+          getMe().then(setUser).catch(() => {});
+        }
+        return;
+      }
+
+      // No token in memory (e.g. after a page reload).
+      // Attempt silent session recovery via the HttpOnly refresh-token cookie.
+      try {
+        const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
+          method: "POST",
+          cache: "no-store",
+          // The HttpOnly refresh-token cookie must be sent to the backend.
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const body = (await response.json()) as Record<string, unknown>;
+          if (typeof body?.accessToken === "string") {
+            persistSession(body.accessToken);
+            if (!cancelled) {
+              setSessionReady(true);
+              getMe().then(setUser).catch(() => {});
+            }
+            return;
+          }
+        }
+      } catch {
+        // Network error — fall through to redirect.
+      }
+
+      // Refresh failed (no valid cookie or server error) → send to login.
+      if (!cancelled) {
+        router.replace("/login");
+      }
     }
 
-    setSessionReady(true);
-    getMe().then(setUser).catch(() => {});
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -242,6 +287,22 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           <nav className="hidden min-w-0 flex-1 items-center gap-1 lg:flex xl:gap-2">
             {navItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+              if (item.comingSoon) {
+                return (
+                  <span
+                    className="inline-flex min-w-0 cursor-default items-center gap-2 rounded-full px-2.5 py-2 text-sm font-medium opacity-45 xl:px-3"
+                    key={item.label}
+                    title="Próximamente"
+                  >
+                    <span className="whitespace-nowrap text-zinc-400">{item.label}</span>
+                    <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#7f8aa3]">
+                      Soon
+                    </span>
+                  </span>
+                );
+              }
+
               return (
                 <Link
                   className={`inline-flex min-w-0 items-center gap-2 rounded-full px-2.5 py-2 text-sm transition xl:px-3 ${
@@ -276,48 +337,157 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
               />
             </div>
 
-            <DesktopIconButton
-              active={activeDropdown === "locale"}
-              ariaLabel="Idioma y moneda"
-              onClick={() => toggleDropdown("locale")}
-            >
-              <Globe className="h-5 w-5" />
-            </DesktopIconButton>
+            <div className="relative">
+              <DesktopIconButton
+                active={activeDropdown === "locale"}
+                ariaLabel="Idioma y moneda"
+                onClick={() => toggleDropdown("locale")}
+              >
+                <Globe className="h-5 w-5" />
+              </DesktopIconButton>
+              {activeDropdown === "locale" ? (
+                <DesktopPopover align="right">
+                  <PopoverSectionTitle>Idioma</PopoverSectionTitle>
+                  <PopoverAction active>ES Espanol</PopoverAction>
+                  <PopoverAction>US English</PopoverAction>
+                  <div className="my-2 border-t border-zinc-800/60" />
+                  <PopoverSectionTitle>Moneda Base</PopoverSectionTitle>
+                  <PopoverAction active>USD - Dolar</PopoverAction>
+                  <PopoverAction>EUR - Euro</PopoverAction>
+                  <PopoverAction>MXN - Peso Mex</PopoverAction>
+                </DesktopPopover>
+              ) : null}
+            </div>
 
-            <DesktopIconButton
-              active={activeDropdown === "notifications"}
-              ariaLabel="Notificaciones"
-              onClick={() => toggleDropdown("notifications")}
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-[#09090b] bg-emerald-500" />
-            </DesktopIconButton>
+            <div className="relative">
+              <DesktopIconButton
+                active={activeDropdown === "notifications"}
+                ariaLabel="Notificaciones"
+                onClick={() => toggleDropdown("notifications")}
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-[#09090b] bg-emerald-500" />
+              </DesktopIconButton>
+              {activeDropdown === "notifications" ? (
+                <DesktopPopover align="right" wide>
+                  <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
+                    <h4 className="text-sm font-bold text-zinc-50">Notificaciones</h4>
+                    <button className="text-xs font-medium text-emerald-500 hover:text-emerald-400" type="button">
+                      Marcar leidas
+                    </button>
+                  </div>
+                  <div className="px-4 py-3">
+                    <NotificationItem />
+                  </div>
+                  <div className="border-t border-zinc-800/60 px-4 py-2 text-center">
+                    <button className="text-xs font-medium text-zinc-400 hover:text-zinc-50" type="button">
+                      Ver todas las notificaciones
+                    </button>
+                  </div>
+                </DesktopPopover>
+              ) : null}
+            </div>
 
-            <DesktopIconButton
-              active={activeDropdown === "settings"}
-              ariaLabel="Configuracion"
-              onClick={() => toggleDropdown("settings")}
-            >
-              <Settings className="h-5 w-5" />
-            </DesktopIconButton>
+            <div className="relative">
+              <DesktopIconButton
+                active={activeDropdown === "settings"}
+                ariaLabel="Configuracion"
+                onClick={() => toggleDropdown("settings")}
+              >
+                <Settings className="h-5 w-5" />
+              </DesktopIconButton>
+              {activeDropdown === "settings" ? (
+                <DesktopPopover align="right">
+                  <PopoverSectionTitle>Preferencias</PopoverSectionTitle>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-sm text-zinc-300">Tema visual</span>
+                    <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
+                      <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
+                        <Sun className="h-3.5 w-3.5" />
+                      </button>
+                      <button className="rounded-md bg-zinc-800 p-1 text-zinc-50" type="button">
+                        <Moon className="h-3.5 w-3.5" />
+                      </button>
+                      <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
+                        <Monitor className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="my-2 border-t border-zinc-800/60" />
+                  <PopoverSectionTitle>Gestion</PopoverSectionTitle>
+                  <PopoverLink href="/settings/preferences">
+                    <Monitor className="h-4 w-4 text-zinc-400" />
+                    Preferencias
+                  </PopoverLink>
+                  <PopoverLink href="/settings/security">
+                    <ShieldCheck className="h-4 w-4 text-zinc-400" />
+                    Seguridad (2FA, Tokens)
+                  </PopoverLink>
+                </DesktopPopover>
+              ) : null}
+            </div>
 
-            <button
-              className={`ml-1 inline-flex items-center gap-2 rounded-full border px-2 py-1 transition ${
-                activeDropdown === "profile"
-                  ? "border-zinc-700 bg-zinc-800"
-                  : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-800"
-              }`}
-              onClick={() => toggleDropdown("profile")}
-              type="button"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-xs font-bold text-emerald-500">
-                {displayInitial}
-              </div>
-              <div className="hidden min-w-0 text-left 2xl:block">
-                <p className="truncate text-xs font-semibold text-zinc-100">{displayName}</p>
-                <p className="truncate text-[11px] text-zinc-500">{displayUsername}</p>
-              </div>
-            </button>
+            <div className="relative ml-1">
+              <button
+                className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 transition ${
+                  activeDropdown === "profile"
+                    ? "border-zinc-700 bg-zinc-800"
+                    : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-800"
+                }`}
+                onClick={() => toggleDropdown("profile")}
+                type="button"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-xs font-bold text-emerald-500">
+                  {displayInitial}
+                </div>
+                <div className="hidden min-w-0 text-left 2xl:block">
+                  <p className="truncate text-xs font-semibold text-zinc-100">{displayName}</p>
+                  <p className="truncate text-[11px] text-zinc-500">{displayUsername}</p>
+                </div>
+              </button>
+              {activeDropdown === "profile" ? (
+                <DesktopPopover align="right">
+                  <div className="mb-2 flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-base font-bold text-emerald-500">
+                      {displayInitial}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-zinc-50">{displayName}</p>
+                      <p className="truncate text-xs text-zinc-500">{displayEmail}</p>
+                    </div>
+                  </div>
+                  <PopoverLink href="/settings/account">
+                    <User className="h-4 w-4 text-zinc-400" />
+                    Resumen de Cuenta
+                  </PopoverLink>
+                  <PopoverLink href="#">
+                    <Wallet className="h-4 w-4 text-zinc-400" />
+                    Mis Carteras
+                  </PopoverLink>
+                  <PopoverLink href="#">
+                    <FileText className="h-4 w-4 text-zinc-400" />
+                    Importar CSV
+                  </PopoverLink>
+                  <PopoverLink href="/settings/preferences">
+                    <Key className="h-4 w-4 text-zinc-400" />
+                    Preferencias
+                  </PopoverLink>
+                  <div className="my-2 border-t border-zinc-800/60" />
+                  <button
+                    className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-rose-500 transition hover:bg-rose-500/10"
+                    disabled={loggingOut}
+                    onClick={() => {
+                      setActiveDropdown(null);
+                      void handleLogout();
+                    }}
+                    type="button"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {loggingOut ? "Cerrando..." : "Cerrar sesion"}
+                  </button>
+                </DesktopPopover>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex items-center gap-2 lg:hidden">
@@ -364,119 +534,6 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
             </MobileIconButton>
           </div>
         </div>
-
-        {activeDropdown === "locale" ? (
-          <div className="hidden lg:block">
-            <DesktopPopover align="right">
-              <PopoverSectionTitle>Idioma</PopoverSectionTitle>
-              <PopoverAction active>ES Espanol</PopoverAction>
-              <PopoverAction>US English</PopoverAction>
-              <div className="my-2 border-t border-zinc-800/60" />
-              <PopoverSectionTitle>Moneda Base</PopoverSectionTitle>
-              <PopoverAction active>USD - Dolar</PopoverAction>
-              <PopoverAction>EUR - Euro</PopoverAction>
-              <PopoverAction>MXN - Peso Mex</PopoverAction>
-            </DesktopPopover>
-          </div>
-        ) : null}
-
-        {activeDropdown === "notifications" ? (
-          <div className="hidden lg:block">
-            <DesktopPopover align="right" wide>
-              <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
-                <h4 className="text-sm font-bold text-zinc-50">Notificaciones</h4>
-                <button className="text-xs font-medium text-emerald-500 hover:text-emerald-400" type="button">
-                  Marcar leidas
-                </button>
-              </div>
-              <div className="px-4 py-3">
-                <NotificationItem />
-              </div>
-              <div className="border-t border-zinc-800/60 px-4 py-2 text-center">
-                <button className="text-xs font-medium text-zinc-400 hover:text-zinc-50" type="button">
-                  Ver todas las notificaciones
-                </button>
-              </div>
-            </DesktopPopover>
-          </div>
-        ) : null}
-
-        {activeDropdown === "settings" ? (
-          <div className="hidden lg:block">
-            <DesktopPopover align="right">
-              <PopoverSectionTitle>Preferencias</PopoverSectionTitle>
-              <div className="flex items-center justify-between px-4 py-2">
-                <span className="text-sm text-zinc-300">Tema visual</span>
-                <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
-                  <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
-                    <Sun className="h-3.5 w-3.5" />
-                  </button>
-                  <button className="rounded-md bg-zinc-800 p-1 text-zinc-50" type="button">
-                    <Moon className="h-3.5 w-3.5" />
-                  </button>
-                  <button className="rounded-md p-1 text-zinc-500 hover:text-zinc-300" type="button">
-                    <Monitor className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="my-2 border-t border-zinc-800/60" />
-              <PopoverSectionTitle>Gestion</PopoverSectionTitle>
-              <PopoverLink href="/settings/preferences">
-                <Monitor className="h-4 w-4 text-zinc-400" />
-                Preferencias
-              </PopoverLink>
-              <PopoverLink href="/settings/security">
-                <ShieldCheck className="h-4 w-4 text-zinc-400" />
-                Seguridad (2FA, Tokens)
-              </PopoverLink>
-            </DesktopPopover>
-          </div>
-        ) : null}
-
-        {activeDropdown === "profile" ? (
-          <div className="hidden lg:block">
-            <DesktopPopover align="right">
-              <div className="mb-2 flex items-center gap-3 border-b border-zinc-800/60 px-4 py-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-base font-bold text-emerald-500">
-                  {displayInitial}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-zinc-50">{displayName}</p>
-                  <p className="truncate text-xs text-zinc-500">{displayEmail}</p>
-                </div>
-              </div>
-              <PopoverLink href="/settings/account">
-                <User className="h-4 w-4 text-zinc-400" />
-                Resumen de Cuenta
-              </PopoverLink>
-              <PopoverLink href="#">
-                <Wallet className="h-4 w-4 text-zinc-400" />
-                Mis Carteras
-              </PopoverLink>
-              <PopoverLink href="#">
-                <FileText className="h-4 w-4 text-zinc-400" />
-                Importar CSV
-              </PopoverLink>
-              <PopoverLink href="/settings/preferences">
-                <Key className="h-4 w-4 text-zinc-400" />
-                Preferencias
-              </PopoverLink>
-              <div className="my-2 border-t border-zinc-800/60" />
-              <button
-                className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-rose-500 transition hover:bg-rose-500/10"
-                disabled={loggingOut}
-                onClick={() => {
-                  setActiveDropdown(null);
-                  void handleLogout();
-                }}
-                type="button"
-              >
-                <LogOut className="h-4 w-4" />
-                {loggingOut ? "Cerrando..." : "Cerrar sesion"}
-              </button>
-            </DesktopPopover>
-          </div>
-        ) : null}
 
         {activeDropdown === "search-mobile" ? (
           <div className="border-b border-zinc-800 bg-[#09090b] px-4 py-4 lg:hidden">
@@ -609,6 +666,18 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           {mobileBottomNav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const ItemIcon = item.icon;
+
+            if (item.comingSoon) {
+              return (
+                <div
+                  className="flex min-h-[4rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-center opacity-35"
+                  key={item.href}
+                >
+                  <ItemIcon className="h-5 w-5 text-[#7D8596]" />
+                  <span className="text-[0.6875rem] font-medium text-[#7D8596]">{item.mobileLabel}</span>
+                </div>
+              );
+            }
 
             return (
               <button
@@ -761,16 +830,15 @@ function MobileIconButton({
 
 function DesktopPopover({
   children,
-  align,
   wide = false,
 }: {
   children: ReactNode;
-  align: "right";
+  align?: "right";
   wide?: boolean;
 }) {
   return (
     <div
-      className={`absolute ${align}-4 top-full z-50 mt-2 rounded-2xl border border-zinc-800 bg-[#121214] py-2 shadow-2xl md:${align}-6 lg:${align}-8 ${
+      className={`absolute right-0 top-full z-50 mt-2 rounded-2xl border border-zinc-800 bg-[#121214] py-2 shadow-2xl ${
         wide ? "w-80" : "w-64"
       }`}
     >
@@ -890,14 +958,22 @@ function formatHeaderCurrency(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-function buildPrimaryNav(marketsEnabled: boolean): NavItem[] {
-  const items: NavItem[] = [
+function buildPrimaryNav(_marketsEnabled: boolean): NavItem[] {
+  return [
     {
       href: "/dashboard",
       label: "Dashboard",
       mobileLabel: "Inicio",
       description: "Resumen general de tu patrimonio",
       icon: Home,
+    },
+    {
+      href: "/mercados",
+      label: "Mercados",
+      mobileLabel: "Mercados",
+      description: "Radar de precios, tendencias y watchlist",
+      icon: LineChart,
+      comingSoon: true,
     },
     {
       href: "/portfolio",
@@ -915,18 +991,6 @@ function buildPrimaryNav(marketsEnabled: boolean): NavItem[] {
       icon: ArrowLeftRight,
     },
   ];
-
-  if (marketsEnabled) {
-    items.splice(1, 0, {
-      href: "/mercados",
-      label: "Mercados",
-      mobileLabel: "Mercados",
-      description: "Radar de precios, tendencias y watchlist",
-      icon: LineChart,
-    });
-  }
-
-  return items;
 }
 
 function buildMobileBottomNav(marketsEnabled: boolean) {

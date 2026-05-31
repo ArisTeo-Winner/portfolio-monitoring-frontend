@@ -384,18 +384,18 @@ export function TransactionsTable({
           )}
         </section>
 
-        <div className="hidden overflow-x-auto rounded-lg border border-slate-800/50 shadow-[0_2px_20px_rgba(0,0,0,0.28)] md:block">
-        <table className="w-full text-left text-sm whitespace-nowrap">
+        <div className="hidden overflow-x-auto md:block">
+        <table className="w-full border-collapse text-left text-sm whitespace-nowrap">
           <thead>
-            <tr className="border-b border-slate-800/50 text-zinc-500 text-xs font-medium bg-zinc-900/40">
-              <th className="px-5 py-3.5">Type</th>
-              <th className="px-5 py-3.5">Date</th>
-              <th className="px-5 py-3.5">Assets</th>
-              <th className="px-5 py-3.5 text-right">Price</th>
-              <th className="px-5 py-3.5 text-right">Amount</th>
-              <th className="px-5 py-3.5 text-right">Fees</th>
-              <th className="px-5 py-3.5 text-right">Notes</th>
-              <th className="px-5 py-3.5 text-center">Actions</th>
+            <tr className="text-left text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b] [box-shadow:inset_0_-1px_0_#1a1f29]">
+              <th className="pb-4 pr-4 font-medium">Type</th>
+              <th className="px-4 pb-4 font-medium">Date</th>
+              <th className="px-4 pb-4 font-medium">Assets</th>
+              <th className="px-4 pb-4 text-right font-medium">Price</th>
+              <th className="px-4 pb-4 text-right font-medium">Amount</th>
+              <th className="px-4 pb-4 text-right font-medium">Fees</th>
+              <th className="px-4 pb-4 text-right font-medium">Notes</th>
+              <th className="pb-4 pl-4 text-center font-medium">Actions</th>
             </tr>
           </thead>
 
@@ -412,7 +412,7 @@ export function TransactionsTable({
 
               return (
                 <tr
-                  className="cursor-pointer border-b border-slate-800/50 transition hover:bg-slate-800/30"
+                  className="cursor-pointer transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#1a1f29]"
                   key={transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`}
                   onClick={() => void handleViewTransactionDetails(transaction)}
                   onKeyDown={(event) => {

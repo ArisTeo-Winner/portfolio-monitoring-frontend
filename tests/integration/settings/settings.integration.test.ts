@@ -32,7 +32,7 @@ describe("getAccountSettings – MSW integration", () => {
     const result = await getAccountSettings();
     expect(result.email).toBe("user@example.com");
     expect(result.username).toBe("testuser");
-    expect(result.baseCurrency).toBe("USD");
+    expect(result.preferredCurrency).toBe("USD");
   });
 
   it("throws ApiError on a 500 server error", async () => {

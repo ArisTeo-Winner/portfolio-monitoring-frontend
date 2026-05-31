@@ -20,9 +20,9 @@ describe("setAccessToken", () => {
     expect(useSessionStore.getState().accessToken).toBe("tok-123");
   });
 
-  it("writes the token to sessionStorage", () => {
+  it("does not persist the token to sessionStorage (memory-only security contract)", () => {
     setAccessToken("tok-abc");
-    expect(sessionStorage.getItem(STORAGE_KEY)).toBe("tok-abc");
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 
@@ -36,11 +36,11 @@ describe("getAccessToken", () => {
     expect(getAccessToken()).toBe("tok-xyz");
   });
 
-  it("reads from sessionStorage when the in-memory store is empty", () => {
+  it("returns null when in-memory store is empty (no sessionStorage fallback)", () => {
+    // Access token lives in memory only — sessionStorage is never used as fallback.
     sessionStorage.setItem(STORAGE_KEY, "stored-tok");
-    // Reset in-memory state to force the sessionStorage fallback
     useSessionStore.setState({ accessToken: null });
-    expect(getAccessToken()).toBe("stored-tok");
+    expect(getAccessToken()).toBeNull();
   });
 });
 

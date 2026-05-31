@@ -80,7 +80,7 @@ test.describe("Console errors — flujos críticos", () => {
 
   test("login: sin console.error al interactuar con el formulario", async ({ page }) => {
     // Route to a controlled error so the form processes the response without crashing
-    await page.route("/api/auth/login", (route) =>
+    await page.route(/\/api\/v1\/auth\/login/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",

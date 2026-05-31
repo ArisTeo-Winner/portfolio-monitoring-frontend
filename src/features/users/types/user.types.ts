@@ -12,4 +12,6 @@ export type UserResponse = {
   dateOfBirth: string | null;
   active: boolean;
   createdAt: string;
+  preferredCurrency: string;
+  timezone: string;
 };

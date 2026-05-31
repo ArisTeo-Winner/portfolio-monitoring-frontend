@@ -16,9 +16,9 @@ describe("persistSession", () => {
     expect(useSessionStore.getState().accessToken).toBe("my-token");
   });
 
-  it("persists the token in sessionStorage", () => {
+  it("does not persist the token to sessionStorage (memory-only security contract)", () => {
     persistSession("my-token");
-    expect(sessionStorage.getItem(STORAGE_KEY)).toBe("my-token");
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 

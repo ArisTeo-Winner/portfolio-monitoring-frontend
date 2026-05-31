@@ -34,7 +34,7 @@ test.describe("Login flow", () => {
   });
 
   test("muestra error de credenciales inválidas (BFF /api/auth/login)", async ({ page }) => {
-    await page.route("/api/auth/login", (route) =>
+    await page.route(/\/api\/v1\/auth\/login/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -51,7 +51,7 @@ test.describe("Login flow", () => {
 
   test("redirige a /portfolio tras login exitoso", async ({ page }) => {
     await mockBackendAPIs(page);
-    await page.route("/api/auth/login", (route) =>
+    await page.route(/\/api\/v1\/auth\/login/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",

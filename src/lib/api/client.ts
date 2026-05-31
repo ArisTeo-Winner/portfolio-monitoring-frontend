@@ -8,6 +8,27 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   auth?: boolean;
 };
 
+// ── Concurrent-refresh queue ──────────────────────────────────────────────────
+// Ensures that when multiple 401 responses arrive simultaneously only ONE
+// refresh request is issued. All other callers wait in the queue and are
+// resolved/rejected once the single refresh attempt completes.
+
+let _isRefreshing = false;
+type QueueEntry = { resolve: (ok: boolean) => void };
+const _refreshQueue: QueueEntry[] = [];
+
+function enqueueRefresh(): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    _refreshQueue.push({ resolve });
+  });
+}
+
+function flushRefreshQueue(ok: boolean): void {
+  _refreshQueue.splice(0).forEach(({ resolve }) => resolve(ok));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   return doApiRequest<T>(path, options, true);
 }
@@ -35,6 +56,9 @@ async function doApiRequest<T>(
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
+    // Required: sends the HttpOnly refresh-token cookie on every backend request.
+    // Without this the browser silently omits the cookie and silent refresh fails.
+    credentials: "include",
   });
 
   const raw = await response.text();
@@ -79,22 +103,49 @@ function isRefreshExcludedPath(path: string) {
   );
 }
 
+/**
+ * Silent session refresh.
+ *
+ * Calls the backend directly — NOT the BFF proxy.  The browser automatically
+ * includes the HttpOnly refresh-token cookie because of `credentials: "include"`.
+ *
+ * Concurrent callers: only one refresh request is issued at a time.
+ * All others wait in the queue and are resolved once the first call settles.
+ */
 async function tryRefreshSession(): Promise<boolean> {
+  // If a refresh is already in flight, wait for it instead of starting another.
+  if (_isRefreshing) {
+    return enqueueRefresh();
+  }
+
+  _isRefreshing = true;
   try {
-    const response = await fetch("/api/auth/refresh", {
+    const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
       method: "POST",
       cache: "no-store",
+      // Critical: the HttpOnly refresh-token cookie must travel to the backend.
+      credentials: "include",
     });
 
-    if (!response.ok) return false;
+    if (!response.ok) {
+      flushRefreshQueue(false);
+      return false;
+    }
 
-    const payload = await response.json() as Record<string, unknown>;
-    if (typeof payload?.accessToken !== "string") return false;
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (typeof payload?.accessToken !== "string") {
+      flushRefreshQueue(false);
+      return false;
+    }
 
-    persistSession(payload.accessToken as string);
+    persistSession(payload.accessToken);
+    flushRefreshQueue(true);
     return true;
   } catch {
+    flushRefreshQueue(false);
     return false;
+  } finally {
+    _isRefreshing = false;
   }
 }
 
@@ -106,6 +157,15 @@ function safeJsonParse(value: string) {
   }
 }
 
+/**
+ * RFC 9457 Problem Details guard.
+ * Requires at least a `status` (number) and one of `title` or `detail` (string).
+ */
 function isProblemDetails(value: unknown): value is ProblemDetails {
-  return typeof value === "object" && value !== null;
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v["status"] === "number" &&
+    (typeof v["title"] === "string" || typeof v["detail"] === "string")
+  );
 }

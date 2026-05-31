@@ -256,7 +256,7 @@ export default function PortfolioSymbolPage() {
     () => portfolioEntries.reduce((acc, current) => acc + Number(current.currentValue), 0),
     [portfolioEntries],
   );
-  const createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
+  const _createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
   const transactionsEnabled = entry ? SUPPORTED_TRANSACTION_TYPES.has(entry.assetType) : false;
   const initialAsset = useMemo<AssetOption | null>(() => {
     if (!entry) return null;
@@ -277,9 +277,12 @@ export default function PortfolioSymbolPage() {
       <main className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
         <PortfolioSidebar
           activeType={entry?.assetType ?? "CRYPTO"}
-          createdCount={createdCount}
+          defaultType={null}
           groups={sidebarGroups}
           onCreatePortfolio={() => setCreateModalOpen(true)}
+          onEditPortfolio={() => {}}
+          onRemovePortfolio={() => {}}
+          onSetDefault={() => {}}
           totalValue={totalValue}
         />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { AreaSeries, createChart, createSeriesMarkers } from "lightweight-charts";
+import { AreaSeries, createChart, createSeriesMarkers, PriceScaleMode } from "lightweight-charts";
 import type {
   IChartApi,
   ISeriesApi,
@@ -46,9 +46,10 @@ function formatTooltipDate(unixSeconds: number) {
 type Props = {
   symbol: string;
   range: ChartRange;
+  scaleMode?: "linear" | "log";
 };
 
-export function AssetChart({ symbol, range }: Props) {
+export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
   const { history, markers, loading, error } = useAssetChart(symbol, range);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +114,13 @@ export function AssetChart({ symbol, range }: Props) {
       seriesRef.current = null;
     };
   }, []);
+
+  // Apply scale mode without recreating the chart
+  useEffect(() => {
+    chartRef.current?.priceScale("right").applyOptions({
+      mode: scaleMode === "log" ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+    });
+  }, [scaleMode]);
 
   // Update series data when history changes — backend guarantees ascending order
   useEffect(() => {

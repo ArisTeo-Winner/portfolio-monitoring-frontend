@@ -7,6 +7,16 @@ import type {
   TransferTransactionPayload,
 } from "@/features/transactions/types/transaction.types";
 
+function toOffsetDateTime(localDateTimeInput: string): string {
+  const date = new Date(localDateTimeInput);
+  const offsetMinutes = date.getTimezoneOffset();
+  const sign = offsetMinutes <= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `${localDateTimeInput}:00${sign}${hh}:${mm}`;
+}
+
 function createIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -26,7 +36,7 @@ export function createBuyTransaction(payload: BuyOrSellTransactionPayload) {
     method: "POST",
     auth: true,
     headers: withIdempotencyKey(),
-    body: payload,
+    body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 
@@ -35,7 +45,7 @@ export function createSellTransaction(payload: BuyOrSellTransactionPayload) {
     method: "POST",
     auth: true,
     headers: withIdempotencyKey(),
-    body: payload,
+    body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 
@@ -44,7 +54,7 @@ export function createTransferTransaction(payload: TransferTransactionPayload) {
     method: "POST",
     auth: true,
     headers: withIdempotencyKey(),
-    body: payload,
+    body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 
@@ -53,7 +63,7 @@ export function updateTransaction(transactionId: string, payload: UpdateTransact
     method: "PUT",
     auth: true,
     headers: withIdempotencyKey(),
-    body: payload,
+    body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 

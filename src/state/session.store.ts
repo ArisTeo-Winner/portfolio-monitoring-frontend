@@ -1,7 +1,18 @@
+/**
+ * Session store — access token lives ONLY in memory (Zustand state).
+ *
+ * Security contract:
+ *  - NEVER persist the access token to localStorage or sessionStorage.
+ *  - The refresh token is an HttpOnly cookie managed exclusively by the
+ *    browser / backend. JS cannot read or write it.
+ *  - On page reload the access token is intentionally lost; the app
+ *    bootstrap silently calls POST /api/v1/tokens/refresh to recover
+ *    the session via the HttpOnly cookie.
+ */
+
 import { create } from "zustand";
 
 const CHANNEL_NAME = "cpm.auth.sync";
-const ACCESS_TOKEN_STORAGE_KEY = "cpm.accessToken";
 
 type SessionStore = {
   accessToken: string | null;
@@ -10,17 +21,18 @@ type SessionStore = {
 };
 
 export const useSessionStore = create<SessionStore>((set) => ({
-  accessToken: readStoredAccessToken(),
+  // Always null on first load — session is recovered via silent refresh.
+  accessToken: null,
   setAccessToken: (token: string) => {
-    writeStoredAccessToken(token);
     set({ accessToken: token });
   },
   clearSession: () => {
-    clearStoredAccessToken();
     set({ accessToken: null });
     broadcastLogout();
   },
 }));
+
+// ── Multi-tab logout sync via BroadcastChannel ────────────────────────────────
 
 let _channel: BroadcastChannel | null = null;
 
@@ -48,42 +60,16 @@ if (typeof window !== "undefined") {
   getChannel();
 }
 
+// ── Module-level helpers (used by lib/api/client and auth feature) ────────────
+
 export function getAccessToken(): string | null {
-  return useSessionStore.getState().accessToken ?? readStoredAccessToken();
+  return useSessionStore.getState().accessToken;
 }
 
 export function setAccessToken(token: string): void {
-  writeStoredAccessToken(token);
   useSessionStore.setState({ accessToken: token });
 }
 
 export function clearSessionStore(): void {
   useSessionStore.getState().clearSession();
-}
-
-function readStoredAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredAccessToken(token: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
-  } catch {
-    // Keep the in-memory session usable if storage is unavailable.
-  }
-}
-
-function clearStoredAccessToken(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-  } catch {
-    // Storage can be unavailable in restricted browser contexts.
-  }
 }

@@ -11,7 +11,7 @@ test.describe("Session Management", () => {
     skipUnlessMobile(testInfo);
     await mockBackendAPIs(page);
 
-    await page.route("/api/auth/logout", (route) =>
+    await page.route(/\/api\/v1\/auth\/logout/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -25,13 +25,16 @@ test.describe("Session Management", () => {
     await loginAs(page);
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
+    // After reload the in-memory token is lost; session is recovered via the
+    // HttpOnly refresh-token cookie (mocked by loginAs to return the fake token).
     await page.reload();
     await page.waitForLoadState("networkidle");
 
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 10_000 });
 
+    // Access token is memory-only — it must NOT appear in sessionStorage.
     const token = await page.evaluate((key) => sessionStorage.getItem(key), ACCESS_TOKEN_KEY);
-    expect(token, "Access token should survive a page reload").not.toBeNull();
+    expect(token, "Access token must not be stored in sessionStorage").toBeNull();
   });
 
   // ─── 2. RUTA PROTEGIDA SIN SESIÓN ─────────────────────────────────────────
@@ -73,12 +76,22 @@ test.describe("Session Management", () => {
     await expectSessionCleared(page);
   });
 
-  // ─── 5. TOKEN ELIMINADO ENTRE NAVEGACIONES ────────────────────────────────
+  // ─── 5. REFRESH COOKIE EXPIRADA ENTRE NAVEGACIONES ───────────────────────
   test("token eliminado entre navegaciones redirige a /login", async ({ page }) => {
     await loginAs(page);
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
-    await page.evaluate((key) => sessionStorage.removeItem(key), ACCESS_TOKEN_KEY);
+    // Simulate an expired/missing HttpOnly refresh cookie: override the mock
+    // so the next silent refresh returns 401. The in-memory token is lost on
+    // a new full navigation (page.goto), triggering the redirect to /login.
+    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Refresh token expired" }),
+      }),
+    );
+
     await page.goto("/transactions");
 
     await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
@@ -92,6 +105,17 @@ test.describe("Session Management", () => {
 
     await page.getByTestId("nav-transactions").click();
     await expect(page).toHaveURL(/\/transactions/, { timeout: 10_000 });
+
+    // Simulate the backend having revoked the refresh cookie on logout:
+    // override the mock so any subsequent silent refresh returns 401.
+    // This mirrors real behaviour — the backend clears the HttpOnly cookie.
+    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Session revoked" }),
+      }),
+    );
 
     await page.getByTestId("mobile-menu-btn").click();
     const logoutBtn = page.getByTestId("logout-button");

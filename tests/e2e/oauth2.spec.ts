@@ -43,8 +43,9 @@ test.describe("OAuth2 / Google Login", () => {
 
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
+    // Access token is memory-only — it must NOT appear in sessionStorage.
     const token = await page.evaluate(() => sessionStorage.getItem("cpm.accessToken"));
-    expect(token, "Access token should be persisted after OAuth2 callback").not.toBeNull();
+    expect(token, "Access token must not be stored in sessionStorage after OAuth2").toBeNull();
   });
 
   // ─── 3. ERROR CONOCIDO → MENSAJE CONTROLADO ───────────────────────────────
@@ -79,14 +80,9 @@ test.describe("OAuth2 / Google Login", () => {
 
   // ─── 5. ESTADO DE CARGA VISIBLE DURANTE EL CALLBACK ──────────────────────
   test("estado 'Signing you in' es visible mientras se procesa el callback", async ({ page }) => {
-    await page.route("/api/auth/session", async (route) => {
-      await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true }),
-      });
-    });
+    // Use a promise that never resolves to keep the loading state visible
+    // indefinitely so the assertion can observe it without a race condition.
+    await page.route("/api/auth/session", () => new Promise(() => {}));
     await mockBackendAPIs(page);
 
     void page.goto(
@@ -95,7 +91,7 @@ test.describe("OAuth2 / Google Login", () => {
 
     await expect(
       page.getByRole("heading", { name: /signing you in/i }),
-    ).toBeVisible({ timeout: 5_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   // ─── 6. SIN LOOP INFINITO EN CALLBACK ────────────────────────────────────

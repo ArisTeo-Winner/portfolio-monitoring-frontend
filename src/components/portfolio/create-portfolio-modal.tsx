@@ -1,22 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProblemAlert } from "@/components/ui/problem-alert";
-import { PORTFOLIO_DEFINITIONS } from "@/components/portfolio/portfolio-sidebar-data";
 import { usePortfolioStore } from "@/state/portfolio.store";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MAX_NAME_LENGTH = 24;
+
+const AVATAR_OPTIONS = ["💰", "📈", "🪙", "🏦", "💎", "🚀", "⚡", "🌐", "🔥", "🛡️"] as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "method" | "manual" | "wallet" | "binance";
+type Step = "method" | "manual" | "avatar" | "wallet" | "binance";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
   existingAssetTypes: string[];
+  /** When provided, opens in Edit mode pre-filled with these values. */
+  editingPortfolio?: { assetType: string; label: string; avatar?: string; countAsTotal?: boolean; createdAt?: string };
 };
 
-// ─── Option card data ─────────────────────────────────────────────────────────
+// ─── Method cards ─────────────────────────────────────────────────────────────
 
 const METHODS = [
   {
@@ -24,7 +31,7 @@ const METHODS = [
     icon: <ManualIcon />,
     title: "Add Transactions Manually",
     description: "Enter all transaction details at your own pace to track your portfolio.",
-    available: true,
+    available: false,
   },
   {
     id: "wallet" as const,
@@ -54,31 +61,48 @@ const METHODS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAssetTypes }: Props) {
+export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAssetTypes, editingPortfolio }: Props) {
   const addPortfolio = usePortfolioStore((s) => s.addPortfolio);
+  const editPortfolio = usePortfolioStore((s) => s.editPortfolio);
 
-  const availableTypes = useMemo(
-    () => PORTFOLIO_DEFINITIONS.filter((item) => !existingAssetTypes.includes(item.assetType)),
-    [existingAssetTypes],
-  );
+  const isEditMode = Boolean(editingPortfolio);
 
-  const [step, setStep] = useState<Step>("method");
-  const [name, setName] = useState("");
-  const [assetType, setAssetType] = useState<string>(availableTypes[0]?.assetType ?? "CRYPTO");
+  const initialStep: Step = isEditMode ? "manual" : "method";
+
+  const [step, setStep] = useState<Step>(initialStep);
+  const [name, setName] = useState(editingPortfolio?.label ?? "");
+  const [assetType, setAssetType] = useState<string>(editingPortfolio?.assetType ?? "");
+  const [avatar, setAvatar] = useState<string | undefined>(editingPortfolio?.avatar);
+  const [countAsTotal, setCountAsTotal] = useState(editingPortfolio?.countAsTotal ?? true);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync form when editingPortfolio changes (modal reused between create/edit)
+  useEffect(() => {
+    if (isEditMode && editingPortfolio) {
+      setStep("manual");
+      setName(editingPortfolio.label);
+      setAssetType(editingPortfolio.assetType);
+      setAvatar(editingPortfolio.avatar);
+      setCountAsTotal(editingPortfolio.countAsTotal ?? true);
+    } else if (!isEditMode) {
+      setStep("method");
+      setName("");
+      setAvatar(undefined);
+      setCountAsTotal(true);
+    }
+  }, [isEditMode, editingPortfolio]);
+
 
   if (!isOpen) return null;
 
   function handleClose() {
-    setStep("method");
+    setStep(initialStep);
     setName("");
     setError(null);
-    setAssetType(availableTypes[0]?.assetType ?? "CRYPTO");
+    setAvatar(undefined);
+    setCountAsTotal(true);
+    setAssetType("");
     onClose();
-  }
-
-  function handleMethodSelect(id: Step) {
-    setStep(id);
   }
 
   function handleSubmit() {
@@ -86,39 +110,56 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
     if (!trimmed) { setError("Portfolio name is required."); return; }
     if (!assetType) { setError("Choose an asset class."); return; }
 
-    addPortfolio({ assetType, label: trimmed, createdAt: new Date().toISOString() });
+    const preference = {
+      assetType,
+      label: trimmed,
+      createdAt: editingPortfolio?.createdAt ?? new Date().toISOString(),
+      avatar,
+      countAsTotal,
+    };
+
+    if (isEditMode) {
+      editPortfolio(preference);
+    } else {
+      addPortfolio(preference);
+    }
     handleClose();
     onCreated();
   }
 
+  const stepTitle =
+    step === "method" ? "Crear portfolio"
+    : isEditMode ? "Editar portfolio"
+    : step === "manual" ? "Add portfolio"
+    : step === "avatar" ? "Choose avatar"
+    : step === "wallet" ? "Connect Wallet"
+    : "Connect Binance";
+
+  const canGoBack = step !== "method" && !isEditMode;
+
   return (
-    // Overlay
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-[#070a11]/80 backdrop-blur-[6px]" />
 
-      {/* Panel */}
       <div className="relative w-full max-w-[480px] overflow-hidden rounded-[1.4rem] border border-[#1f2430] bg-[#111317] shadow-[0_40px_100px_rgba(0,0,0,0.56)]">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1a1f29] px-6 py-5">
           <div className="flex items-center gap-3">
-            {step !== "method" ? (
+            {canGoBack ? (
               <button
                 aria-label="Back"
                 className="mr-1 flex h-8 w-8 items-center justify-center rounded-full text-[#8a94a6] transition hover:bg-[#1b2130] hover:text-white"
-                onClick={() => setStep("method")}
+                onClick={() => setStep(step === "avatar" ? "manual" : "method")}
                 type="button"
               >
                 <BackArrowIcon />
               </button>
             ) : null}
-            <h2 className="text-[1.05rem] font-semibold tracking-[-0.03em] text-white">
-              {step === "method" ? "Create portfolio" : step === "manual" ? "Add portfolio" : step === "wallet" ? "Connect Wallet" : "Connect Binance"}
-            </h2>
+            <h2 className="text-[1.05rem] font-semibold tracking-[-0.03em] text-white">{stepTitle}</h2>
           </div>
           <button
             aria-label="Close"
@@ -130,10 +171,10 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
           </button>
         </div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div className="px-5 py-5">
 
-          {/* Step: method selection */}
+          {/* ── Step: method ── */}
           {step === "method" ? (
             <div className="space-y-3">
               {METHODS.map((method) => (
@@ -145,7 +186,7 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
                   }`}
                   disabled={!method.available}
                   key={method.id}
-                  onClick={() => method.available && handleMethodSelect(method.id)}
+                  onClick={() => method.available && setStep(method.id)}
                   type="button"
                 >
                   <div className="flex items-start gap-4">
@@ -171,71 +212,137 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
             </div>
           ) : null}
 
-          {/* Step: manual form */}
+          {/* ── Step: manual form (CMC-style) ── */}
           {step === "manual" ? (
-            <div className="space-y-4">
-              {!availableTypes.length ? (
-                <ProblemAlert message="All available asset classes already have a portfolio." />
-              ) : null}
+            <div className="space-y-5">
 
-              <div className="space-y-3">
-                <label className="block rounded-[0.95rem] border border-[#1f2430] bg-[#0d1014] px-4 py-3 transition focus-within:border-[#2a3245]">
-                  <span className="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-[#71819b]">Name</span>
+              {/* Avatar */}
+              <div>
+                <p className="mb-3 text-[0.82rem] font-semibold text-[#c4cede]">Portfolio avatar</p>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-[#0d1014] text-[2.5rem] shadow-[0_10px_28px_rgba(0,0,0,0.3)]">
+                    {avatar ?? (name.trim() ? name.trim().slice(0, 1).toUpperCase() : "?")}
+                  </div>
+                  <button
+                    className="rounded-[0.75rem] bg-[#3861fb] px-4 py-2 text-[0.82rem] font-semibold text-white transition hover:bg-[#4f74ff]"
+                    onClick={() => setStep("avatar")}
+                    type="button"
+                  >
+                    Change
+                  </button>
+                  {avatar ? (
+                    <button
+                      className="text-[0.78rem] text-[#7f8aa3] transition hover:text-white"
+                      onClick={() => setAvatar(undefined)}
+                      type="button"
+                    >
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Name */}
+              <div>
+                <p className="mb-2 text-[0.82rem] font-semibold text-[#c4cede]">Portfolio Name</p>
+                <div className="rounded-[0.95rem] border border-[#1f2430] bg-[#0d1014] px-4 py-3 transition focus-within:border-[#2a3245]">
                   <input
                     autoFocus
-                    className="mt-2 w-full bg-transparent text-[0.92rem] font-semibold text-white outline-none placeholder:text-[#3d4755]"
+                    className="w-full bg-transparent text-[0.95rem] font-medium text-white outline-none placeholder:text-[#3d4755]"
+                    maxLength={MAX_NAME_LENGTH}
                     onChange={(e) => { setName(e.target.value); setError(null); }}
-                    placeholder="Crypto"
+                    placeholder="My portfolio"
                     type="text"
                     value={name}
                   />
-                </label>
+                </div>
+                <p className="mt-1.5 text-right text-[0.72rem] text-[#5f6d82]">
+                  {name.length}/{MAX_NAME_LENGTH} characters
+                </p>
+              </div>
 
-                <label className="block rounded-[0.95rem] border border-[#1f2430] bg-[#0d1014] px-4 py-3 transition focus-within:border-[#2a3245]">
-                  <span className="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-[#71819b]">Asset class</span>
+              {/* Asset class */}
+              <div>
+                <p className="mb-2 text-[0.82rem] font-semibold text-[#c4cede]">Asset class</p>
+                <div className="rounded-[0.95rem] border border-[#1f2430] bg-[#0d1014] px-4 py-3 transition focus-within:border-[#2a3245]">
                   <select
-                    className="mt-2 w-full bg-transparent text-[0.92rem] font-semibold text-white outline-none"
+                    className="w-full bg-transparent text-[0.92rem] font-medium text-white outline-none disabled:opacity-60"
+                    disabled={isEditMode}
                     onChange={(e) => setAssetType(e.target.value)}
                     value={assetType}
                   >
-                    {availableTypes.map((item) => (
-                      <option className="bg-[#111317]" key={item.assetType} value={item.assetType}>
-                        {item.label}
-                      </option>
-                    ))}
+                    <option className="bg-[#111317]" value={assetType}>{assetType}</option>
                   </select>
-                </label>
+                </div>
+              </div>
+
+              {/* Count as total toggle */}
+              <div className="flex items-start justify-between gap-4 rounded-[0.95rem] border border-[#1a1f29] bg-[#0d1014] px-4 py-4">
+                <div>
+                  <p className="text-[0.88rem] font-semibold text-white">Count as my portfolio</p>
+                  <p className="mt-1 text-[0.76rem] leading-[1.4] text-[#7f8aa3]">
+                    Assets in this portfolio will be included in total value
+                  </p>
+                </div>
+                <button
+                  aria-checked={countAsTotal}
+                  className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
+                    countAsTotal ? "bg-[#3861fb]" : "bg-[#2a3245]"
+                  }`}
+                  onClick={() => setCountAsTotal((v) => !v)}
+                  role="switch"
+                  type="button"
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                      countAsTotal ? "translate-x-5" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
               </div>
 
               <ProblemAlert message={error} />
 
               <button
-                className="w-full rounded-[0.9rem] bg-[#17c784] px-4 py-3 text-[0.88rem] font-semibold text-[#0a1a12] shadow-[0_12px_28px_rgba(23,199,132,0.22)] transition hover:bg-[#1ad48f] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!availableTypes.length}
+                className="w-full rounded-[0.9rem] bg-[#3861fb] px-4 py-3 text-[0.88rem] font-semibold text-white shadow-[0_12px_28px_rgba(56,97,251,0.22)] transition hover:bg-[#4f74ff] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={false}
                 onClick={handleSubmit}
                 type="button"
               >
-                Create portfolio
+                {isEditMode ? "Guardar cambios" : "Create Portfolio"}
               </button>
             </div>
           ) : null}
 
-          {/* Step: wallet (coming soon) */}
-          {step === "wallet" ? (
-            <ComingSoonPlaceholder
-              description="La conexión de wallets estará disponible en una próxima versión."
-              icon={<WalletIcon large />}
-              title="Connect Your Wallet"
-            />
+          {/* ── Step: avatar picker ── */}
+          {step === "avatar" ? (
+            <div>
+              <p className="mb-4 text-[0.82rem] text-[#7f8aa3]">Select an emoji for your portfolio avatar.</p>
+              <div className="grid grid-cols-5 gap-3">
+                {AVATAR_OPTIONS.map((emoji) => (
+                  <button
+                    className={`flex h-14 w-full items-center justify-center rounded-[0.9rem] text-[1.75rem] transition-all duration-150 ${
+                      avatar === emoji
+                        ? "bg-[#1e2d4a] ring-2 ring-[#3861fb]"
+                        : "bg-[#0d1014] hover:bg-[#161b23]"
+                    }`}
+                    key={emoji}
+                    onClick={() => { setAvatar(emoji); setStep("manual"); }}
+                    type="button"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : null}
 
-          {/* Step: binance (coming soon) */}
+          {/* ── Step: wallet / binance placeholders ── */}
+          {step === "wallet" ? (
+            <ComingSoon description="La conexión de wallets estará disponible en una próxima versión." icon={<WalletIcon large />} title="Connect Your Wallet" />
+          ) : null}
           {step === "binance" ? (
-            <ComingSoonPlaceholder
-              description="La integración con Binance estará disponible en una próxima versión."
-              icon={<BinanceIcon large />}
-              title="Connect Binance"
-            />
+            <ComingSoon description="La integración con Binance estará disponible en una próxima versión." icon={<BinanceIcon large />} title="Connect Binance" />
           ) : null}
         </div>
       </div>
@@ -245,17 +352,13 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function ComingSoonPlaceholder({ title, description, icon }: { title: string; description: string; icon: React.ReactNode }) {
+function ComingSoon({ title, description, icon }: { title: string; description: string; icon: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center py-8 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-[1.2rem] bg-[#0d1014] shadow-[0_16px_36px_rgba(0,0,0,0.28)]">
-        {icon}
-      </div>
+      <div className="flex h-16 w-16 items-center justify-center rounded-[1.2rem] bg-[#0d1014] shadow-[0_16px_36px_rgba(0,0,0,0.28)]">{icon}</div>
       <p className="mt-5 text-[1rem] font-semibold text-white">{title}</p>
       <p className="mt-2 max-w-[26rem] text-[0.82rem] leading-[1.6] text-[#7f8aa3]">{description}</p>
-      <span className="mt-4 rounded-full bg-[#1e2535] px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#7f8aa3]">
-        Próximamente
-      </span>
+      <span className="mt-4 rounded-full bg-[#1e2535] px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#7f8aa3]">Próximamente</span>
     </div>
   );
 }

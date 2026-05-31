@@ -5,7 +5,13 @@
 import { create } from "zustand";
 import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-data";
 import type { SidebarGroup } from "@/components/portfolio/portfolio-sidebar-data";
-import { readPortfolioPreferences, savePortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
+import {
+  readPortfolioPreferences,
+  savePortfolioPreference,
+  removePortfolioPreference,
+  saveDefaultPortfolio,
+  readDefaultPortfolio,
+} from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 
@@ -35,6 +41,14 @@ type PortfolioStore = {
    * and rebuilds the sidebar groups without waiting for an API round-trip.
    */
   addPortfolio: (preference: PortfolioPreference) => void;
+  /** Update name/avatar/toggle for an existing portfolio preference. */
+  editPortfolio: (preference: PortfolioPreference) => void;
+  /** Remove a portfolio preference from localStorage and rebuild sidebar. */
+  removePortfolio: (assetType: string) => void;
+  /** Mark an assetType as the default portfolio. */
+  setDefaultPortfolio: (assetType: string) => void;
+  /** Currently persisted default assetType (null = none set). */
+  defaultPortfolio: string | null;
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -44,6 +58,7 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
   selectedType: "",
   totalValue: 0,
   entries: [],
+  defaultPortfolio: readDefaultPortfolio(),
 
   setSelectedType: (type) => set({ selectedType: type }),
 
@@ -51,15 +66,34 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
     const preferences = readPortfolioPreferences();
     const groups = buildSidebarGroups(entries, preferences);
     const totalValue = entries.reduce((acc, e) => acc + Number(e.currentValue), 0);
-    set({ entries, groups, totalValue });
+    set({ entries, groups, totalValue, defaultPortfolio: readDefaultPortfolio() });
   },
 
   addPortfolio: (preference) => {
     savePortfolioPreference(preference);
-    // Rebuild sidebar immediately with the entries already in store
     const preferences = readPortfolioPreferences();
     const groups = buildSidebarGroups(get().entries, preferences);
     set({ groups });
+  },
+
+  editPortfolio: (preference) => {
+    savePortfolioPreference(preference);
+    const preferences = readPortfolioPreferences();
+    const groups = buildSidebarGroups(get().entries, preferences);
+    set({ groups });
+  },
+
+  removePortfolio: (assetType) => {
+    removePortfolioPreference(assetType);
+    const preferences = readPortfolioPreferences();
+    const groups = buildSidebarGroups(get().entries, preferences);
+    const defaultPortfolio = readDefaultPortfolio();
+    set({ groups, defaultPortfolio });
+  },
+
+  setDefaultPortfolio: (assetType) => {
+    saveDefaultPortfolio(assetType);
+    set({ defaultPortfolio: assetType });
   },
 }));
 

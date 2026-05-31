@@ -2,7 +2,7 @@ export const settingsFixtures = {
   account: {
     email: "user@example.com",
     username: "testuser",
-    baseCurrency: "USD",
+    preferredCurrency: "USD",
     timezone: "UTC",
     passwordLastUpdatedAt: null,
     twoFactorEnabled: false,

@@ -76,7 +76,7 @@ test.describe("Login form — estados y validación", () => {
   });
 
   test("submit muestra 'Accediendo...' y se deshabilita durante el request", async ({ page }) => {
-    await page.route("/api/auth/login", async (route) => {
+    await page.route(/\/api\/v1\/auth\/login/, async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1_200));
       await route.fulfill({
         status: 401,
@@ -99,7 +99,7 @@ test.describe("Login form — estados y validación", () => {
 
   test("doble-submit no envía dos requests al backend", async ({ page }) => {
     let callCount = 0;
-    await page.route("/api/auth/login", async (route) => {
+    await page.route(/\/api\/v1\/auth\/login/, async (route) => {
       callCount++;
       await new Promise((resolve) => setTimeout(resolve, 800));
       await route.fulfill({
@@ -124,7 +124,7 @@ test.describe("Login form — estados y validación", () => {
 
   test("error del backend se limpia al iniciar un nuevo submit", async ({ page }) => {
     let attempt = 0;
-    await page.route("/api/auth/login", (route) => {
+    await page.route(/\/api\/v1\/auth\/login/, (route) => {
       attempt++;
       if (attempt === 1) {
         return route.fulfill({

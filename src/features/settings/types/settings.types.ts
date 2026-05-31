@@ -1,7 +1,7 @@
 export type AccountSettings = {
   email: string;
   username: string;
-  baseCurrency?: "USD" | "EUR" | "MXN" | string;
+  preferredCurrency?: "USD" | "EUR" | "MXN" | string;
   timezone?: string;
   passwordLastUpdatedAt?: string | null;
   twoFactorEnabled?: boolean | null;
@@ -10,7 +10,7 @@ export type AccountSettings = {
 export type UpdateAccountSettingsInput = {
   email: string;
   username: string;
-  baseCurrency: "USD" | "EUR" | "MXN";
+  preferredCurrency: "USD" | "EUR" | "MXN" | string;
   timezone: string;
 };
 

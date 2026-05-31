@@ -6,7 +6,11 @@ export const loginSchema = z.object({
 });
 
 export const registerSchema = z.object({
-  username: z.string().min(3, "Mínimo 3 caracteres").max(50, "Máximo 50 caracteres"),
+  username: z
+    .string()
+    .min(3, "Mínimo 3 caracteres")
+    .max(50, "Máximo 50 caracteres")
+    .regex(/^[a-zA-Z0-9_]+$/, "Solo letras, números y guión bajo (_)"),
   email: z.string().email("Correo inválido"),
   password: z
     .string()

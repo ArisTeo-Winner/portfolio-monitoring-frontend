@@ -79,7 +79,16 @@ test.describe("Performance básica — loading states", () => {
   // ── 4. SESSION / REDIRECT ─────────────────────────────────────────────────
 
   test("anonymous user: redirect a /login en menos de 5 s", async ({ page }) => {
-    // No mockBackendAPIs / loginAs — navigate directly as anonymous user
+    // Simulate missing HttpOnly refresh cookie: protected-shell calls the
+    // refresh endpoint on bootstrap; returning 401 immediately makes the
+    // redirect deterministic and fast regardless of whether a backend is running.
+    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "No session" }),
+      }),
+    );
     const start = Date.now();
     await page.goto("/portfolio");
     await expect(page).toHaveURL(/\/login/, { timeout: 5_000 });

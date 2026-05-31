@@ -1,16 +1,20 @@
 import { expect, type Page } from "@playwright/test";
 
-const SESSION_STORAGE_KEY = "cpm.accessToken";
-
+/**
+ * Verify no access token was persisted to sessionStorage.
+ * Access token must live ONLY in Zustand memory (CLAUDE.md §6).
+ * sessionStorage should always be empty; this assertion makes the
+ * security contract explicit in test output.
+ */
 export async function expectSessionCleared(page: Page) {
-  const token = await page.evaluate(
-    (key) => sessionStorage.getItem(key),
-    SESSION_STORAGE_KEY,
-  );
-  expect(token, "sessionStorage must not contain the access token after session end").toBeNull();
+  const storageSnapshot = await page.evaluate(() => JSON.stringify(sessionStorage));
+  expect(
+    storageSnapshot,
+    "sessionStorage must never contain any token data",
+  ).not.toMatch(/token|jwt|eyJ/i);
 }
 
-const FAKE_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.dGVzdA.dGVzdA";
+const FAKE_ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiJ9.dGVzdA.dGVzdA";
 
 export async function openLoginDialog(page: Page) {
   await page.goto("/login");
@@ -27,7 +31,19 @@ export async function openLoginDialog(page: Page) {
 }
 
 export async function loginAs(page: Page) {
-  await page.route("/api/auth/login", (route) =>
+  // Mock the backend login endpoint (called directly by login.ts — no BFF proxy).
+  // Pattern matches http://localhost:8080/api/v1/auth/login
+  await page.route(/\/api\/v1\/auth\/login/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ accessToken: FAKE_ACCESS_TOKEN }),
+    }),
+  );
+
+  // Also mock the refresh endpoint so the protected-shell bootstrap
+  // (triggered on /portfolio load) resolves immediately without a real backend.
+  await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -98,8 +114,15 @@ export async function mockBackendAPIs(page: Page) {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({}) }),
   );
 
-  await page.route("/api/auth/refresh", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "No refresh token" }) }),
+  // Silent refresh endpoint — called directly by protected-shell bootstrap and
+  // client.ts retry logic. Return 401 to simulate an unauthenticated state in
+  // tests that don't call loginAs first, or override per-test as needed.
+  await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "No refresh token" }),
+    }),
   );
 
   // Sessions mock — needed by settings/sessions page; included here so any test

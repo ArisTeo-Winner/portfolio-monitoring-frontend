@@ -40,6 +40,14 @@ export function getAssetPalette(symbol: string): { base: string; highlight: stri
   return palettes[index];
 }
 
+// Dividends only apply to equities/funds in this product — crypto has no
+// dividend concept, and government/corporate bonds pay coupon interest
+// (a different, not-yet-modeled flow), not dividends.
+export function supportsDividend(assetType: string): boolean {
+  const normalized = normalizeAssetType(assetType);
+  return normalized === "STOCK" || normalized === "ETF";
+}
+
 export function normalizeAssetType(assetType: string, assetSymbol?: string): string {
   if (assetSymbol) {
     const symbol = assetSymbol.toUpperCase();

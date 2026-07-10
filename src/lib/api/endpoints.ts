@@ -1,3 +1,5 @@
+import { encodeBmvSymbol } from "@/lib/utils/currency";
+
 export const endpoints = {
   auth: {
     login: "/api/v1/auth/login",
@@ -33,12 +35,17 @@ export const endpoints = {
     buy: "/api/v1/me/transactions/buy",
     sell: "/api/v1/me/transactions/sell",
     transfer: "/api/v1/me/transactions/transfer",
+    dividend: "/api/v1/me/transactions/dividend",
   },
   assets: {
     search: "/api/v1/assets/search",
+    popular: "/api/v1/assets/popular",
   },
   marketdata: {
     cryptoPrice: (symbol: string) => `/api/v1/crypto/${symbol}/price`,
     stockPrice: (symbol: string) => `/api/v1/marketdata/stock?symbol=${encodeURIComponent(symbol)}`,
+    bmvHistorical: (symbol: string, from: string, to: string) =>
+      `/api/v1/marketdata/bmv/historical/${encodeBmvSymbol(symbol)}?from=${from}&to=${to}`,
+    usdMxnRate: "/api/v1/marketdata/fx/usdmxn",
   },
 };

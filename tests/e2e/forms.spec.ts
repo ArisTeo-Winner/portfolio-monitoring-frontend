@@ -179,7 +179,7 @@ test.describe("Settings Account form — estados y validación", () => {
   test("Save y Reset se habilitan tras modificar un campo", async ({ page }) => {
     await goToAccountSettings(page);
 
-    const usernameInput = page.getByTestId("username-input").locator("input");
+    const usernameInput = page.getByTestId("first-name-input").locator("input");
     await usernameInput.fill("newusername");
 
     await expect(page.getByTestId("settings-save-button")).toBeEnabled({ timeout: 3_000 });
@@ -189,7 +189,7 @@ test.describe("Settings Account form — estados y validación", () => {
   test("Reset restaura el valor original y deshabilita los botones", async ({ page }) => {
     await goToAccountSettings(page);
 
-    const usernameInput = page.getByTestId("username-input").locator("input");
+    const usernameInput = page.getByTestId("first-name-input").locator("input");
     const originalValue = await usernameInput.inputValue();
 
     await usernameInput.fill("temporaryvalue");
@@ -228,7 +228,7 @@ test.describe("Settings Account form — estados y validación", () => {
     await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("settings-save-button")).toBeDisabled({ timeout: 8_000 });
 
-    await page.getByTestId("username-input").locator("input").fill("newusername");
+    await page.getByTestId("first-name-input").locator("input").fill("newusername");
     await expect(page.getByTestId("settings-save-button")).toBeEnabled({ timeout: 3_000 });
     await page.getByTestId("settings-save-button").click();
 
@@ -239,11 +239,11 @@ test.describe("Settings Account form — estados y validación", () => {
   test("Save exitoso muestra mensaje de confirmación y vuelve a disabled", async ({ page }) => {
     await goToAccountSettings(page);
 
-    await page.getByTestId("username-input").locator("input").fill("savedusername");
+    await page.getByTestId("first-name-input").locator("input").fill("savedusername");
     await expect(page.getByTestId("settings-save-button")).toBeEnabled({ timeout: 3_000 });
     await page.getByTestId("settings-save-button").click();
 
-    await expect(page.getByText(/configuraci[oó]n guardada/i)).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText(/[Pp]erfil actualizado/i)).toBeVisible({ timeout: 8_000 });
     // After save, the form resets isDirty = false
     await expect(page.getByTestId("settings-save-button")).toBeDisabled({ timeout: 5_000 });
   });

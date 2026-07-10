@@ -2,6 +2,7 @@
 import { endpoints } from "@/lib/api/endpoints";
 import type {
   BuyOrSellTransactionPayload,
+  RegisterDividendPayload,
   UpdateTransactionPayload,
   TransactionResponse,
   TransferTransactionPayload,
@@ -25,35 +26,49 @@ function createIdempotencyKey() {
   return `tx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function withIdempotencyKey() {
+// Idempotency-Key: callers that may retry the SAME submit attempt (e.g. a form
+// that retries after a failed request) should pass their own pre-generated
+// key so retries reuse it instead of minting a new one each call — otherwise
+// the backend's idempotency protection never kicks in. When omitted, a fresh
+// key is generated (single-shot callers, e.g. programmatic/test usage).
+function withIdempotencyKey(idempotencyKey?: string) {
   return {
-    "X-Idempotency-Key": createIdempotencyKey(),
+    "X-Idempotency-Key": idempotencyKey ?? createIdempotencyKey(),
   };
 }
 
-export function createBuyTransaction(payload: BuyOrSellTransactionPayload) {
+export function createBuyTransaction(payload: BuyOrSellTransactionPayload, idempotencyKey?: string) {
   return apiRequest<TransactionResponse>(endpoints.transactions.buy, {
     method: "POST",
     auth: true,
-    headers: withIdempotencyKey(),
+    headers: withIdempotencyKey(idempotencyKey),
     body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 
-export function createSellTransaction(payload: BuyOrSellTransactionPayload) {
+export function createSellTransaction(payload: BuyOrSellTransactionPayload, idempotencyKey?: string) {
   return apiRequest<TransactionResponse>(endpoints.transactions.sell, {
     method: "POST",
     auth: true,
-    headers: withIdempotencyKey(),
+    headers: withIdempotencyKey(idempotencyKey),
     body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }
 
-export function createTransferTransaction(payload: TransferTransactionPayload) {
+export function createTransferTransaction(payload: TransferTransactionPayload, idempotencyKey?: string) {
   return apiRequest<TransactionResponse>(endpoints.transactions.transfer, {
     method: "POST",
     auth: true,
-    headers: withIdempotencyKey(),
+    headers: withIdempotencyKey(idempotencyKey),
+    body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
+  });
+}
+
+export function registerDividend(payload: RegisterDividendPayload, idempotencyKey?: string) {
+  return apiRequest<TransactionResponse>(endpoints.transactions.dividend, {
+    method: "POST",
+    auth: true,
+    headers: withIdempotencyKey(idempotencyKey),
     body: { ...payload, transactionDate: toOffsetDateTime(payload.transactionDate) },
   });
 }

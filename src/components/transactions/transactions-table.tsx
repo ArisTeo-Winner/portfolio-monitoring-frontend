@@ -5,6 +5,7 @@ import { AddTransactionModal, type InitialTransactionDraft } from "@/components/
 import { Modal } from "@/components/ui/modal";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
+import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { deleteTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
@@ -62,6 +63,12 @@ export function TransactionsTable({
       const data = await getUserTransactions({ assetType });
       setTransactions(data);
       setLogoRegistry(readAssetLogoRegistry());
+
+      if (data.length) {
+        void prefetchAssetLogos(
+          data.map((t) => ({ symbol: t.assetSymbol, assetType: t.assetType })),
+        ).then((updated) => setLogoRegistry(updated));
+      }
     } catch (error) {
       console.error("Failed to fetch transactions", error);
       setTransactions([]);
@@ -441,7 +448,7 @@ export function TransactionsTable({
 
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <AssetAvatar symbol={transaction.assetSymbol} logoUrl={resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap)} />
+                      <AssetAvatar assetType={transaction.assetType} symbol={transaction.assetSymbol} logoUrl={resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap)} />
                       <div className="min-w-0">
                         <p className="text-[0.86rem] font-medium text-white">{getAssetDisplayName(transaction.assetSymbol)}</p>
                         <p className="mt-0.5 text-[0.74rem] font-medium text-slate-400">{transaction.assetSymbol.toUpperCase()}</p>
@@ -751,7 +758,7 @@ function MobileAssetActionRow({
     >
       <div className="grid h-9 grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_auto] items-center gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <AssetAvatar logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
+          <AssetAvatar assetType={asset.assetType} logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
           <div className="min-w-0">
             <p className="truncate text-[0.8125rem] font-medium leading-none text-white">{asset.symbol}</p>
             <p className="mt-0.5 truncate text-[10px] leading-none text-slate-400">{asset.name}</p>
@@ -903,7 +910,7 @@ function MobileAssetActionPanel({
       <div className="px-4 pb-4 pt-3">
         <div className="flex max-h-14 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <AssetAvatar logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
+            <AssetAvatar assetType={asset.assetType} logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
             <div className="min-w-0">
               <p className="truncate text-[1rem] font-semibold text-white">{asset.name}</p>
               <p className="mt-0.5 text-[0.6875rem] uppercase tracking-[0.05em] text-[#7f8aa3]">{asset.symbol}</p>
@@ -1344,7 +1351,7 @@ function TransactionDetailsDialog({
               label="Quantity"
               value={(
                 <span className="inline-flex items-center gap-2 font-semibold text-white">
-                  <AssetAvatar logoUrl={logoUrl} symbol={assetSymbol} />
+                  <AssetAvatar assetType={assetType} logoUrl={logoUrl} symbol={assetSymbol} />
                   <span>{formatQuantity(quantity)} {assetSymbol}</span>
                 </span>
               )}

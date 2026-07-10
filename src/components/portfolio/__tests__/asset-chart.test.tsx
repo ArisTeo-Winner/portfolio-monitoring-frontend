@@ -28,6 +28,7 @@ vi.mock("lightweight-charts", () => {
       timeScale: () => ({ fitContent: chartMock.fitContent }),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
+      priceScale: () => ({ applyOptions: vi.fn() }),
     })),
     createSeriesMarkers: createSeriesMarkersMock.mockReturnValue({
       setMarkers: chartMock.setMarkers,

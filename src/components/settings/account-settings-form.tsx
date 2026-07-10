@@ -1,7 +1,6 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Mail, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -13,10 +12,17 @@ import { SettingsActions, SettingsCard, SettingsField, SettingsHeader } from "@/
 import { getAccountSettings, updateAccountSettings } from "@/features/settings/api/settings";
 
 const accountSchema = z.object({
+  firstName: z.string().max(60, "Máximo 60 caracteres.").optional(),
+  lastName: z.string().max(60, "Máximo 60 caracteres.").optional(),
+  phoneNumber: z.string().max(30, "Máximo 30 caracteres.").optional(),
+  address: z.string().max(120, "Máximo 120 caracteres.").optional(),
+  city: z.string().max(80, "Máximo 80 caracteres.").optional(),
+  state: z.string().max(80, "Máximo 80 caracteres.").optional(),
+  postalCode: z.string().max(20, "Máximo 20 caracteres.").optional(),
+  country: z.string().max(80, "Máximo 80 caracteres.").optional(),
+  dateOfBirth: z.date({ invalid_type_error: "Fecha inválida." }).nullable().optional(),
   preferredCurrency: z.enum(["USD", "EUR", "MXN"]),
-  email: z.string().email("Ingresa un email valido."),
   timezone: z.string().min(1, "Selecciona una zona horaria."),
-  username: z.string().min(2, "Minimo 2 caracteres.").max(80, "Maximo 80 caracteres."),
 });
 
 type AccountFormValues = z.infer<typeof accountSchema>;
@@ -43,10 +49,17 @@ export function AccountSettingsForm() {
   } = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
+      phoneNumber: "",
+      address: "",
+      city: "",
+      state: "",
+      postalCode: "",
+      country: "",
+      dateOfBirth: null,
       preferredCurrency: "USD",
-      email: "",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      username: "",
     },
   });
 
@@ -57,10 +70,17 @@ export function AccountSettingsForm() {
       .then((account) => {
         if (!active) return;
         reset({
+          firstName: account.firstName ?? "",
+          lastName: account.lastName ?? "",
+          phoneNumber: account.phoneNumber ?? "",
+          address: account.address ?? "",
+          city: account.city ?? "",
+          state: account.state ?? "",
+          postalCode: account.postalCode ?? "",
+          country: account.country ?? "",
+          dateOfBirth: account.dateOfBirth ? new Date(account.dateOfBirth) : null,
           preferredCurrency: normalizeCurrency(account.preferredCurrency),
-          email: account.email ?? "",
           timezone: account.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-          username: account.username ?? "",
         });
       })
       .catch((requestError) =>
@@ -79,13 +99,25 @@ export function AccountSettingsForm() {
     setError(null);
     setSaved(false);
 
+    const payload = {
+      ...values,
+      dateOfBirth: values.dateOfBirth ? toISODate(values.dateOfBirth) : null,
+    };
+
     try {
-      const updated = await updateAccountSettings(values);
+      const updated = await updateAccountSettings(payload);
       reset({
+        firstName: updated.firstName ?? values.firstName,
+        lastName: updated.lastName ?? values.lastName,
+        phoneNumber: updated.phoneNumber ?? values.phoneNumber,
+        address: updated.address ?? values.address,
+        city: updated.city ?? values.city,
+        state: updated.state ?? values.state,
+        postalCode: updated.postalCode ?? values.postalCode,
+        country: updated.country ?? values.country,
+        dateOfBirth: updated.dateOfBirth ? new Date(updated.dateOfBirth) : (values.dateOfBirth ?? null),
         preferredCurrency: normalizeCurrency(updated.preferredCurrency ?? values.preferredCurrency),
-        email: updated.email ?? values.email,
         timezone: updated.timezone ?? values.timezone,
-        username: updated.username ?? values.username,
       });
       setSaved(true);
     } catch (requestError) {
@@ -93,12 +125,14 @@ export function AccountSettingsForm() {
     }
   }
 
+  const inputClass = "bg-neutral-950";
+
   return (
     <div className="space-y-4">
       <SettingsCard data-testid="settings-card-account">
         <SettingsHeader
-          title="Usuario"
-          description="Identidad y datos regionales de tu tracker."
+          title="Perfil"
+          description="Información personal y datos regionales de tu cuenta."
         />
 
         {(error || saved) ? (
@@ -106,7 +140,7 @@ export function AccountSettingsForm() {
             {error ? <ProblemAlert message={error} /> : null}
             {saved ? (
               <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
-                Configuración guardada.
+                Perfil actualizado correctamente.
               </p>
             ) : null}
           </div>
@@ -114,55 +148,148 @@ export function AccountSettingsForm() {
 
         <form data-testid="account-settings-form" onSubmit={handleSubmit(onSubmit)}>
           <div className="divide-y divide-neutral-800">
-            <SettingsField label="Nombre de usuario">
+
+            <SettingsField label="Nombre">
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  data-testid="first-name-input"
+                  disabled={loading}
+                  error={errors.firstName?.message}
+                  hideLabel
+                  label="Nombre"
+                  placeholder="Aristeo"
+                  wrapperClassName={inputClass}
+                  {...register("firstName")}
+                />
+                <Input
+                  data-testid="last-name-input"
+                  disabled={loading}
+                  error={errors.lastName?.message}
+                  hideLabel
+                  label="Apellido"
+                  placeholder="Ortiz"
+                  wrapperClassName={inputClass}
+                  {...register("lastName")}
+                />
+              </div>
+            </SettingsField>
+
+            <SettingsField label="Teléfono">
               <Input
-                data-testid="username-input"
+                data-testid="phone-input"
                 disabled={loading}
-                error={errors.username?.message}
+                error={errors.phoneNumber?.message}
                 hideLabel
-                icon={<UserRound size={20} />}
-                label="Username"
-                placeholder="debra"
-                wrapperClassName="bg-neutral-950"
-                {...register("username")}
+                label="Teléfono"
+                placeholder="+52 55 1234 5678"
+                type="tel"
+                wrapperClassName={inputClass}
+                {...register("phoneNumber")}
               />
             </SettingsField>
-            <SettingsField label="Correo electronico">
+
+            <SettingsField label="Dirección">
               <Input
-                data-testid="email-input"
+                data-testid="address-input"
                 disabled={loading}
-                error={errors.email?.message}
+                error={errors.address?.message}
                 hideLabel
-                icon={<Mail size={20} />}
-                label="Email"
-                placeholder="you@example.com"
-                type="email"
-                wrapperClassName="bg-neutral-950"
-                {...register("email")}
+                label="Dirección"
+                placeholder="Av. Vallarta 1234"
+                wrapperClassName={inputClass}
+                {...register("address")}
               />
             </SettingsField>
+
+            <SettingsField label="Ciudad / Estado">
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  data-testid="city-input"
+                  disabled={loading}
+                  error={errors.city?.message}
+                  hideLabel
+                  label="Ciudad"
+                  placeholder="Ciudad de México"
+                  wrapperClassName={inputClass}
+                  {...register("city")}
+                />
+                <Input
+                  data-testid="state-input"
+                  disabled={loading}
+                  error={errors.state?.message}
+                  hideLabel
+                  label="Estado"
+                  placeholder="Jalisco"
+                  wrapperClassName={inputClass}
+                  {...register("state")}
+                />
+              </div>
+            </SettingsField>
+
+            <SettingsField label="Código postal / País">
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  data-testid="postal-code-input"
+                  disabled={loading}
+                  error={errors.postalCode?.message}
+                  hideLabel
+                  label="Código postal"
+                  placeholder="44100"
+                  wrapperClassName={inputClass}
+                  {...register("postalCode")}
+                />
+                <Input
+                  data-testid="country-input"
+                  disabled={loading}
+                  error={errors.country?.message}
+                  hideLabel
+                  label="País"
+                  placeholder="México"
+                  wrapperClassName={inputClass}
+                  {...register("country")}
+                />
+              </div>
+            </SettingsField>
+
+            <SettingsField label="Fecha de nacimiento">
+              <Input
+                data-testid="date-of-birth-input"
+                disabled={loading}
+                error={errors.dateOfBirth?.message}
+                hideLabel
+                inputClassName="[color-scheme:dark]"
+                label="Fecha de nacimiento"
+                max={new Date().toISOString().split("T")[0]}
+                type="date"
+                wrapperClassName={inputClass}
+                {...register("dateOfBirth", { valueAsDate: true })}
+              />
+            </SettingsField>
+
             <SettingsField label="Moneda base">
               <SettingsSelect
                 data-testid="base-currency-select"
                 disabled={loading}
                 error={errors.preferredCurrency?.message}
                 hideLabel
-                label="Base Currency"
+                label="Moneda base"
                 options={currencyOptions}
                 {...register("preferredCurrency")}
               />
             </SettingsField>
+
             <SettingsField label="Zona horaria">
               <SettingsSelect
                 data-testid="timezone-select"
                 disabled={loading}
                 error={errors.timezone?.message}
                 hideLabel
-                label="Timezone"
+                label="Zona horaria"
                 options={timezoneOptions}
                 {...register("timezone")}
               />
             </SettingsField>
+
           </div>
 
           <SettingsActions>
@@ -174,7 +301,7 @@ export function AccountSettingsForm() {
               type="button"
               variant="secondary"
             >
-              Reset
+              Cancelar
             </Button>
             <Button
               className="h-12 rounded-2xl font-semibold"
@@ -182,13 +309,20 @@ export function AccountSettingsForm() {
               disabled={loading || isSubmitting || !isDirty}
               type="submit"
             >
-              {isSubmitting ? "Guardando..." : "Save changes"}
+              {isSubmitting ? "Guardando..." : "Guardar cambios"}
             </Button>
           </SettingsActions>
         </form>
       </SettingsCard>
     </div>
   );
+}
+
+function toISODate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function normalizeCurrency(value?: string) {

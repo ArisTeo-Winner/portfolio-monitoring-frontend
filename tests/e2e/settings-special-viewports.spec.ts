@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { loginAs, mockBackendAPIs } from "./helpers";
 
 // Tests for non-standard viewports not covered by any configured project.
 // Each describe uses page.setViewportSize() intentionally and is pinned to the
@@ -54,16 +55,12 @@ test.describe("Settings special viewports – Sessions 720×1280", () => {
     // Pin to xs-mobile so this runs exactly once across all projects
     test.skip(testInfo.project.name !== "xs-mobile", "Special viewport: runs once under xs-mobile");
     await page.setViewportSize({ width: 720, height: 1280 });
+    // Register sessions mock first so it's available when the page loads.
     await mockSessionsAPI(page);
-    // Access token is memory-only — inject session via silent refresh mock so
-    // protected-shell recovers the session without a real HttpOnly cookie.
-    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ accessToken: FAKE_ACCESS_TOKEN }),
-      }),
-    );
+    // Use the standard mock + login flow so all backend endpoints are covered
+    // and the access token is in memory (avoids expireSession on any API 401).
+    await mockBackendAPIs(page);
+    await loginAs(page);
     await page.goto("/settings/sessions");
     await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: 8_000 });

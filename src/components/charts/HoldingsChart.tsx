@@ -107,6 +107,7 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
         },
         rightPriceScale: {
           borderVisible: false,
+          mode: charts.PriceScaleMode.Logarithmic,
         },
         timeScale: {
           borderVisible: false,

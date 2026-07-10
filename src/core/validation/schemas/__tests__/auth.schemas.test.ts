@@ -41,6 +41,8 @@ describe("loginSchema", () => {
 
 describe("registerSchema", () => {
   const valid = {
+    firstName: "John",
+    lastName: "Doe",
     username: "johndoe",
     email: "john@example.com",
     password: "Password1!",
@@ -50,11 +52,11 @@ describe("registerSchema", () => {
     expect(registerSchema.safeParse(valid).success).toBe(true);
   });
 
-  it("rejects username shorter than 3 characters", () => {
+  it("rejects username shorter than 4 characters", () => {
     const result = registerSchema.safeParse({ ...valid, username: "ab" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain("3 caracteres");
+      expect(result.error.errors[0].message).toContain("4 caracteres");
     }
   });
 

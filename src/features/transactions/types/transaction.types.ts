@@ -1,5 +1,6 @@
-﻿export type TransactionMode = "BUY" | "SELL" | "TRANSFER";
+﻿export type TransactionMode = "BUY" | "SELL" | "TRANSFER" | "DIVIDEND";
 export type TransferDirection = "TRANSFER_IN" | "TRANSFER_OUT";
+export type DividendType = "CASH" | "STOCK";
 
 export type BuyOrSellTransactionPayload = {
   assetSymbol: string;
@@ -9,6 +10,23 @@ export type BuyOrSellTransactionPayload = {
   fee?: number;
   transactionDate: string;
   notes?: string;
+  broker?: string;
+  // GOVERNMENT_BOND-only fields, only sent on BUY when assetType is a bond.
+  faceValue?: number;
+  maturityDate?: string;
+  couponRate?: number;
+  autoReinvestment?: boolean;
+};
+
+export type RegisterDividendPayload = {
+  assetSymbol: string;
+  assetType: string;
+  amount: number;
+  dividendType: DividendType;
+  transactionDate: string;
+  exDividendDate?: string;
+  taxWithheld?: number;
+  broker?: string;
 };
 
 export type TransferTransactionPayload = {

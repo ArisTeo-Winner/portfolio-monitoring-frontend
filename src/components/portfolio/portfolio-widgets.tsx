@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
+import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
 import { startHoldingDetailTrace } from "@/features/portfolio/lib/holding-detail-performance";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { getAssetCurrency, formatCurrencyByCode } from "@/lib/utils/currency";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
@@ -48,6 +50,11 @@ export function PortfolioTable({
 
   useEffect(() => {
     setLogoRegistry(readAssetLogoRegistry());
+
+    if (!entries.length) return;
+    void prefetchAssetLogos(
+      entries.map((e) => ({ symbol: e.assetSymbol, assetType: e.assetType })),
+    ).then((updated) => setLogoRegistry(updated));
   }, [entries]);
 
   useEffect(() => {
@@ -140,14 +147,14 @@ export function PortfolioTable({
                   type="button"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+                    <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                     <div className="min-w-0">
                       <p className="max-w-[7.5rem] truncate text-[0.875rem] font-medium leading-[1.35] text-white">{entry.assetSymbol}</p>
                       <p className="mt-0.5 max-w-[7.5rem] truncate text-[0.75rem] font-normal leading-[1.4] text-[#7D8596]">{getAssetDisplayName(entry.assetSymbol)}</p>
                     </div>
                   </div>
                   <div className="min-w-[7.5rem] text-right">
-                    <p className="truncate text-[0.9375rem] font-semibold leading-[1.25] text-white">{formatCurrency(entry.currentValue)}</p>
+                    <p className="truncate text-[0.9375rem] font-semibold leading-[1.25] text-white">{formatCurrencyByCode(entry.currentValue, getAssetCurrency(entry.assetSymbol))}</p>
                     <p className={`mt-0.5 text-[0.75rem] font-medium leading-[1.35] ${changePercent >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
                       {changePercent >= 0 ? "+" : "-"}{Math.abs(changePercent).toFixed(2)}%
                     </p>
@@ -164,7 +171,7 @@ export function PortfolioTable({
                   <th className="pb-4 pr-4">Activo</th>
                   <th className="px-4 pb-4">Saldo</th>
                   <th className="px-4 pb-4">Precio actual</th>
-                  <th className="px-4 pb-4">Valor (USD)</th>
+                  <th className="px-4 pb-4">Valor</th>
                   <th className="pb-4 pl-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -176,12 +183,13 @@ export function PortfolioTable({
                   const profitLoss = Number(entry.totalProfitLoss);
                   const totalInvestedEntry = Number(entry.totalInvested);
                   const changePercent = totalInvestedEntry > 0 ? (profitLoss / totalInvestedEntry) * 100 : 0;
+                  const entryCurrency = getAssetCurrency(entry.assetSymbol);
 
                   return (
                     <tr className="group transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#13161c]" key={entry.portfolioEntryId}>
                       <td className="py-5 pr-4">
                         <button className="flex w-full items-center gap-4 text-left" onClick={() => openHoldingDetail(entry.assetSymbol)} type="button">
-                          <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+                          <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate text-[1rem] font-semibold text-white">{getAssetDisplayName(entry.assetSymbol)}</p>
@@ -200,14 +208,14 @@ export function PortfolioTable({
                         <p className="mt-1 text-[0.8rem] font-medium uppercase tracking-[0.12em] text-[#7f8aa3]">{entry.assetSymbol}</p>
                       </td>
                       <td className="px-4 py-5">
-                        <p className="text-[1rem] font-semibold text-white">{formatCurrency(currentPrice)}</p>
+                        <p className="text-[1rem] font-semibold text-white">{formatCurrencyByCode(currentPrice, entryCurrency)}</p>
                         <p className={`mt-1 text-[0.82rem] font-semibold ${changePercent >= 0 ? "text-[#17c784]" : "text-[#ff6b6b]"}`}>
                           {changePercent >= 0 ? "+" : "-"}{Math.abs(changePercent).toFixed(2)}%
                         </p>
                       </td>
                       <td className="px-4 py-5">
-                        <p className="text-[1.02rem] font-semibold text-white">{formatCurrency(entry.currentValue)}</p>
-                        <p className="mt-1 text-[0.82rem] font-medium text-[#7f8aa3]">Base: {formatCurrency(entry.totalInvested)}</p>
+                        <p className="text-[1.02rem] font-semibold text-white">{formatCurrencyByCode(entry.currentValue, entryCurrency)}</p>
+                        <p className="mt-1 text-[0.82rem] font-medium text-[#7f8aa3]">Base: {formatCurrencyByCode(entry.totalInvested, entryCurrency)}</p>
                       </td>
                       <td className="py-5 pl-4 text-right">
                         <button
@@ -255,6 +263,7 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
   const quantity = Number(entry.totalQuantity);
   const currentValue = Number(entry.currentValue);
   const currentPrice = quantity > 0 ? currentValue / quantity : Number(entry.averagePricePerUnit);
+  const currency = getAssetCurrency(entry.assetSymbol);
 
   useEffect(() => {
     setLogoRegistry(readAssetLogoRegistry());
@@ -266,7 +275,7 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
         <div>
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Holding detail</p>
           <div className="mt-4 flex items-center gap-4">
-            <AssetAvatar logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+            <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
             <div>
               <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{getAssetDisplayName(entry.assetSymbol)}</h1>
               <p className="mt-1 text-[0.88rem] uppercase tracking-[0.18em] text-[#7f8aa3]">
@@ -282,10 +291,10 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Current value" value={formatCurrency(entry.currentValue)} />
-        <MetricCard label="Total invested" value={formatCurrency(entry.totalInvested)} />
+        <MetricCard label="Current value" value={formatCurrencyByCode(entry.currentValue, currency)} />
+        <MetricCard label="Total invested" value={formatCurrencyByCode(entry.totalInvested, currency)} />
         <MetricCard label="Total quantity" value={formatQuantity(entry.totalQuantity)} />
-        <MetricCard label="Current price" value={formatCurrency(currentPrice)} />
+        <MetricCard label="Current price" value={formatCurrencyByCode(currentPrice, currency)} />
       </div>
     </section>
   );

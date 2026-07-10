@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { CryptoSelector } from "@/components/transactions/cryptoSelector";
 import { Modal } from "@/components/ui/modal";
 import { ProblemAlert } from "@/components/ui/problem-alert";
@@ -8,28 +8,23 @@ import type { AssetOption } from "@/features/assets/types/asset.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, rememberAssetLogo, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { searchAssets } from "@/features/assets/api/search-assets";
 import { resolveMarketSymbolCandidate } from "@/features/assets/api/resolve-market-symbol";
+import { getPopularAssets, type PopularAssets } from "@/features/assets/api/get-popular-assets";
+import { getRecentAssets, rememberRecentAsset } from "@/features/assets/lib/recent-assets";
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
-import { createBuyTransaction, createSellTransaction, createTransferTransaction, updateTransaction } from "@/features/transactions/api/create-transaction";
-import type { TransactionMode, TransferDirection } from "@/features/transactions/types/transaction.types";
+import { createBuyTransaction, createSellTransaction, createTransferTransaction, registerDividend, updateTransaction } from "@/features/transactions/api/create-transaction";
+import type { DividendType, TransactionMode, TransferDirection } from "@/features/transactions/types/transaction.types";
 import { calculateBuyTotal, calculateSellTotal } from "@/features/transactions/utils/totals";
-import { formatCurrency, formatFeeCurrency } from "@/lib/utils/format";
-import { normalizeAssetType } from "@/lib/utils/asset";
+import { formatFeeCurrency } from "@/lib/utils/format";
+import { getAssetCurrency, formatCurrencyByCode } from "@/lib/utils/currency";
+import { normalizeAssetType, supportsDividend } from "@/lib/utils/asset";
+import { ApiError } from "@/lib/api/problem-details";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 
-const POPULAR_ASSETS: AssetOption[] = [
-  { assetId: "btc", symbol: "BTC", name: "Bitcoin", assetType: "CRYPTO", logoUrl: null, supportedForTransactions: true },
-  { assetId: "eth", symbol: "ETH", name: "Ethereum", assetType: "CRYPTO", logoUrl: null, supportedForTransactions: true },
-  { assetId: "sol", symbol: "SOL", name: "Solana", assetType: "CRYPTO", logoUrl: null, supportedForTransactions: true },
-  { assetId: "bnb", symbol: "BNB", name: "BNB", assetType: "CRYPTO", logoUrl: null, supportedForTransactions: true },
-  { assetId: "aapl", symbol: "AAPL", name: "Apple Inc.", assetType: "STOCK", logoUrl: null, supportedForTransactions: true },
-  { assetId: "msft", symbol: "MSFT", name: "Microsoft Corporation", assetType: "STOCK", logoUrl: null, supportedForTransactions: true },
-  { assetId: "googl", symbol: "GOOGL", name: "Alphabet Inc.", assetType: "STOCK", logoUrl: null, supportedForTransactions: true },
-  { assetId: "spy", symbol: "SPY", name: "SPDR S&P 500 ETF", assetType: "ETF", logoUrl: null, supportedForTransactions: true },
-  { assetId: "qqq", symbol: "QQQ", name: "Invesco QQQ Trust", assetType: "ETF", logoUrl: null, supportedForTransactions: true },
-];
 const EMPTY_SUGGESTED_ASSETS: AssetOption[] = [];
+const EMPTY_POPULAR_ASSETS: PopularAssets = { stocks: [], etfs: [], cryptos: [], governmentBonds: [] };
 
-const SELECTOR_FILTERS = ["ALL", "CRYPTO", "STOCK", "ETF", "INDEX"] as const;
+const SELECTOR_FILTERS = ["ALL", "CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND", "INDEX"] as const;
 type SelectorFilter = (typeof SELECTOR_FILTERS)[number];
 type ModalView = "type" | "form" | "asset" | "fee" | "notes";
 
@@ -63,9 +58,15 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const shouldSelectAssetTypeFirst = requireAssetTypeSelection && !lockedAssetType && !initialAsset && !initialDraft;
   const totalSteps = shouldSelectAssetTypeFirst ? 3 : 2;
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
+  const [popularAssets, setPopularAssets] = useState<PopularAssets>(EMPTY_POPULAR_ASSETS);
+  const [recentAssets, setRecentAssets] = useState<AssetOption[]>([]);
+  const flatPopularAssets = useMemo(
+    () => [...popularAssets.stocks, ...popularAssets.etfs, ...popularAssets.cryptos, ...popularAssets.governmentBonds],
+    [popularAssets],
+  );
   const mergedSuggestions = useMemo(() => {
-    return buildMergedSuggestions(suggestedAssets, logoRegistry);
-  }, [logoRegistry, suggestedAssets]);
+    return buildMergedSuggestions([...suggestedAssets, ...flatPopularAssets], logoRegistry);
+  }, [logoRegistry, suggestedAssets, flatPopularAssets]);
 
   const [view, setView] = useState<ModalView>(shouldSelectAssetTypeFirst ? "type" : initialAsset || initialDraft ? "form" : "asset");
   const [mode, setMode] = useState<TransactionMode>("BUY");
@@ -76,13 +77,29 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const [pricePerUnit, setPricePerUnit] = useState("");
   const [fee, setFee] = useState("");
   const [notes, setNotes] = useState("");
+  const [broker, setBroker] = useState("");
   const [transactionDate, setTransactionDate] = useState(createDefaultDateTime());
+  // Dividend-only fields
+  const [dividendAmount, setDividendAmount] = useState("");
+  const [dividendType, setDividendType] = useState<DividendType>("CASH");
+  const [exDividendDate, setExDividendDate] = useState("");
+  const [taxWithheld, setTaxWithheld] = useState("");
+  // GOVERNMENT_BOND BUY-only fields
+  const [faceValue, setFaceValue] = useState("");
+  const [maturityDate, setMaturityDate] = useState("");
+  const [couponRate, setCouponRate] = useState("0");
+  const [autoReinvestment, setAutoReinvestment] = useState(false);
   const [selectorQuery, setSelectorQuery] = useState("");
   const [selectorResults, setSelectorResults] = useState<AssetOption[]>([]);
   const [selectorLoading, setSelectorLoading] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A single idempotency key is minted per submit attempt and reused across
+  // retries of the SAME form (only regenerated when the form is reset for a
+  // genuinely new transaction), so a retried submit after a failed request
+  // doesn't defeat the backend's idempotency protection.
+  const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
 
   const availableFilterTypes = useMemo(() => {
     const discovered = new Set<SelectorFilter>();
@@ -97,13 +114,26 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   useEffect(() => {
     if (!isOpen) return;
     setLogoRegistry(readAssetLogoRegistry());
+    setRecentAssets(getRecentAssets());
+    let active = true;
+    getPopularAssets()
+      .then((data) => {
+        if (active) setPopularAssets(data);
+      })
+      .catch(() => {
+        // Popular assets are a convenience list — failures fall back silently
+        // to whatever suggestedAssets/search already provides.
+      });
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     const registry = readAssetLogoRegistry();
     const nextFilter = (lockedAssetType ?? "ALL") as SelectorFilter;
-    const nextSuggestions = buildMergedSuggestions(suggestedAssets, registry);
+    const nextSuggestions = buildMergedSuggestions([...suggestedAssets, ...flatPopularAssets], registry);
     const hydratedInitialAsset = initialAsset
       ? {
           ...initialAsset,
@@ -111,6 +141,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
         }
       : null;
     const defaultAsset = hydratedInitialAsset ?? filterAssetsByType(nextSuggestions, nextFilter)[0] ?? null;
+    idempotencyKeyRef.current = createIdempotencyKey();
     setView(shouldSelectAssetTypeFirst ? "type" : initialAsset || initialDraft ? "form" : "asset");
     setMode(initialDraft?.mode ?? "BUY");
     setTransferType(initialDraft?.transferType ?? "TRANSFER_IN");
@@ -120,15 +151,25 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setPricePerUnit(initialDraft?.pricePerUnit !== undefined ? formatEditableNumber(initialDraft.pricePerUnit) : !shouldSelectAssetTypeFirst && defaultAsset?.suggestedPrice ? formatEditableNumber(defaultAsset.suggestedPrice) : "");
     setFee(initialDraft?.fee !== undefined && initialDraft.fee > 0 ? formatEditableNumber(initialDraft.fee) : "");
     setNotes(initialDraft?.notes ?? "");
+    setBroker("");
+    setDividendAmount("");
+    setDividendType("CASH");
+    setExDividendDate("");
+    setTaxWithheld("");
+    setFaceValue("");
+    setMaturityDate("");
+    setCouponRate("0");
+    setAutoReinvestment(false);
     setTransactionDate(initialDraft?.transactionDate ? toLocalDateTimeInput(initialDraft.transactionDate) : createDefaultDateTime());
     setSelectorQuery("");
     setSelectorResults(filterAssetsByType(nextSuggestions, nextFilter));
     setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- flatPopularAssets intentionally excluded: it loads async and must not re-trigger a full form reset.
   }, [initialAsset, initialDraft, isOpen, lockedAssetType, shouldSelectAssetTypeFirst, suggestedAssets]);
 
   useEffect(() => {
-    if (!isOpen || !selectedAsset || mode === "TRANSFER") {
-      if (mode === "TRANSFER") setPricePerUnit("");
+    if (!isOpen || !selectedAsset || mode === "TRANSFER" || mode === "DIVIDEND") {
+      if (mode === "TRANSFER" || mode === "DIVIDEND") setPricePerUnit("");
       return;
     }
     if (pricePerUnit) return;
@@ -197,10 +238,13 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const quantityValue = parseDecimal(quantity);
   const priceValue = parseDecimal(pricePerUnit);
   const feeValue = parseDecimal(fee);
+  const dividendAmountValue = parseDecimal(dividendAmount);
+  const taxWithheldValue = parseDecimal(taxWithheld);
+  const faceValueValue = parseDecimal(faceValue);
+  const couponRateValue = parseDecimal(couponRate);
   const totalValue = mode === "SELL" ? calculateSellTotal(quantityValue, priceValue, feeValue) : calculateBuyTotal(quantityValue, priceValue, feeValue);
   const totalLabel = mode === "SELL" ? "Total Received" : mode === "TRANSFER" ? "Transfer Quantity" : "Total Spent";
-  const submitLabel = isEditing ? "Edit Transaction" : mode === "BUY" ? "Add Transaction" : mode === "SELL" ? "Record Sale" : "Record Transfer";
-  const submitDisabled = submitting || !selectedAsset || quantityValue <= 0 || !transactionDate || (mode !== "TRANSFER" && (priceLoading || priceValue <= 0));
+  const submitLabel = isEditing ? "Edit Transaction" : mode === "BUY" ? "Add Transaction" : mode === "SELL" ? "Record Sale" : mode === "DIVIDEND" ? "Register Dividend" : "Record Transfer";
   const selectorFilters = lockedAssetType
     ? [lockedAssetType as SelectorFilter]
     : availableFilterTypes.includes(selectedFilter)
@@ -210,21 +254,44 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const portfolioLabel = portfolioName ?? getPortfolioLabel(((initialAsset?.assetType ? normalizeAssetType(initialAsset.assetType) : undefined) as SelectorFilter | undefined) ?? (lockedAssetType as SelectorFilter | undefined) ?? selectedAsset?.assetType ?? selectedFilter);
   const activeSelectorFilter = (lockedAssetType as SelectorFilter | undefined) ?? selectedFilter;
   const assetFieldType = (selectedAsset?.assetType ? normalizeAssetType(selectedAsset.assetType) : undefined) ?? lockedAssetType ?? selectedFilter;
+  const currency = getAssetCurrency(selectedAsset?.symbol ?? "");
+  const isBondBuy = mode === "BUY" && assetFieldType === "GOVERNMENT_BOND";
+  const dividendAllowed = selectedAsset ? supportsDividend(selectedAsset.assetType) : false;
+  const estimatedBondGain = faceValueValue - totalValue;
+  const brokerPlaceholder = currency === "MXN" ? "GBM / Bursanet / cetesdirecto" : "GBM / IBKR";
   const formTitle = isEditing ? "Edit Transaction" : "Add Transaction";
   const formDescription = isEditing
     ? "Actualiza los datos de la operacion."
     : `Paso ${shouldSelectAssetTypeFirst ? totalSteps : 2} de ${totalSteps}. Completa los datos de la operacion.`;
 
+  const submitDisabled =
+    submitting ||
+    !selectedAsset ||
+    !transactionDate ||
+    (mode === "DIVIDEND"
+      ? dividendAmountValue <= 0
+      : quantityValue <= 0 ||
+        (mode !== "TRANSFER" && (priceLoading || priceValue <= 0)) ||
+        (isBondBuy && (faceValueValue <= 0 || !maturityDate)));
+
   if (!isOpen) return null;
 
   async function handleSubmit() {
     if (!selectedAsset) return setError("Selecciona un activo antes de registrar la transaccion.");
-    if (quantityValue <= 0) return setError("La cantidad debe ser mayor que cero.");
-    if (mode !== "TRANSFER" && priceValue <= 0) return setError("No hay precio valido para completar la transaccion.");
+    if (mode === "DIVIDEND") {
+      if (dividendAmountValue <= 0) return setError("El monto del dividendo debe ser mayor que cero.");
+    } else {
+      if (quantityValue <= 0) return setError("La cantidad debe ser mayor que cero.");
+      if (mode !== "TRANSFER" && priceValue <= 0) return setError("No hay precio valido para completar la transaccion.");
+      if (isBondBuy && faceValueValue <= 0) return setError("El valor nominal (faceValue) del bono es requerido.");
+      if (isBondBuy && !maturityDate) return setError("La fecha de vencimiento del bono es requerida.");
+    }
     setSubmitting(true);
     setError(null);
+    const idempotencyKey = idempotencyKeyRef.current;
     try {
       rememberAssetLogo(selectedAsset);
+      rememberRecentAsset(selectedAsset);
       if (isEditing && editingTransactionId) {
         await updateTransaction(editingTransactionId, {
           assetSymbol: selectedAsset.symbol,
@@ -236,12 +303,69 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
           transactionDate,
           transferType: mode === "TRANSFER" ? transferType : undefined,
         });
+      } else if (mode === "DIVIDEND") {
+        await registerDividend(
+          {
+            assetSymbol: selectedAsset.symbol,
+            assetType: selectedAsset.assetType,
+            amount: dividendAmountValue,
+            dividendType,
+            transactionDate,
+            exDividendDate: exDividendDate || undefined,
+            taxWithheld: taxWithheldValue > 0 ? taxWithheldValue : undefined,
+            broker: broker.trim() || undefined,
+          },
+          idempotencyKey,
+        );
       } else if (mode === "BUY") {
-        await createBuyTransaction({ assetSymbol: selectedAsset.symbol, assetType: selectedAsset.assetType, quantity: quantityValue, pricePerUnit: priceValue, fee: feeValue || undefined, transactionDate, notes: notes.trim() || undefined });
+        await createBuyTransaction(
+          {
+            assetSymbol: selectedAsset.symbol,
+            assetType: selectedAsset.assetType,
+            quantity: quantityValue,
+            pricePerUnit: priceValue,
+            fee: feeValue || undefined,
+            transactionDate,
+            notes: notes.trim() || undefined,
+            broker: broker.trim() || undefined,
+            ...(isBondBuy
+              ? {
+                  faceValue: faceValueValue,
+                  maturityDate,
+                  couponRate: couponRateValue,
+                  autoReinvestment,
+                }
+              : {}),
+          },
+          idempotencyKey,
+        );
       } else if (mode === "SELL") {
-        await createSellTransaction({ assetSymbol: selectedAsset.symbol, assetType: selectedAsset.assetType, quantity: quantityValue, pricePerUnit: priceValue, fee: feeValue || undefined, transactionDate, notes: notes.trim() || undefined });
+        await createSellTransaction(
+          {
+            assetSymbol: selectedAsset.symbol,
+            assetType: selectedAsset.assetType,
+            quantity: quantityValue,
+            pricePerUnit: priceValue,
+            fee: feeValue || undefined,
+            transactionDate,
+            notes: notes.trim() || undefined,
+            broker: broker.trim() || undefined,
+          },
+          idempotencyKey,
+        );
       } else {
-        await createTransferTransaction({ assetSymbol: selectedAsset.symbol, assetType: selectedAsset.assetType, transferType, quantity: quantityValue, fee: feeValue || undefined, transactionDate, notes: notes.trim() || undefined });
+        await createTransferTransaction(
+          {
+            assetSymbol: selectedAsset.symbol,
+            assetType: selectedAsset.assetType,
+            transferType,
+            quantity: quantityValue,
+            fee: feeValue || undefined,
+            transactionDate,
+            notes: notes.trim() || undefined,
+          },
+          idempotencyKey,
+        );
       }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("portfolio:refresh"));
@@ -249,17 +373,25 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
       await onCreated?.();
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : isEditing ? "No fue posible actualizar la transaccion." : "No fue posible registrar la transaccion.");
+      if (submitError instanceof ApiError && submitError.status === 409) {
+        setError("Ya se registro esta operacion (conflicto de idempotencia). Revisa el historial antes de reintentar.");
+      } else {
+        setError(submitError instanceof Error ? submitError.message : isEditing ? "No fue posible actualizar la transaccion." : "No fue posible registrar la transaccion.");
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleAssetSelect(asset: AssetOption) {
+    if (!asset.supportedForTransactions) return;
     rememberAssetLogo(asset);
+    rememberRecentAsset(asset);
     setLogoRegistry(readAssetLogoRegistry());
+    setRecentAssets(getRecentAssets());
     setSelectedAsset(asset);
     setPricePerUnit(asset.suggestedPrice ? formatEditableNumber(asset.suggestedPrice) : "");
+    if (mode === "DIVIDEND" && !supportsDividend(asset.assetType)) setMode("BUY");
     setSelectorQuery("");
     setSelectorResults(filterAssetsByType(mergedSuggestions, lockedAssetType ?? selectedFilter));
     setView("form");
@@ -278,10 +410,213 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   return (
     <Modal onClose={view === "asset" ? undefined : onClose} overlayClassName="bg-[#04070d]/84 backdrop-blur-[8px]" panelClassName={view === "asset" ? "max-h-[90vh] max-w-[608px] overflow-hidden rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-0 py-0 text-white shadow-[0_28px_72px_rgba(0,0,0,0.5)] ring-0 md:rounded-[1.15rem] md:shadow-[0_40px_120px_rgba(0,0,0,0.62)]" : "max-h-[90vh] max-w-[430px] overflow-y-auto rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-3 py-3 text-white shadow-[0_24px_72px_rgba(0,0,0,0.48)] ring-0 md:rounded-[1.05rem] md:px-4 md:py-4 md:shadow-[0_32px_96px_rgba(0,0,0,0.54)]"}>
       {view === "type" ? <AssetTypeSelectionView filters={typeSelectionFilters} onClose={onClose} onSelect={handleAssetTypeSelect} /> : null}
-      {view === "asset" ? <AssetSelectorView activeFilter={activeSelectorFilter} assets={selectorResults} filters={selectorFilters} loading={selectorLoading} lockedAssetType={lockedAssetType} onBack={selectedAsset ? () => setView("form") : shouldSelectAssetTypeFirst ? () => setView("type") : undefined} onClose={onClose} onFilterChange={setSelectedFilter} onQueryChange={setSelectorQuery} onSelect={handleAssetSelect} portfolioLabel={portfolioLabel} query={selectorQuery} showFilterTabs={!shouldSelectAssetTypeFirst && !lockedAssetType} stepLabel={shouldSelectAssetTypeFirst ? "Paso 2 de 3" : "Paso 1 de 2"} /> : null}
+      {view === "asset" ? (
+        <AssetSelectorView
+          activeFilter={activeSelectorFilter}
+          assets={selectorResults}
+          filters={selectorFilters}
+          loading={selectorLoading}
+          lockedAssetType={lockedAssetType}
+          onBack={selectedAsset ? () => setView("form") : shouldSelectAssetTypeFirst ? () => setView("type") : undefined}
+          onClose={onClose}
+          onFilterChange={setSelectedFilter}
+          onQueryChange={setSelectorQuery}
+          onSelect={handleAssetSelect}
+          popularAssets={popularAssets}
+          portfolioLabel={portfolioLabel}
+          query={selectorQuery}
+          recentAssets={recentAssets}
+          showFilterTabs={!shouldSelectAssetTypeFirst && !lockedAssetType}
+          stepLabel={shouldSelectAssetTypeFirst ? "Paso 2 de 3" : "Paso 1 de 2"}
+        />
+      ) : null}
       {view === "fee" ? <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor> : null}
       {view === "notes" ? <SimpleEditor title="Add Notes" cta="Save Notes" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Notes"><textarea className="min-h-24 w-full resize-none bg-transparent text-[0.875rem] leading-5 text-white outline-none placeholder:text-[#6f7a8f] md:min-h-32 md:text-[0.95rem] md:leading-7" maxLength={255} onChange={(event) => setNotes(event.target.value)} placeholder="Exchange, source wallet, memo, reasoning..." value={notes} /></Field></SimpleEditor> : null}
-      {view === "form" ? <div className="space-y-3 md:space-y-5"><header className="pr-8 md:space-y-1.5 md:border-b md:border-[#1b2028] md:pb-4"><p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem] md:tracking-[0.18em]">{portfolioLabel} portfolio</p><h2 className="text-[1.125rem] font-semibold text-white md:text-[1.38rem] md:tracking-[-0.03em]">{formTitle}</h2><p className="hidden text-sm text-[#7f8aa3] md:block">{formDescription}</p></header>{!isEditing ? <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.9rem]"><div className="grid grid-cols-3 gap-1">{(["BUY", "SELL", "TRANSFER"] as TransactionMode[]).map((tab) => { const active = mode === tab; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.8125rem] font-semibold text-white md:h-auto md:rounded-[0.72rem] md:px-2 md:py-2 md:text-[0.78rem]" : "h-7 rounded-xl px-3 text-[0.8125rem] font-semibold text-[#6f7a8f] transition hover:bg-[#151a21] hover:text-white md:h-auto md:rounded-[0.72rem] md:px-2 md:py-2 md:text-[0.78rem]"} key={tab} onClick={() => setMode(tab)} type="button">{tab === "BUY" ? "Buy" : tab === "SELL" ? "Sell" : "Transfer"}</button>; })}</div></div> : null}{mode === "TRANSFER" ? <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.95rem]"><div className="grid grid-cols-2 gap-1 md:gap-2">{(["TRANSFER_IN", "TRANSFER_OUT"] as TransferDirection[]).map((option) => { const active = transferType === option; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.8125rem] font-semibold text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm" : "h-7 rounded-xl px-3 text-[0.8125rem] font-semibold text-[#6f7a8f] transition hover:bg-[#151a21] hover:text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm"} key={option} onClick={() => setTransferType(option)} type="button">{option === "TRANSFER_IN" ? "Transfer In" : "Transfer Out"}</button>; })}</div></div> : null}<button className={`flex min-h-11 w-full items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left md:rounded-[0.95rem] md:py-3 ${isEditing ? "cursor-default" : "transition hover:border-[#2f3742] hover:bg-[#181d24]"}`} disabled={isEditing} onClick={() => !isEditing && setView("asset")} type="button"><div className="flex items-center gap-3"><AssetAvatar symbol={selectedAsset?.symbol ?? "?"} logoUrl={selectedAsset?.logoUrl ?? null} /><div><p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]">Asset</p><div className="mt-0.5 flex items-baseline gap-2 md:mt-1"><span className="text-[0.875rem] font-medium text-white md:text-[0.95rem]">{selectedAsset?.name ?? "Select Asset"}</span><span className="text-[0.75rem] text-[#7f8aa3] md:text-[0.76rem]">{selectedAsset?.symbol ?? getFilterLabel(lockedAssetType ?? selectedFilter)}</span></div></div></div>{!isEditing ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-[1.1rem]">&rsaquo;</span> : null}</button><div className="grid gap-3 md:grid-cols-2"><Field label="Quantity"><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="0.00" step="any" type="number" value={quantity} /></Field><Field label={mode === "TRANSFER" ? "Reference Price" : assetFieldType === "STOCK" ? "Price Per Share" : "Price Per Coin"}><div className="flex items-center gap-2.5"><span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] disabled:text-[#6f7a8f]/60 md:text-[0.98rem] md:tracking-[-0.03em]" disabled={mode === "TRANSFER"} inputMode="decimal" onChange={(event) => setPricePerUnit(event.target.value)} placeholder={priceLoading ? "Loading..." : "0.00"} step="any" type="number" value={pricePerUnit} /></div></Field></div><div className="grid gap-3 md:grid-cols-[1.45fr_0.62fr_0.78fr] md:gap-2"><label className="block rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 md:rounded-[0.95rem] md:py-2.5"><span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Date</span><input className="mt-1 w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:mt-2 md:text-[0.84rem]" onChange={(event) => setTransactionDate(event.target.value)} type="datetime-local" value={transactionDate} /></label><button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("fee")} type="button"><span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Fee</span><p className="mt-1 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{feeValue > 0 ? formatFeeCurrency(feeValue) : "Add fee"}</p></button><button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("notes")} type="button"><span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span><p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p></button></div><ProblemAlert message={error} /><section className="mt-3 bg-transparent px-0 py-0 md:mt-0 md:rounded-[0.95rem] md:border md:border-[#1b2028] md:bg-[#101418] md:px-3.5 md:py-3"><p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{totalLabel}</p><p className="mt-1 text-[1rem] font-semibold text-white md:mt-1.5 md:text-[1.08rem] md:tracking-[-0.04em]">{mode === "TRANSFER" ? `${formatEditableNumber(quantityValue)} ${selectedAsset?.symbol ?? "units"}` : formatCurrency(totalValue)}</p></section><button className={`w-full rounded-[0.82rem] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-55 md:py-3 md:text-[0.92rem] ${isEditing ? "bg-[#3861fb] hover:bg-[#4f74ff]" : "bg-[#3f8c53] hover:bg-[#4a9b5f]"}`} disabled={submitDisabled} onClick={handleSubmit} type="button">{submitting ? isEditing ? "Saving changes..." : "Saving transaction..." : submitLabel}</button></div> : null}
+      {view === "form" ? (
+        <div className="space-y-3 md:space-y-5">
+          <header className="pr-8 md:space-y-1.5 md:border-b md:border-[#1b2028] md:pb-4">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem] md:tracking-[0.18em]">{portfolioLabel} portfolio</p>
+            <h2 className="text-[1.125rem] font-semibold text-white md:text-[1.38rem] md:tracking-[-0.03em]">{formTitle}</h2>
+            <p className="hidden text-sm text-[#7f8aa3] md:block">{formDescription}</p>
+          </header>
+
+          {!isEditing ? (
+            <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.9rem]">
+              <div className={dividendAllowed ? "grid grid-cols-4 gap-1" : "grid grid-cols-3 gap-1"}>
+                {(dividendAllowed ? (["BUY", "SELL", "TRANSFER", "DIVIDEND"] as TransactionMode[]) : (["BUY", "SELL", "TRANSFER"] as TransactionMode[])).map((tab) => {
+                  const active = mode === tab;
+                  return (
+                    <button
+                      className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-2 text-[0.78125rem] font-semibold text-white md:h-auto md:rounded-[0.72rem] md:px-2 md:py-2 md:text-[0.78rem]" : "h-7 rounded-xl px-2 text-[0.78125rem] font-semibold text-[#6f7a8f] transition hover:bg-[#151a21] hover:text-white md:h-auto md:rounded-[0.72rem] md:px-2 md:py-2 md:text-[0.78rem]"}
+                      key={tab}
+                      onClick={() => setMode(tab)}
+                      type="button"
+                    >
+                      {tab === "BUY" ? "Buy" : tab === "SELL" ? "Sell" : tab === "TRANSFER" ? "Transfer" : "Dividend"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {mode === "TRANSFER" ? (
+            <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.95rem]">
+              <div className="grid grid-cols-2 gap-1 md:gap-2">
+                {(["TRANSFER_IN", "TRANSFER_OUT"] as TransferDirection[]).map((option) => {
+                  const active = transferType === option;
+                  return (
+                    <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.8125rem] font-semibold text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm" : "h-7 rounded-xl px-3 text-[0.8125rem] font-semibold text-[#6f7a8f] transition hover:bg-[#151a21] hover:text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm"} key={option} onClick={() => setTransferType(option)} type="button">
+                      {option === "TRANSFER_IN" ? "Transfer In" : "Transfer Out"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {mode === "DIVIDEND" ? (
+            <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.95rem]">
+              <div className="grid grid-cols-2 gap-1 md:gap-2">
+                {(["CASH", "STOCK"] as DividendType[]).map((option) => {
+                  const active = dividendType === option;
+                  return (
+                    <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.8125rem] font-semibold text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm" : "h-7 rounded-xl px-3 text-[0.8125rem] font-semibold text-[#6f7a8f] transition hover:bg-[#151a21] hover:text-white md:h-auto md:rounded-[0.85rem] md:px-4 md:py-2.5 md:text-sm"} key={option} onClick={() => setDividendType(option)} type="button">
+                      {option === "CASH" ? "Cash" : "Stock (DRIP)"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <button className={`flex min-h-11 w-full items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left md:rounded-[0.95rem] md:py-3 ${isEditing ? "cursor-default" : "transition hover:border-[#2f3742] hover:bg-[#181d24]"}`} disabled={isEditing} onClick={() => !isEditing && setView("asset")} type="button">
+            <div className="flex items-center gap-3">
+              <AssetAvatar assetType={selectedAsset?.assetType} symbol={selectedAsset?.symbol ?? "?"} logoUrl={selectedAsset?.logoUrl ?? null} />
+              <div>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]">Asset</p>
+                <div className="mt-0.5 flex items-baseline gap-2 md:mt-1">
+                  <span className="text-[0.875rem] font-medium text-white md:text-[0.95rem]">{selectedAsset?.name ?? "Select Asset"}</span>
+                  <span className="text-[0.75rem] text-[#7f8aa3] md:text-[0.76rem]">{selectedAsset?.symbol ?? getFilterLabel(lockedAssetType ?? selectedFilter)}</span>
+                </div>
+              </div>
+            </div>
+            {!isEditing ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-[1.1rem]">&rsaquo;</span> : null}
+          </button>
+
+          {mode === "DIVIDEND" ? (
+            <>
+              <Field label="Monto recibido">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
+                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.98rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setDividendAmount(event.target.value)} placeholder="0.00" step="any" type="number" value={dividendAmount} />
+                </div>
+              </Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Fecha ex-dividendo (opcional)">
+                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setExDividendDate(event.target.value)} type="date" value={exDividendDate} />
+                </Field>
+                <Field label="Retencion fiscal (opcional)">
+                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setTaxWithheld(event.target.value)} placeholder="0.00" step="any" type="number" value={taxWithheld} />
+                </Field>
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Quantity">
+                <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="0.00" step="any" type="number" value={quantity} />
+              </Field>
+              <Field label={mode === "TRANSFER" ? "Reference Price" : assetFieldType === "STOCK" ? "Price Per Share" : "Price Per Coin"}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
+                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] disabled:text-[#6f7a8f]/60 md:text-[0.98rem] md:tracking-[-0.03em]" disabled={mode === "TRANSFER"} inputMode="decimal" onChange={(event) => setPricePerUnit(event.target.value)} placeholder={priceLoading ? "Loading..." : "0.00"} step="any" type="number" value={pricePerUnit} />
+                </div>
+              </Field>
+            </div>
+          )}
+
+          {isBondBuy ? (
+            <div className="space-y-3 rounded-[0.875rem] border border-[#232931] bg-[#14191f] p-3 md:rounded-[0.95rem]">
+              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Datos del bono</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Valor nominal (Face Value)">
+                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.98rem]" inputMode="decimal" onChange={(event) => setFaceValue(event.target.value)} placeholder="0.00" step="any" type="number" value={faceValue} />
+                </Field>
+                <Field label="Fecha de vencimiento">
+                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setMaturityDate(event.target.value)} type="date" value={maturityDate} />
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Tasa cupon anual % (0 = cupon cero)">
+                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setCouponRate(event.target.value)} placeholder="0" step="any" type="number" value={couponRate} />
+                </Field>
+                <label className="flex items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#181d24] px-3 py-2 md:rounded-[0.95rem]">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Reinversion automatica</span>
+                  <button className={autoReinvestment ? "rounded-full bg-[#3f8c53] px-2.5 py-1 text-[0.72rem] font-semibold text-white" : "rounded-full bg-[#232931] px-2.5 py-1 text-[0.72rem] font-semibold text-[#7f8aa3]"} onClick={() => setAutoReinvestment((value) => !value)} type="button">
+                    {autoReinvestment ? "Si" : "No"}
+                  </button>
+                </label>
+              </div>
+              {faceValueValue > 0 ? (
+                <p className="text-[0.78rem] font-medium text-[#9daccc]">
+                  Ganancia estimada: <span className={estimatedBondGain >= 0 ? "font-semibold text-[#17c784]" : "font-semibold text-[#ff6b6b]"}>{formatCurrencyByCode(estimatedBondGain, currency)}</span>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {mode !== "TRANSFER" ? (
+            <Field label="Broker (opcional)">
+              <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => setBroker(event.target.value)} placeholder={brokerPlaceholder} value={broker} />
+            </Field>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-[1.45fr_0.62fr_0.78fr] md:gap-2">
+            <div className="block rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 md:rounded-[0.95rem] md:py-2.5">
+              <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Date</span>
+              <div className="mt-1 md:mt-2">
+                <DateTimePicker max={createDefaultDateTime()} onChange={setTransactionDate} value={transactionDate} />
+              </div>
+            </div>
+            {mode === "DIVIDEND" ? (
+              <div className="col-span-2 flex items-center justify-end">
+                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("notes")} type="button">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
+                  <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
+                </button>
+              </div>
+            ) : (
+              <>
+                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("fee")} type="button">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Fee</span>
+                  <p className="mt-1 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{feeValue > 0 ? formatFeeCurrency(feeValue, currency) : "Add fee"}</p>
+                </button>
+                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("notes")} type="button">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
+                  <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
+                </button>
+              </>
+            )}
+          </div>
+
+          <ProblemAlert message={error} />
+
+          <section className="mt-3 bg-transparent px-0 py-0 md:mt-0 md:rounded-[0.95rem] md:border md:border-[#1b2028] md:bg-[#101418] md:px-3.5 md:py-3">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{mode === "DIVIDEND" ? "Monto recibido" : totalLabel}</p>
+            <p className="mt-1 text-[1rem] font-semibold text-white md:mt-1.5 md:text-[1.08rem] md:tracking-[-0.04em]">
+              {mode === "DIVIDEND"
+                ? formatCurrencyByCode(dividendAmountValue, currency)
+                : mode === "TRANSFER"
+                  ? `${formatEditableNumber(quantityValue)} ${selectedAsset?.symbol ?? "units"}`
+                  : formatCurrencyByCode(totalValue, currency)}
+            </p>
+          </section>
+
+          <button className={`w-full rounded-[0.82rem] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-55 md:py-3 md:text-[0.92rem] ${isEditing ? "bg-[#3861fb] hover:bg-[#4f74ff]" : "bg-[#3f8c53] hover:bg-[#4a9b5f]"}`} disabled={submitDisabled} onClick={handleSubmit} type="button">
+            {submitting ? (isEditing ? "Saving changes..." : "Saving transaction...") : submitLabel}
+          </button>
+        </div>
+      ) : null}
     </Modal>
   );
 }
@@ -315,9 +650,86 @@ function AssetTypeSelectionView({ filters, onClose, onSelect }: { filters: Selec
   );
 }
 
-function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAssetType, onBack, onClose, onFilterChange, onQueryChange, onSelect, portfolioLabel, query, showFilterTabs, stepLabel }: { activeFilter: SelectorFilter; assets: AssetOption[]; filters: SelectorFilter[]; loading: boolean; lockedAssetType?: string; onBack?: () => void; onClose: () => void; onFilterChange: (value: SelectorFilter) => void; onQueryChange: (value: string) => void; onSelect: (asset: AssetOption) => void; portfolioLabel: string; query: string; showFilterTabs: boolean; stepLabel: string }) {
+function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAssetType, onBack, onClose, onFilterChange, onQueryChange, onSelect, popularAssets, portfolioLabel, query, recentAssets, showFilterTabs, stepLabel }: { activeFilter: SelectorFilter; assets: AssetOption[]; filters: SelectorFilter[]; loading: boolean; lockedAssetType?: string; onBack?: () => void; onClose: () => void; onFilterChange: (value: SelectorFilter) => void; onQueryChange: (value: string) => void; onSelect: (asset: AssetOption) => void; popularAssets: PopularAssets; portfolioLabel: string; query: string; recentAssets: AssetOption[]; showFilterTabs: boolean; stepLabel: string }) {
   if (activeFilter === "CRYPTO") return <div><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="hidden px-7 pb-7 pt-6 md:block"><p className="text-center text-[1.04rem] font-medium text-white">Selecciona una moneda para registrar tu operacion</p><p className="mt-1 text-center text-sm text-[#6f7a8f]">{portfolioLabel} wallet</p></div><div className="px-4 pb-4 md:px-7 md:pb-7"><CryptoSelector onChange={(crypto) => onSelect({ assetId: crypto.id, symbol: crypto.symbol.toUpperCase(), name: crypto.name, assetType: "CRYPTO", logoUrl: crypto.image ?? `https://assets.coingecko.com/coins/images/1/small/${crypto.id}.png`, supportedForTransactions: true, suggestedPrice: crypto.currentPrice })} value={null} /></div></div>;
-  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operacion</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><span className="text-[0.8125rem] text-[#6f7a8f] md:text-sm">Search</span><input className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar simbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7"><div className="grid grid-cols-[1fr_auto] gap-4 px-2 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]"><span>Activo</span><span>Clase</span></div>{loading ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">Searching assets...</p> : null}{!loading && !assets.length ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">No assets matched the current search.</p> : null}<div className="space-y-1 md:space-y-1.5">{assets.map((asset) => <button className="grid h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[0.625rem] border border-transparent bg-[#101418] px-3 py-2 text-left transition hover:border-[#232931] hover:bg-[#14191f] md:h-auto md:rounded-[0.9rem] md:py-3" key={`${asset.symbol}-${asset.assetType}`} onClick={() => onSelect(asset)} type="button"><div className="flex min-w-0 items-center gap-3"><AssetAvatar symbol={asset.symbol} logoUrl={asset.logoUrl} dark /><div className="min-w-0"><div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 md:gap-x-2.5"><span className="truncate text-[0.875rem] font-medium text-white md:text-[0.92rem]">{asset.name}</span><span className="text-[0.6875rem] text-[#7f8aa3] md:text-[0.8rem]">{asset.symbol}</span></div><p className="mt-0.5 truncate text-[0.6875rem] text-[#6f7a8f] md:text-[0.72rem]">{asset.name}</p></div></div><div className="flex items-center gap-2 text-[0.8125rem] text-[#6f7a8f] md:gap-2.5 md:text-sm"><span className="rounded-full border border-[#232931] bg-[#14191f] px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-[#9daccc] md:px-2.5 md:py-1 md:text-[0.64rem] md:tracking-[0.16em]">{getFilterLabel(normalizeAssetType(asset.assetType) as SelectorFilter)}</span><span className="text-[1rem] leading-none text-[#7f8aa3] md:text-lg">&rsaquo;</span></div></button>)}</div></div></div>;
+
+  const isBrowseMode = !query.trim();
+  const visibleRecent = filterAssetsByType(recentAssets, activeFilter);
+  const categorySections: { label: string; assets: AssetOption[] }[] =
+    activeFilter === "ALL"
+      ? [
+          { label: "Acciones", assets: popularAssets.stocks },
+          { label: "ETFs", assets: popularAssets.etfs },
+          { label: "Cripto", assets: popularAssets.cryptos },
+          { label: "Bonos Gobierno", assets: popularAssets.governmentBonds },
+        ]
+      : [{ label: "Populares", assets }];
+
+  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operacion</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><span className="text-[0.8125rem] text-[#6f7a8f] md:text-sm">Search</span><input className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar simbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7">
+    {isBrowseMode ? (
+      <div className="space-y-4">
+        {visibleRecent.length ? (
+          <AssetGroupSection assets={visibleRecent} label="Recientes" onSelect={onSelect} />
+        ) : null}
+        {categorySections
+          .filter((section) => section.assets.length)
+          .map((section) => (
+            <AssetGroupSection assets={section.assets} key={section.label} label={section.label} onSelect={onSelect} />
+          ))}
+        {!visibleRecent.length && !categorySections.some((section) => section.assets.length) ? (
+          <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">Cargando activos populares...</p>
+        ) : null}
+      </div>
+    ) : (
+      <>
+        <div className="grid grid-cols-[1fr_auto] gap-4 px-2 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]"><span>Activo</span><span>Clase</span></div>
+        {loading ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">Searching assets...</p> : null}
+        {!loading && !assets.length ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">No assets matched the current search.</p> : null}
+        <div className="space-y-1 md:space-y-1.5">{assets.map((asset) => <AssetRow asset={asset} key={`${asset.symbol}-${asset.assetType}`} onSelect={onSelect} />)}</div>
+      </>
+    )}
+  </div></div>;
+}
+
+function AssetGroupSection({ assets, label, onSelect }: { assets: AssetOption[]; label: string; onSelect: (asset: AssetOption) => void }) {
+  return (
+    <div>
+      <p className="px-2 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]">{label}</p>
+      <div className="space-y-1 md:space-y-1.5">
+        {assets.map((asset) => (
+          <AssetRow asset={asset} key={`${label}-${asset.symbol}-${asset.assetType}`} onSelect={onSelect} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AssetRow({ asset, onSelect }: { asset: AssetOption; onSelect: (asset: AssetOption) => void }) {
+  const disabled = !asset.supportedForTransactions;
+  return (
+    <button
+      className={`grid h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[0.625rem] border border-transparent bg-[#101418] px-3 py-2 text-left transition md:h-auto md:rounded-[0.9rem] md:py-3 ${disabled ? "cursor-not-allowed opacity-50" : "hover:border-[#232931] hover:bg-[#14191f]"}`}
+      disabled={disabled}
+      onClick={() => onSelect(asset)}
+      title={disabled ? "Solo consulta, no transaccionable" : undefined}
+      type="button"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <AssetAvatar assetType={asset.assetType} dark symbol={asset.symbol} logoUrl={asset.logoUrl} />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 md:gap-x-2.5">
+            <span className="truncate text-[0.875rem] font-medium text-white md:text-[0.92rem]">{asset.name}</span>
+            <span className="text-[0.6875rem] text-[#7f8aa3] md:text-[0.8rem]">{asset.symbol}</span>
+          </div>
+          <p className="mt-0.5 truncate text-[0.6875rem] text-[#6f7a8f] md:text-[0.72rem]">{disabled ? "Solo consulta, no transaccionable" : asset.name}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 text-[0.8125rem] text-[#6f7a8f] md:gap-2.5 md:text-sm">
+        <span className="rounded-full border border-[#232931] bg-[#14191f] px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-[#9daccc] md:px-2.5 md:py-1 md:text-[0.64rem] md:tracking-[0.16em]">{getFilterLabel(normalizeAssetType(asset.assetType) as SelectorFilter)}</span>
+        {!disabled ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-lg">&rsaquo;</span> : null}
+      </div>
+    </button>
+  );
 }
 
 function SelectorHeader({ onBack, onClose, stepLabel, title }: { onBack?: () => void; onClose: () => void; stepLabel: string; title: string }) {
@@ -365,6 +777,13 @@ function formatEditableNumber(value: number) {
   return value.toString();
 }
 
+function createIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `tx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 
 function filterAssetsByType(assets: AssetOption[], filter: string) {
   const normalizedFilter = normalizeAssetType(filter) ?? "ALL";
@@ -409,6 +828,7 @@ function getFilterLabel(filter?: string) {
     case "CRYPTO": return "Crypto";
     case "STOCK": return "Stocks";
     case "ETF": return "ETFs";
+    case "GOVERNMENT_BOND": return "Bonos Gob.";
     case "INDEX": return "Indices";
     default: return "All";
   }
@@ -426,6 +846,7 @@ function getPortfolioLabel(filter?: string) {
     case "CRYPTO": return "Crypto";
     case "STOCK": return "Stocks";
     case "ETF": return "ETFs";
+    case "GOVERNMENT_BOND": return "Bonos Gobierno";
     case "INDEX": return "Index";
     default: return "Multi-asset";
   }
@@ -454,6 +875,13 @@ function getAssetTypeCard(filter: SelectorFilter) {
         badgeClassName: "bg-[#14132a] text-[#818cf8]",
         icon: <EtfAssetIcon className="h-5 w-5" />,
       };
+    case "GOVERNMENT_BOND":
+      return {
+        title: "Bonos Gobierno",
+        description: "CETES, UDIBONO, BONDM",
+        badgeClassName: "bg-[#1a1712] text-[#e9b872]",
+        icon: <BondAssetIcon className="h-5 w-5" />,
+      };
     case "INDEX":
       return {
         title: "Indices",
@@ -471,9 +899,9 @@ function getAssetTypeCard(filter: SelectorFilter) {
   }
 }
 
-function buildMergedSuggestions(suggestedAssets: AssetOption[], logoRegistry: AssetLogoRegistry) {
+function buildMergedSuggestions(assets: AssetOption[], logoRegistry: AssetLogoRegistry) {
   const map = new Map<string, AssetOption>();
-  [...suggestedAssets, ...POPULAR_ASSETS].forEach((asset) => {
+  assets.forEach((asset) => {
     if (!asset?.symbol) return;
     const assetType = normalizeAssetType(asset.assetType) ?? asset.assetType;
     const logoUrl = asset.logoUrl ?? getAssetLogoFromRegistry(logoRegistry, asset.symbol, asset.assetType);
@@ -515,6 +943,16 @@ function IndexAssetIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M12 7.2v9.6M7.2 12h9.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function BondAssetIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M4 9.5 12 5l8 4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M5.5 9.5v8M9.5 9.5v8M14.5 9.5v8M18.5 9.5v8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      <path d="M4 19h16" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </svg>
   );
 }

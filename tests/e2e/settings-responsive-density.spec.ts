@@ -3,11 +3,11 @@ import { loginAs, mockBackendAPIs } from "./helpers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CARD_HEIGHT_BY_PROJECT: Record<string, number> = {
-  "xs-mobile": 900,
-  "sm-large-mobile": 900,
-  "md-tablet": 900,
-  "lg-small-desktop": 760,
-  "xl-desktop": 860,
+  "xs-mobile": 1200,
+  "sm-large-mobile": 1200,
+  "md-tablet": 1050,
+  "lg-small-desktop": 1050,
+  "xl-desktop": 1050,
 };
 
 // Preferences card has 6 fields + 2 action buttons — taller than account/security.
@@ -185,7 +185,7 @@ test.describe("Settings responsive density", () => {
   test("Account inputs touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/account");
     await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
-    for (const id of ["username-input", "email-input"]) {
+    for (const id of ["first-name-input", "last-name-input"]) {
       await assertTouchTarget(page, id);
     }
   });
@@ -210,7 +210,7 @@ test.describe("Settings responsive density", () => {
     await page.goto("/settings/account");
     await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
     const fields = page.getByTestId("settings-field");
-    await expect(fields).toHaveCount(4);
+    await expect(fields).toHaveCount(8);
     for (let i = 0; i < 4; i++) {
       await expect(fields.nth(i)).toBeVisible();
     }

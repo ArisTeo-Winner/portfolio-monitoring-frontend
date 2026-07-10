@@ -11,6 +11,7 @@ import { AddTransactionModal } from "@/components/transactions/add-transaction-m
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { AssetChartContainer } from "@/components/portfolio/asset-chart-container";
+import { AssetPriceChartContainer } from "@/components/portfolio/asset-price-chart-container";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
 import {
@@ -28,7 +29,7 @@ import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 
-const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF"]);
+const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND"]);
 const HOLDING_DETAIL_MEASURE_TYPES = {
   pageMounted: "page-mounted",
   entryRequestStart: "entry-request-start",
@@ -313,6 +314,7 @@ export default function PortfolioSymbolPage() {
           {loading ? <HoldingDetailSkeleton /> : null}
           {!loading && entry ? <PortfolioDetailCard entry={entry} /> : null}
           {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
+          {!loading && entry ? <AssetPriceChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && error ? (
             <section className="glass rounded-[1.6rem] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
               <h1 className="text-[1.35rem] font-bold text-slate-950">Holding unavailable</h1>

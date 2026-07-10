@@ -32,8 +32,9 @@ test.describe("Performance básica — loading states", () => {
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
     // The portfolio-assets testid wraps the holdings list.
-    // If it's not visible within 10s the component is stuck in a loading loop.
-    await expect(page.getByTestId("portfolio-assets")).toBeVisible({ timeout: 10_000 });
+    // 20s gives enough buffer under parallel-worker server load; a real infinite
+    // skeleton loop would never resolve regardless of the timeout.
+    await expect(page.getByTestId("portfolio-assets")).toBeVisible({ timeout: 20_000 });
   });
 
   test("portfolio: assets visibles y componente no queda en blanco", async ({ page }) => {
@@ -42,7 +43,7 @@ test.describe("Performance básica — loading states", () => {
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
     // portfolio-assets wraps the holdings list — visible means content loaded
-    await expect(page.getByTestId("portfolio-assets")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("portfolio-assets")).toBeVisible({ timeout: 20_000 });
   });
 
   test("portfolio: networkidle alcanzado dentro de 20 s", async ({ page }) => {

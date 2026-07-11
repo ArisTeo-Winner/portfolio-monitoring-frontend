@@ -133,6 +133,17 @@ test.describe("Performance básica — loading states", () => {
   });
 
   test("anonymous redirect: no loop entre /portfolio y /login", async ({ page }) => {
+    // Simulate missing HttpOnly refresh cookie: protected-shell calls the
+    // refresh endpoint on bootstrap; returning 401 immediately makes the
+    // redirect deterministic and fast regardless of whether a backend is running.
+    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "No session" }),
+      }),
+    );
+
     const urls: string[] = [];
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame()) urls.push(frame.url());

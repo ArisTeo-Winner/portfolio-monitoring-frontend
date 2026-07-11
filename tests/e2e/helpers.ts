@@ -125,6 +125,18 @@ export async function mockBackendAPIs(page: Page) {
     }),
   );
 
+  // FX rate mock — needed by portfolio page/store (MXN→USD conversion, added in
+  // 5e5f76c). Without this, loadPortfolio's Promise.all waits on the real Render
+  // backend, whose cold start (30-50 s, see sessions mock below) exceeds every
+  // portfolio-assets timeout and leaves the page stuck on the loading skeleton.
+  await page.route(/\/api\/v1\/marketdata\/fx\/usdmxn/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ rate: 17.5, pctChange: 0.12, absChange: 0.02 }),
+    }),
+  );
+
   // Sessions mock — needed by settings/sessions page; included here so any test
   // that calls mockBackendAPIs has the route covered even if the real Render backend
   // is cold (30-50 s cold start would otherwise timeout the 10 s toBeVisible check).

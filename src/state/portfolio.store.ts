@@ -14,6 +14,8 @@ import {
 } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
+import { computePortfolioTotals, type PortfolioCurrencyTotals } from "@/lib/utils/currency";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,8 +26,13 @@ type PortfolioStore = {
   groups: SidebarGroup[];
   // Currently selected asset-type filter ("" = overview)
   selectedType: string;
-  // Sum of currentValue across all entries
+  // USD-equivalent grand total (MXN positions converted via the live FX rate).
+  // Falls back to `totals.totalUsd` (the USD-only subtotal) if the rate is
+  // unavailable — see `totals` for the full currency breakdown.
   totalValue: number;
+  // Currency-aware breakdown backing `totalValue` — use this to render the
+  // total instead of re-summing entries, so USD and MXN never get mixed.
+  totals: PortfolioCurrencyTotals;
   // Raw entries kept for downstream consumers
   entries: PortfolioEntry[];
 
@@ -33,9 +40,10 @@ type PortfolioStore = {
   setSelectedType: (type: string) => void;
   /**
    * Called after every successful GET /me/portfolio response.
-   * Rebuilds groups + totalValue and re-reads localStorage preferences.
+   * Rebuilds groups + totals (fetching the USD/MXN rate) and re-reads
+   * localStorage preferences.
    */
-  syncFromEntries: (entries: PortfolioEntry[]) => void;
+  syncFromEntries: (entries: PortfolioEntry[]) => Promise<void>;
   /**
    * Optimistically appends a new portfolio preference to localStorage
    * and rebuilds the sidebar groups without waiting for an API round-trip.
@@ -57,16 +65,20 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
   groups: [],
   selectedType: "",
   totalValue: 0,
+  totals: { combined: false, totalUsd: 0, totalMxn: 0 },
   entries: [],
   defaultPortfolio: readDefaultPortfolio(),
 
   setSelectedType: (type) => set({ selectedType: type }),
 
-  syncFromEntries: (entries) => {
+  syncFromEntries: async (entries) => {
     const preferences = readPortfolioPreferences();
     const groups = buildSidebarGroups(entries, preferences);
-    const totalValue = entries.reduce((acc, e) => acc + Number(e.currentValue), 0);
-    set({ entries, groups, totalValue, defaultPortfolio: readDefaultPortfolio() });
+    const usdMxnRate = await getUsdMxnRateCached()
+      .then((fx) => fx.rate)
+      .catch(() => null);
+    const totals = computePortfolioTotals(entries, usdMxnRate);
+    set({ entries, groups, totalValue: totals.totalUsd, totals, defaultPortfolio: readDefaultPortfolio() });
   },
 
   addPortfolio: (preference) => {
@@ -100,6 +112,7 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
 // ─── Convenience selectors ────────────────────────────────────────────────────
 
 export const selectGroups = (s: PortfolioStore) => s.groups;
+export const selectPortfolioTotals = (s: PortfolioStore) => s.totals;
 export const selectTotalValue = (s: PortfolioStore) => s.totalValue;
 export const selectSelectedType = (s: PortfolioStore) => s.selectedType;
 export const selectEntries = (s: PortfolioStore) => s.entries;

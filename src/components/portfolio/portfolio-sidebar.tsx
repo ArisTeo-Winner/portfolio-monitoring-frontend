@@ -9,7 +9,7 @@ export function PortfolioSidebar({
   activeType,
   defaultType,
   groups,
-  totalValue,
+  totalValueLabel,
   onCreatePortfolio,
   onEditPortfolio,
   onRemovePortfolio,
@@ -18,7 +18,7 @@ export function PortfolioSidebar({
   activeType: string;
   defaultType: string | null;
   groups: SidebarGroup[];
-  totalValue: number;
+  totalValueLabel: string;
   onCreatePortfolio: () => void;
   onEditPortfolio: (group: SidebarGroup) => void;
   onRemovePortfolio: (assetType: string) => void;
@@ -36,7 +36,7 @@ export function PortfolioSidebar({
             </span>
             <div>
               <p className="text-[0.72rem] font-medium uppercase tracking-[0.22em] text-[#71819b] max-sm:text-[0.68rem] max-sm:tracking-[0.18em]">Resumen</p>
-              <p className="mt-1 text-[1rem] font-semibold tracking-[-0.03em] text-white max-sm:text-[1.35rem]">{formatCurrency(totalValue)}</p>
+              <p className="mt-1 text-[1rem] font-semibold tracking-[-0.03em] text-white max-sm:text-[1.35rem]">{totalValueLabel}</p>
             </div>
           </div>
         </div>

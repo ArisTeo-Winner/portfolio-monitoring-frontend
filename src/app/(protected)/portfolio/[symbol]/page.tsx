@@ -14,6 +14,7 @@ import { AssetChartContainer } from "@/components/portfolio/asset-chart-containe
 import { AssetPriceChartContainer } from "@/components/portfolio/asset-price-chart-container";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import {
   clearHoldingDetailPerformance,
   clearHoldingDetailTrace,
@@ -27,6 +28,7 @@ import { getUserTransactions } from "@/features/transactions/api/get-transaction
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 
 const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND"]);
@@ -44,6 +46,7 @@ export default function PortfolioSymbolPage() {
   const symbol = String(params.symbol ?? "").toUpperCase();
   const [entry, setEntry] = useState<PortfolioEntry | null>(null);
   const [portfolioEntries, setPortfolioEntries] = useState<PortfolioEntry[]>([]);
+  const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<PortfolioPreference[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,8 +77,14 @@ export default function PortfolioSymbolPage() {
     const sidebarFetchStartedAt = typeof window !== "undefined" ? window.performance.now() : 0;
 
     try {
-      const data = await getPortfolio();
+      const [data, fxRate] = await Promise.all([
+        getPortfolio(),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
+      ]);
       setPortfolioEntries(data);
+      setUsdMxnRate(fxRate);
     } catch {
       setPortfolioEntries([]);
     } finally {
@@ -253,9 +262,9 @@ export default function PortfolioSymbolPage() {
     () => buildSidebarGroups(portfolioEntries, preferences),
     [portfolioEntries, preferences],
   );
-  const totalValue = useMemo(
-    () => portfolioEntries.reduce((acc, current) => acc + Number(current.currentValue), 0),
-    [portfolioEntries],
+  const totalValueLabel = useMemo(
+    () => formatPortfolioTotal(computePortfolioTotals(portfolioEntries, usdMxnRate)),
+    [portfolioEntries, usdMxnRate],
   );
   const _createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
   const transactionsEnabled = entry ? SUPPORTED_TRANSACTION_TYPES.has(entry.assetType) : false;
@@ -284,7 +293,7 @@ export default function PortfolioSymbolPage() {
           onEditPortfolio={() => {}}
           onRemovePortfolio={() => {}}
           onSetDefault={() => {}}
-          totalValue={totalValue}
+          totalValueLabel={totalValueLabel}
         />
 
         <section className="space-y-5">

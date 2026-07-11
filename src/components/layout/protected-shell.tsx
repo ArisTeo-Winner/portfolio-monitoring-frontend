@@ -35,11 +35,13 @@ import { clearSession, persistSession, readSession } from "@/features/auth/lib/s
 import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import { getMe } from "@/features/users/api/get-me";
 import type { UserResponse } from "@/features/users/types/user.types";
 import { isMercadosNavEnabled } from "@/lib/navigation/nav-features";
 import { getPortfolioNavBadge } from "@/lib/navigation/release-badges";
 import { formatSignedCurrency } from "@/lib/utils/format";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
 
 type NavItem = {
   href: string;
@@ -165,14 +167,19 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
 
   const refreshPortfolioTotal = useCallback(async (force = false) => {
     try {
-      const entries = await getPortfolio({ force });
-      const total = entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0);
+      const [entries, usdMxnRate] = await Promise.all([
+        getPortfolio({ force }),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
+      ]);
+      const totals = computePortfolioTotals(entries, usdMxnRate);
       const invested = entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0);
       const profitLoss = entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0);
       const percent = invested > 0 ? (profitLoss / invested) * 100 : 0;
 
       setPortfolioSummary({
-        total: formatHeaderCurrency(total),
+        total: formatPortfolioTotal(totals),
         changeValue: formatSignedCurrency(profitLoss),
         changePercent: `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`,
         positive: profitLoss >= 0,
@@ -952,14 +959,6 @@ function NavBadge({ children }: { children: ReactNode }) {
   );
 }
 
-function formatHeaderCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
-}
 
 function buildPrimaryNav(_marketsEnabled: boolean): NavItem[] {
   return [

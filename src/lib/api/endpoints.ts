@@ -19,7 +19,7 @@ export const endpoints = {
   },
   portfolio: {
     me: "/api/v1/me/portfolio",
-    bySymbol: (symbol: string) => `/api/v1/me/portfolio/${symbol}`,
+    bySymbol: (symbol: string) => `/api/v1/me/portfolio/${encodeBmvSymbol(symbol)}`,
     holdingsPerformance: (portfolioId: string) =>
       `/api/v1/me/portfolio/${encodeURIComponent(portfolioId)}/holdings-performance`,
     history: "/api/v1/me/portfolio/history",

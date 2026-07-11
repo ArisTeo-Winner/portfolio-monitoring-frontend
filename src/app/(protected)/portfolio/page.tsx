@@ -11,12 +11,14 @@ import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-dat
 import { PortfolioSummary, PortfolioTable } from "@/components/portfolio/portfolio-widgets";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import { readPortfolioPreferences, type PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { usePortfolioStore } from "@/state/portfolio.store";
 import type { SidebarGroup } from "@/components/portfolio/portfolio-sidebar-data";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { ApiError } from "@/lib/api/problem-details";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
 
 function PortfolioPageContent() {
   const searchParams = useSearchParams();
@@ -29,6 +31,7 @@ function PortfolioPageContent() {
   const isOverviewScope = !requestedType;
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
   const [preferences, setPreferences] = useState<PortfolioPreference[]>([]);
+  const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -45,9 +48,15 @@ function PortfolioPageContent() {
       if (force) {
         invalidatePortfolioCache();
       }
-      const data = await getPortfolio({ force });
+      const [data, fxRate] = await Promise.all([
+        getPortfolio({ force }),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
+      ]);
       setEntries(data);
-      syncStore(data);
+      setUsdMxnRate(fxRate);
+      void syncStore(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No fue posible cargar el portfolio.");
     } finally {
@@ -66,7 +75,10 @@ function PortfolioPageContent() {
   }, [loadPortfolio, loadPreferences]);
 
   const portfolioGroups = useMemo(() => buildSidebarGroups(entries, preferences), [entries, preferences]);
-  const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
+  const totalValueLabel = useMemo(
+    () => formatPortfolioTotal(computePortfolioTotals(entries, usdMxnRate)),
+    [entries, usdMxnRate],
+  );
   const _createdCount = preferences.length > 0 ? preferences.length : portfolioGroups.length;
 
   // Derive active portfolio directly from URL — no intermediate state that can desync
@@ -110,7 +122,7 @@ function PortfolioPageContent() {
             onEditPortfolio={(group) => { setEditingPortfolio(group); setCreateModalOpen(true); }}
             onRemovePortfolio={(assetType) => { removePortfolio(assetType); loadPreferences(); }}
             onSetDefault={(assetType) => setDefaultPortfolio(assetType)}
-            totalValue={totalValue}
+            totalValueLabel={totalValueLabel}
           />
         </div>
 

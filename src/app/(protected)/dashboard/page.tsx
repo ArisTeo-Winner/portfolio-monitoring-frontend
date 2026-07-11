@@ -6,11 +6,13 @@ import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-hold
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
 import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
@@ -20,6 +22,7 @@ type BackendHealthState = "idle" | "checking" | "up" | "slow" | "unreachable";
 export default function DashboardPage() {
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
+  const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>(() => readAssetLogoRegistry());
   const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>(() => readCoinGeckoCryptoLogoMap());
   const [loading, setLoading] = useState(true);
@@ -33,13 +36,17 @@ export default function DashboardPage() {
         invalidatePortfolioCache();
       }
 
-      const [portfolioData, transactionData] = await Promise.all([
+      const [portfolioData, transactionData, fxRate] = await Promise.all([
         getPortfolio({ force }),
         getUserTransactions(),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
       ]);
 
       setEntries(portfolioData);
       setTransactions(transactionData);
+      setUsdMxnRate(fxRate);
       setLogoRegistry(readAssetLogoRegistry());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No fue posible cargar el dashboard.");
@@ -87,7 +94,9 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
+  const totals = useMemo(() => computePortfolioTotals(entries, usdMxnRate), [entries, usdMxnRate]);
+  const totalValue = totals.totalUsd;
+  const totalValueLabel = useMemo(() => formatPortfolioTotal(totals), [totals]);
   const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const totalProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const changePercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
@@ -160,7 +169,7 @@ export default function DashboardPage() {
           <DashboardMobileSummary
             changePercent={changePercent}
             totalProfit={totalProfit}
-            totalValue={totalValue}
+            totalValueLabel={totalValueLabel}
           />
 
           <div className="hidden gap-4 sm:grid xl:grid-cols-4">
@@ -169,7 +178,7 @@ export default function DashboardPage() {
               icon={<WalletIcon className="h-12 w-12" />}
               label="Balance neto"
               subtitle={btcEquivalent > 0 ? `~ ${btcEquivalent.toFixed(3)} BTC` : "Sin referencia BTC"}
-              value={formatCurrency(totalValue)}
+              value={totalValueLabel}
             />
             <DashboardStatCard
               accent={totalProfit >= 0 ? "emerald" : "rose"}
@@ -217,18 +226,18 @@ export default function DashboardPage() {
 function DashboardMobileSummary({
   changePercent,
   totalProfit,
-  totalValue,
+  totalValueLabel,
 }: {
   changePercent: number;
   totalProfit: number;
-  totalValue: number;
+  totalValueLabel: string;
 }) {
   const positive = totalProfit >= 0;
 
   return (
     <section className="rounded-lg bg-[#111317] px-4 py-4 sm:hidden">
       <p className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[#71819b]">Balance neto</p>
-      <p className="mt-2 text-[1.375rem] font-semibold leading-tight text-white">{formatCurrency(totalValue)}</p>
+      <p className="mt-2 text-[1.375rem] font-semibold leading-tight text-white">{totalValueLabel}</p>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`text-[0.875rem] font-semibold ${positive ? "text-[#17c784]" : "text-[#ea3943]"}`}>
           {formatSignedCurrency(totalProfit)} ({changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}%) 24h

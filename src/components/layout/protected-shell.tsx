@@ -114,6 +114,9 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           cache: "no-store",
           // The HttpOnly refresh-token cookie must be sent to the backend.
           credentials: "include",
+          // Bound the wait so a cold-starting/slow backend can't strand the
+          // user on the loading skeleton — fall through to the login redirect.
+          signal: AbortSignal.timeout(8_000),
         });
 
         if (response.ok) {

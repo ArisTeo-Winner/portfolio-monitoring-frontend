@@ -528,17 +528,17 @@ export function HoldingsChart({
           </div>
         </div>
 
-        <div className="mt-1 flex justify-center sm:hidden">
+        <div className="mt-3 flex justify-center sm:hidden">
           <button
             aria-expanded={isChartExpanded}
             aria-label={isChartExpanded ? "Reducir grafica" : "Expandir grafica"}
-            className="flex h-6 w-16 items-center justify-center transition-colors"
+            className="flex h-12 w-12 items-center justify-center rounded-full border border-[#222936] bg-[#14181f] text-[#d3dbe8] shadow-[0_18px_34px_rgba(0,0,0,0.32)] transition hover:bg-[#1a2029] hover:text-white"
             onClick={toggleChart}
             type="button"
           >
             <ChevronDown
-              className={`h-5 w-5 text-[#7D8596] transition-transform duration-300 ease-in-out ${
-                isChartExpanded ? "rotate-0" : "rotate-180"
+              className={`h-7 w-7 transition-transform duration-300 ease-in-out ${
+                isChartExpanded ? "rotate-180" : "rotate-0"
               }`}
             />
           </button>

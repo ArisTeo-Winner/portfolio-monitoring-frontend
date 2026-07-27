@@ -16,7 +16,10 @@ function resolveApiOrigin(): string {
 function buildContentSecurityPolicy(): string {
   const isDevelopment = process.env.NODE_ENV !== "production";
   const scriptSources = ["'self'", "'unsafe-inline'"];
-  const connectSources = ["'self'", resolveApiOrigin(), "https://api.coingecko.com"];
+  // CoinGecko/CoinMarketCap must always be called server-side (Route Handlers),
+  // never fetched directly from the browser — keeps connect-src minimal so a
+  // compromised frontend has no whitelisted exfiltration destination.
+  const connectSources = ["'self'", resolveApiOrigin()];
 
   if (isDevelopment) {
     scriptSources.push("'unsafe-eval'");

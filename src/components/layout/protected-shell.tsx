@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
+import { AddTransactionModalProvider, type OpenAddTransactionModalOptions } from "@/components/layout/add-transaction-modal-context";
 import { logout } from "@/features/auth/api/logout";
 import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
 import { env } from "@/lib/config/env";
@@ -73,6 +74,11 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
   const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addModalConfig, setAddModalConfig] = useState<OpenAddTransactionModalOptions>({});
+  const openAddTransactionModal = useCallback((options?: OpenAddTransactionModalOptions) => {
+    setAddModalConfig(options ?? {});
+    setAddModalOpen(true);
+  }, [setAddModalConfig, setAddModalOpen]);
   const [user, setUser] = useState<UserResponse | null>(null);
   const [portfolioSummary, setPortfolioSummary] = useState<{
     total: string;
@@ -273,6 +279,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
   }
 
   return (
+    <AddTransactionModalProvider value={{ openAddTransactionModal }}>
     <div className="relative min-h-dvh overflow-x-hidden bg-[#0F1116] font-sans text-zinc-50 selection:bg-emerald-500/30 md:bg-[#09090b]">
       <header
         ref={navRef}
@@ -332,7 +339,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
 
           <div className="hidden shrink-0 items-center gap-1.5 lg:flex xl:gap-2">
             <DesktopBalanceSummary
-              onAddAsset={() => setAddModalOpen(true)}
+              onAddAsset={() => openAddTransactionModal()}
               summary={portfolioSummary}
             />
 
@@ -503,7 +510,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2 lg:hidden">
             <button
               className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#0e7a4f] px-3 text-[0.875rem] font-medium text-white transition active:brightness-110 md:h-10 md:px-4 md:text-sm md:font-semibold md:hover:bg-[#11945f]"
-              onClick={() => setAddModalOpen(true)}
+              onClick={() => openAddTransactionModal()}
               type="button"
             >
               <Plus className="h-4 w-4" />
@@ -718,9 +725,13 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           await refreshPortfolioTotal(true);
           router.refresh();
         }}
-        requireAssetTypeSelection
+        portfolioAssetType={addModalConfig.portfolioAssetType}
+        portfolioName={addModalConfig.portfolioName}
+        requireAssetTypeSelection={addModalConfig.requireAssetTypeSelection ?? true}
+        suggestedAssets={addModalConfig.suggestedAssets}
       />
     </div>
+    </AddTransactionModalProvider>
   );
 }
 

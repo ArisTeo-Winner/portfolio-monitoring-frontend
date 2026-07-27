@@ -90,6 +90,15 @@ test.describe("Performance básica — loading states", () => {
         body: JSON.stringify({ detail: "No session" }),
       }),
     );
+
+    // Warm-up hit: in `next dev` the FIRST request to a route pays an on-demand
+    // compile cost (seconds, sometimes tens of seconds under CPU contention from
+    // parallel workers) that has nothing to do with the redirect logic under
+    // test. Pay that cost here, unmeasured, so the timed navigation below only
+    // reflects actual app behaviour.
+    await page.goto("/portfolio");
+    await page.waitForURL(/\/login/, { timeout: 60_000 });
+
     const start = Date.now();
     await page.goto("/portfolio");
     await expect(page).toHaveURL(/\/login/, { timeout: 5_000 });
@@ -99,6 +108,12 @@ test.describe("Performance básica — loading states", () => {
 
   test("login exitoso: redirige a /portfolio en menos de 10 s", async ({ page }) => {
     await mockBackendAPIs(page);
+
+    // Warm-up: compile /login and /portfolio once before timing (see comment
+    // in the "anonymous user" redirect test above for why this is necessary).
+    await page.goto("/portfolio");
+    await page.waitForURL(/\/login/, { timeout: 60_000 });
+
     const start = Date.now();
     await loginAs(page);
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 10_000 });

@@ -4,8 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-modal";
+import { useAddTransactionModal } from "@/components/layout/add-transaction-modal-context";
 import { PortfolioSidebar } from "@/components/portfolio/portfolio-sidebar";
 import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-data";
 import { PortfolioSummary, PortfolioTable } from "@/components/portfolio/portfolio-widgets";
@@ -34,7 +34,7 @@ function PortfolioPageContent() {
   const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const { openAddTransactionModal } = useAddTransactionModal();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<SidebarGroup | null>(null);
   const [activeTab, setActiveTab] = useState<"assets" | "history">("assets");
@@ -110,6 +110,24 @@ function PortfolioPageContent() {
     }));
   }, [filteredEntries, logoRegistry]);
 
+  const handleOpenAddTransaction = useCallback(() => {
+    openAddTransactionModal({
+      portfolioAssetType: isOverviewScope ? undefined : hasExistingTransactions ? activePortfolio?.assetType : undefined,
+      portfolioName: isOverviewScope ? undefined : hasExistingTransactions ? activePortfolio?.label : undefined,
+      requireAssetTypeSelection: isOverviewScope,
+      suggestedAssets,
+    });
+  }, [activePortfolio?.assetType, activePortfolio?.label, hasExistingTransactions, isOverviewScope, openAddTransactionModal, suggestedAssets]);
+
+  useEffect(() => {
+    function handleRefresh() {
+      void loadPortfolio(true);
+      void refreshHoldingsPerformance();
+    }
+    window.addEventListener("portfolio:refresh", handleRefresh);
+    return () => window.removeEventListener("portfolio:refresh", handleRefresh);
+  }, [loadPortfolio, refreshHoldingsPerformance]);
+
   return (
     <>
       <main className="grid gap-5 max-sm:gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -128,13 +146,13 @@ function PortfolioPageContent() {
 
         <section className="space-y-4 pt-1 max-sm:space-y-0 max-sm:pt-0">
           {loading ? <PortfolioLoadingState /> : null}
-          {!loading && error ? <PortfolioErrorState message={error} onOpenModal={() => setModalOpen(true)} transactionsEnabled={transactionsEnabled} /> : null}
+          {!loading && error ? <PortfolioErrorState message={error} onOpenModal={handleOpenAddTransaction} transactionsEnabled={transactionsEnabled} /> : null}
           {!loading && !error ? (
             <>
-              <PortfolioCompactIntro onAddTransaction={() => setModalOpen(true)} />
+              <PortfolioCompactIntro onAddTransaction={handleOpenAddTransaction} />
               <PortfolioSummary entries={filteredEntries} portfolioId={holdingsPortfolioId} />
               <MobilePortfolioActions
-                onAddTransaction={() => setModalOpen(true)}
+                onAddTransaction={handleOpenAddTransaction}
               />
             </>
           ) : null}
@@ -143,7 +161,7 @@ function PortfolioPageContent() {
               activeTab={activeTab}
               assetType={isOverviewScope ? undefined : activePortfolio?.assetType}
               entries={filteredEntries}
-              onAddTransaction={() => setModalOpen(true)}
+              onAddTransaction={handleOpenAddTransaction}
               onHistoryChanged={async () => {
                 await loadPortfolio(true);
                 await refreshHoldingsPerformance();
@@ -153,19 +171,6 @@ function PortfolioPageContent() {
           ) : null}
         </section>
       </main>
-
-      <AddTransactionModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={async () => {
-          await loadPortfolio(true);
-          await refreshHoldingsPerformance();
-        }}
-        portfolioAssetType={isOverviewScope ? undefined : hasExistingTransactions ? activePortfolio?.assetType : undefined}
-        portfolioName={isOverviewScope ? undefined : hasExistingTransactions ? activePortfolio?.label : undefined}
-        requireAssetTypeSelection={isOverviewScope}
-        suggestedAssets={suggestedAssets}
-      />
 
       <CreatePortfolioModal
         editingPortfolio={editingPortfolio ?? undefined}

@@ -11,6 +11,7 @@ import { resolveMarketSymbolCandidate } from "@/features/assets/api/resolve-mark
 import { getPopularAssets, type PopularAssets } from "@/features/assets/api/get-popular-assets";
 import { getRecentAssets, rememberRecentAsset } from "@/features/assets/lib/recent-assets";
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
+import { getBanxicoCetesCurveCached, type BanxicoCetesCurve } from "@/features/marketdata/api/get-banxico-cetes-curve";
 import { createBuyTransaction, createSellTransaction, createTransferTransaction, registerDividend, updateTransaction } from "@/features/transactions/api/create-transaction";
 import type { DividendType, TransactionMode, TransferDirection } from "@/features/transactions/types/transaction.types";
 import { calculateBuyTotal, calculateSellTotal } from "@/features/transactions/utils/totals";
@@ -20,6 +21,9 @@ import { normalizeAssetType, supportsDividend } from "@/lib/utils/asset";
 import { ApiError } from "@/lib/api/problem-details";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+
+// Standard nominal value per CETES titulo (Banxico / cetesdirecto).
+const CETES_FACE_VALUE_PER_TITLE = 10;
 
 const EMPTY_SUGGESTED_ASSETS: AssetOption[] = [];
 const EMPTY_POPULAR_ASSETS: PopularAssets = { stocks: [], etfs: [], cryptos: [], governmentBonds: [] };
@@ -84,11 +88,14 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const [dividendType, setDividendType] = useState<DividendType>("CASH");
   const [exDividendDate, setExDividendDate] = useState("");
   const [taxWithheld, setTaxWithheld] = useState("");
-  // GOVERNMENT_BOND BUY-only fields
-  const [faceValue, setFaceValue] = useState("");
+  // GOVERNMENT_BOND BUY-only fields — the user invests a peso amount
+  // (matching cetesdirecto's own calculator) and titulos/price/faceValue are
+  // all derived from it below, not typed directly.
+  const [investAmount, setInvestAmount] = useState("");
   const [maturityDate, setMaturityDate] = useState("");
   const [couponRate, setCouponRate] = useState("0");
   const [autoReinvestment, setAutoReinvestment] = useState(false);
+  const [bondCurve, setBondCurve] = useState<BanxicoCetesCurve | null>(null);
   const [selectorQuery, setSelectorQuery] = useState("");
   const [selectorResults, setSelectorResults] = useState<AssetOption[]>([]);
   const [selectorLoading, setSelectorLoading] = useState(false);
@@ -156,7 +163,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setDividendType("CASH");
     setExDividendDate("");
     setTaxWithheld("");
-    setFaceValue("");
+    setInvestAmount("");
     setMaturityDate("");
     setCouponRate("0");
     setAutoReinvestment(false);
@@ -168,7 +175,11 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   }, [initialAsset, initialDraft, isOpen, lockedAssetType, shouldSelectAssetTypeFirst, suggestedAssets]);
 
   useEffect(() => {
-    if (!isOpen || !selectedAsset || mode === "TRANSFER" || mode === "DIVIDEND") {
+    // Government bonds (CETES, UDIBONO, etc.) have no live market quote —
+    // their purchase price is a discount rate the user enters manually, not
+    // something getAssetPrice can fetch.
+    const skipAutoPrice = mode === "TRANSFER" || mode === "DIVIDEND" || (selectedAsset ? normalizeAssetType(selectedAsset.assetType) === "GOVERNMENT_BOND" : false);
+    if (!isOpen || !selectedAsset || skipAutoPrice) {
       if (mode === "TRANSFER" || mode === "DIVIDEND") setPricePerUnit("");
       return;
     }
@@ -186,6 +197,22 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
       active = false;
     };
   }, [isOpen, mode, pricePerUnit, selectedAsset]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== "BUY" || normalizeAssetType(selectedAsset?.assetType ?? "") !== "GOVERNMENT_BOND") return;
+    let active = true;
+    getBanxicoCetesCurveCached()
+      .then((curve) => {
+        if (active) setBondCurve(curve);
+      })
+      .catch(() => {
+        // Curve fetch failure just means no auto-suggested price — the user
+        // can still enter faceValue/price manually, so this fails silently.
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, mode, selectedAsset]);
 
   useEffect(() => {
     if (!isOpen || view !== "asset") return;
@@ -235,12 +262,29 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     };
   }, [isOpen, view, selectorQuery, mergedSuggestions, lockedAssetType, selectedFilter]);
 
-  const quantityValue = parseDecimal(quantity);
-  const priceValue = parseDecimal(pricePerUnit);
+  const assetFieldType = (selectedAsset?.assetType ? normalizeAssetType(selectedAsset.assetType) : undefined) ?? lockedAssetType ?? selectedFilter;
+  const isBondBuy = mode === "BUY" && assetFieldType === "GOVERNMENT_BOND";
+
+  // CETES (zero-coupon) discount pricing: price per titulo = 10 / (1 + tasa/100 * dias/360).
+  // Rounded to 2 decimals to match how CETES prices are always quoted (cetesdirecto, brokers) —
+  // the raw division otherwise carries 12+ meaningless floating-point digits.
+  const bondTermDays = isBondBuy && selectedAsset ? parseCetesTermDays(selectedAsset.symbol) : null;
+  const bondRate = bondTermDays !== null && bondCurve ? bondCurve[bondTermDays] : undefined;
+  const bondUnitPrice =
+    bondTermDays !== null && bondRate !== undefined
+      ? Math.round((CETES_FACE_VALUE_PER_TITLE / (1 + (bondRate / 100) * (bondTermDays / 360))) * 100) / 100
+      : null;
+  const investAmountValue = parseDecimal(investAmount);
+  // Titulos are only sold whole — leftover cash below one titulo's price stays uninvested,
+  // same as cetesdirecto's own calculator (shown there as "Remanente").
+  const bondTitulos = isBondBuy && bondUnitPrice && bondUnitPrice > 0 ? Math.floor(investAmountValue / bondUnitPrice) : 0;
+
+  const quantityValue = isBondBuy ? bondTitulos : parseDecimal(quantity);
+  const priceValue = isBondBuy ? (bondUnitPrice ?? 0) : parseDecimal(pricePerUnit);
   const feeValue = parseDecimal(fee);
   const dividendAmountValue = parseDecimal(dividendAmount);
   const taxWithheldValue = parseDecimal(taxWithheld);
-  const faceValueValue = parseDecimal(faceValue);
+  const faceValueValue = isBondBuy ? bondTitulos * CETES_FACE_VALUE_PER_TITLE : 0;
   const couponRateValue = parseDecimal(couponRate);
   const totalValue = mode === "SELL" ? calculateSellTotal(quantityValue, priceValue, feeValue) : calculateBuyTotal(quantityValue, priceValue, feeValue);
   const totalLabel = mode === "SELL" ? "Total Received" : mode === "TRANSFER" ? "Transfer Quantity" : "Total Spent";
@@ -253,9 +297,17 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const typeSelectionFilters = lockedAssetType ? [lockedAssetType as SelectorFilter] : SELECTOR_FILTERS.filter((filter) => filter !== "ALL");
   const portfolioLabel = portfolioName ?? getPortfolioLabel(((initialAsset?.assetType ? normalizeAssetType(initialAsset.assetType) : undefined) as SelectorFilter | undefined) ?? (lockedAssetType as SelectorFilter | undefined) ?? selectedAsset?.assetType ?? selectedFilter);
   const activeSelectorFilter = (lockedAssetType as SelectorFilter | undefined) ?? selectedFilter;
-  const assetFieldType = (selectedAsset?.assetType ? normalizeAssetType(selectedAsset.assetType) : undefined) ?? lockedAssetType ?? selectedFilter;
   const currency = getAssetCurrency(selectedAsset?.symbol ?? "");
-  const isBondBuy = mode === "BUY" && assetFieldType === "GOVERNMENT_BOND";
+
+  useEffect(() => {
+    if (!isOpen || !isBondBuy || maturityDate) return;
+    const days = selectedAsset ? parseCetesTermDays(selectedAsset.symbol) : null;
+    if (!days) return;
+    const target = new Date();
+    target.setDate(target.getDate() + days);
+    setMaturityDate(toDateInputValue(target));
+  }, [isOpen, isBondBuy, maturityDate, selectedAsset]);
+
   const dividendAllowed = selectedAsset ? supportsDividend(selectedAsset.assetType) : false;
   const estimatedBondGain = faceValueValue - totalValue;
   const brokerPlaceholder = currency === "MXN" ? "GBM / Bursanet / cetesdirecto" : "GBM / IBKR";
@@ -281,6 +333,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     if (mode === "DIVIDEND") {
       if (dividendAmountValue <= 0) return setError("El monto del dividendo debe ser mayor que cero.");
     } else {
+      if (isBondBuy && investAmountValue > 0 && quantityValue <= 0) return setError("El monto ingresado no alcanza para comprar un titulo completo.");
       if (quantityValue <= 0) return setError("La cantidad debe ser mayor que cero.");
       if (mode !== "TRANSFER" && priceValue <= 0) return setError("No hay precio valido para completar la transaccion.");
       if (isBondBuy && faceValueValue <= 0) return setError("El valor nominal (faceValue) del bono es requerido.");
@@ -391,6 +444,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setRecentAssets(getRecentAssets());
     setSelectedAsset(asset);
     setPricePerUnit(asset.suggestedPrice ? formatEditableNumber(asset.suggestedPrice) : "");
+    setInvestAmount("");
+    setMaturityDate("");
     if (mode === "DIVIDEND" && !supportsDividend(asset.assetType)) setMode("BUY");
     setSelectorQuery("");
     setSelectorResults(filterAssetsByType(mergedSuggestions, lockedAssetType ?? selectedFilter));
@@ -408,7 +463,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   }
 
   return (
-    <Modal onClose={view === "asset" ? undefined : onClose} overlayClassName="bg-[#04070d]/84 backdrop-blur-[8px]" panelClassName={view === "asset" ? "max-h-[90vh] max-w-[608px] overflow-hidden rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-0 py-0 text-white shadow-[0_28px_72px_rgba(0,0,0,0.5)] ring-0 md:rounded-[1.15rem] md:shadow-[0_40px_120px_rgba(0,0,0,0.62)]" : "max-h-[90vh] max-w-[430px] overflow-y-auto rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-3 py-3 text-white shadow-[0_24px_72px_rgba(0,0,0,0.48)] ring-0 md:rounded-[1.05rem] md:px-4 md:py-4 md:shadow-[0_32px_96px_rgba(0,0,0,0.54)]"}>
+    <Modal onClose={view === "asset" ? undefined : onClose} overlayClassName="bg-[#04070d]/84 backdrop-blur-[8px]" panelClassName={view === "asset" ? "max-h-[90vh] max-w-[608px] overflow-hidden rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-0 py-0 text-white shadow-[0_28px_72px_rgba(0,0,0,0.5)] ring-0 md:rounded-[1.15rem] md:shadow-[0_40px_120px_rgba(0,0,0,0.62)]" : `max-h-[90vh] max-w-[430px] ${view === "form" && isBondBuy ? "md:max-w-[760px]" : ""} overflow-y-auto rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-3 py-3 text-white shadow-[0_24px_72px_rgba(0,0,0,0.48)] ring-0 md:rounded-[1.05rem] md:shadow-[0_32px_96px_rgba(0,0,0,0.54)]`}>
       {view === "type" ? <AssetTypeSelectionView filters={typeSelectionFilters} onClose={onClose} onSelect={handleAssetTypeSelect} /> : null}
       {view === "asset" ? (
         <AssetSelectorView
@@ -433,8 +488,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
       {view === "fee" ? <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor> : null}
       {view === "notes" ? <SimpleEditor title="Add Notes" cta="Save Notes" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Notes"><textarea className="min-h-24 w-full resize-none bg-transparent text-[0.875rem] leading-5 text-white outline-none placeholder:text-[#6f7a8f] md:min-h-32 md:text-[0.95rem] md:leading-7" maxLength={255} onChange={(event) => setNotes(event.target.value)} placeholder="Exchange, source wallet, memo, reasoning..." value={notes} /></Field></SimpleEditor> : null}
       {view === "form" ? (
-        <div className="space-y-3 md:space-y-5">
-          <header className="pr-8 md:space-y-1.5 md:border-b md:border-[#1b2028] md:pb-4">
+        <div className="space-y-2">
+          <header className="pr-8 md:space-y-0.5 md:border-b md:border-[#1b2028] md:pb-2">
             <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem] md:tracking-[0.18em]">{portfolioLabel} portfolio</p>
             <h2 className="text-[1.125rem] font-semibold text-white md:text-[1.38rem] md:tracking-[-0.03em]">{formTitle}</h2>
             <p className="hidden text-sm text-[#7f8aa3] md:block">{formDescription}</p>
@@ -490,131 +545,183 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             </div>
           ) : null}
 
-          <button className={`flex min-h-11 w-full items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left md:rounded-[0.95rem] md:py-3 ${isEditing ? "cursor-default" : "transition hover:border-[#2f3742] hover:bg-[#181d24]"}`} disabled={isEditing} onClick={() => !isEditing && setView("asset")} type="button">
-            <div className="flex items-center gap-3">
-              <AssetAvatar assetType={selectedAsset?.assetType} symbol={selectedAsset?.symbol ?? "?"} logoUrl={selectedAsset?.logoUrl ?? null} />
-              <div>
-                <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]">Asset</p>
-                <div className="mt-0.5 flex items-baseline gap-2 md:mt-1">
-                  <span className="text-[0.875rem] font-medium text-white md:text-[0.95rem]">{selectedAsset?.name ?? "Select Asset"}</span>
-                  <span className="text-[0.75rem] text-[#7f8aa3] md:text-[0.76rem]">{selectedAsset?.symbol ?? getFilterLabel(lockedAssetType ?? selectedFilter)}</span>
+          {(() => {
+            const assetRow = (
+              <button className={`flex min-h-11 w-full items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left md:rounded-[0.95rem] ${isEditing ? "cursor-default" : "transition hover:border-[#2f3742] hover:bg-[#181d24]"}`} disabled={isEditing} onClick={() => !isEditing && setView("asset")} type="button">
+                <div className="flex items-center gap-3">
+                  <AssetAvatar assetType={selectedAsset?.assetType} symbol={selectedAsset?.symbol ?? "?"} logoUrl={selectedAsset?.logoUrl ?? null} />
+                  <div>
+                    <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]">Asset</p>
+                    <div className="mt-0.5 flex items-baseline gap-2 md:mt-1">
+                      <span className="text-[0.875rem] font-medium text-white md:text-[0.95rem]">{selectedAsset?.name ?? "Select Asset"}</span>
+                      <span className="text-[0.75rem] text-[#7f8aa3] md:text-[0.76rem]">{selectedAsset?.symbol ?? getFilterLabel(lockedAssetType ?? selectedFilter)}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            {!isEditing ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-[1.1rem]">&rsaquo;</span> : null}
-          </button>
+                {!isEditing ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-[1.1rem]">&rsaquo;</span> : null}
+              </button>
+            );
 
-          {mode === "DIVIDEND" ? (
-            <>
-              <Field label="Monto recibido">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
-                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.98rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setDividendAmount(event.target.value)} placeholder="0.00" step="any" type="number" value={dividendAmount} />
-                </div>
-              </Field>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Fecha ex-dividendo (opcional)">
-                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setExDividendDate(event.target.value)} type="date" value={exDividendDate} />
+            const quantityOrAmountFields =
+              mode === "DIVIDEND" ? (
+                <>
+                  <Field label="Monto recibido">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
+                      <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.98rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setDividendAmount(event.target.value)} placeholder="0.00" step="any" type="number" value={dividendAmount} />
+                    </div>
+                  </Field>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Fecha ex-dividendo (opcional)">
+                      <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setExDividendDate(event.target.value)} type="date" value={exDividendDate} />
+                    </Field>
+                    <Field label="Retencion fiscal (opcional)">
+                      <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setTaxWithheld(event.target.value)} placeholder="0.00" step="any" type="number" value={taxWithheld} />
+                    </Field>
+                  </div>
+                </>
+              ) : isBondBuy ? (
+                <Field label="Monto a invertir">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
+                    <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setInvestAmount(event.target.value)} placeholder="0.00" step="any" type="number" value={investAmount} />
+                  </div>
                 </Field>
-                <Field label="Retencion fiscal (opcional)">
-                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setTaxWithheld(event.target.value)} placeholder="0.00" step="any" type="number" value={taxWithheld} />
-                </Field>
-              </div>
-            </>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Quantity">
-                <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="0.00" step="any" type="number" value={quantity} />
-              </Field>
-              <Field label={mode === "TRANSFER" ? "Reference Price" : assetFieldType === "STOCK" ? "Price Per Share" : "Price Per Coin"}>
-                <div className="flex items-center gap-2.5">
-                  <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
-                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] disabled:text-[#6f7a8f]/60 md:text-[0.98rem] md:tracking-[-0.03em]" disabled={mode === "TRANSFER"} inputMode="decimal" onChange={(event) => setPricePerUnit(event.target.value)} placeholder={priceLoading ? "Loading..." : "0.00"} step="any" type="number" value={pricePerUnit} />
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Quantity">
+                    <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="0.00" step="any" type="number" value={quantity} />
+                  </Field>
+                  <Field label={mode === "TRANSFER" ? "Reference Price" : assetFieldType === "STOCK" ? "Price Per Share" : assetFieldType === "GOVERNMENT_BOND" ? "Precio de Compra" : "Price Per Coin"}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[0.8125rem] font-semibold text-[#7f8aa3] md:text-[0.82rem]">$</span>
+                      <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] disabled:text-[#6f7a8f]/60 md:text-[0.98rem] md:tracking-[-0.03em]" disabled={mode === "TRANSFER"} inputMode="decimal" onChange={(event) => setPricePerUnit(event.target.value)} placeholder={priceLoading ? "Loading..." : "0.00"} step="any" type="number" value={pricePerUnit} />
+                    </div>
+                  </Field>
                 </div>
-              </Field>
-            </div>
-          )}
+              );
 
-          {isBondBuy ? (
-            <div className="space-y-3 rounded-[0.875rem] border border-[#232931] bg-[#14191f] p-3 md:rounded-[0.95rem]">
-              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Datos del bono</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Valor nominal (Face Value)">
-                  <input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.98rem]" inputMode="decimal" onChange={(event) => setFaceValue(event.target.value)} placeholder="0.00" step="any" type="number" value={faceValue} />
-                </Field>
-                <Field label="Fecha de vencimiento">
-                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setMaturityDate(event.target.value)} type="date" value={maturityDate} />
-                </Field>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Tasa cupon anual % (0 = cupon cero)">
-                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setCouponRate(event.target.value)} placeholder="0" step="any" type="number" value={couponRate} />
-                </Field>
-                <label className="flex items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#181d24] px-3 py-2 md:rounded-[0.95rem]">
+            const bondDetails = isBondBuy ? (
+              <div className="space-y-2 rounded-[0.875rem] border border-[#232931] bg-[#14191f] p-2.5 md:rounded-[0.95rem]">
+                {bondUnitPrice !== null ? (
+                  <p className="text-[0.76rem] font-medium text-[#9daccc]">
+                    <span className="font-semibold uppercase tracking-[0.1em] text-[#6f7a8f]">Bono</span>{" "}
+                    · {bondTitulos} titulo{bondTitulos === 1 ? "" : "s"} a {formatCurrencyByCode(bondUnitPrice, currency)} c/u
+                    {bondRate !== undefined ? ` · tasa ${bondRate.toFixed(2)}%` : ""}
+                  </p>
+                ) : (
+                  <p className="text-[0.76rem] text-[#6f7a8f]">Cargando tasa vigente...</p>
+                )}
+                <div className="grid grid-cols-2 gap-2 md:gap-3">
+                  <Field label="Vencimiento">
+                    <input className="w-full bg-transparent text-[0.8rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setMaturityDate(event.target.value)} type="date" value={maturityDate} />
+                  </Field>
+                  <Field label="Tasa cupon % (0=cero)">
+                    <input className="w-full bg-transparent text-[0.8rem] font-medium text-white outline-none md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setCouponRate(event.target.value)} placeholder="0" step="any" type="number" value={couponRate} />
+                  </Field>
+                </div>
+                <label className="flex items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#181d24] px-3 py-1.5 md:rounded-[0.95rem]">
                   <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Reinversion automatica</span>
                   <button className={autoReinvestment ? "rounded-full bg-[#3f8c53] px-2.5 py-1 text-[0.72rem] font-semibold text-white" : "rounded-full bg-[#232931] px-2.5 py-1 text-[0.72rem] font-semibold text-[#7f8aa3]"} onClick={() => setAutoReinvestment((value) => !value)} type="button">
                     {autoReinvestment ? "Si" : "No"}
                   </button>
                 </label>
+                {faceValueValue > 0 ? (
+                  <p className="text-[0.76rem] font-medium text-[#9daccc]">
+                    Ganancia estimada: <span className={estimatedBondGain >= 0 ? "font-semibold text-[#17c784]" : "font-semibold text-[#ff6b6b]"}>{formatCurrencyByCode(estimatedBondGain, currency)}</span>
+                  </p>
+                ) : null}
               </div>
-              {faceValueValue > 0 ? (
-                <p className="text-[0.78rem] font-medium text-[#9daccc]">
-                  Ganancia estimada: <span className={estimatedBondGain >= 0 ? "font-semibold text-[#17c784]" : "font-semibold text-[#ff6b6b]"}>{formatCurrencyByCode(estimatedBondGain, currency)}</span>
+            ) : null;
+
+            const brokerField =
+              mode !== "TRANSFER" ? (
+                <Field label="Broker (opcional)">
+                  <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => setBroker(event.target.value)} placeholder={brokerPlaceholder} value={broker} />
+                </Field>
+              ) : null;
+
+            const dateFeeNotesRow = (
+              <div className="grid grid-cols-[1.3fr_0.6fr_0.75fr] gap-1.5 md:gap-2">
+                <div className="block min-w-0 rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-2.5 py-1.5 md:rounded-[0.95rem]">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Date</span>
+                  <div className="mt-1 min-w-0">
+                    <DateTimePicker max={createDefaultDateTime()} onChange={setTransactionDate} value={transactionDate} />
+                  </div>
+                </div>
+                {mode === "DIVIDEND" ? (
+                  <div className="col-span-2 flex items-center justify-end">
+                    <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem]" onClick={() => setView("notes")} type="button">
+                      <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
+                      <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem]" onClick={() => setView("fee")} type="button">
+                      <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Fee</span>
+                      <p className="mt-1 text-[0.875rem] font-medium text-white md:text-[0.84rem]">{feeValue > 0 ? formatFeeCurrency(feeValue, currency) : "Add fee"}</p>
+                    </button>
+                    <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem]" onClick={() => setView("notes")} type="button">
+                      <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
+                      <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+
+            const totalSpentSection = (
+              <section className="mt-2 bg-transparent px-0 py-0 md:mt-0 md:rounded-[0.95rem] md:border md:border-[#1b2028] md:bg-[#101418] md:px-3.5 md:py-1.5">
+                <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{mode === "DIVIDEND" ? "Monto recibido" : totalLabel}</p>
+                <p className="mt-1 text-[1rem] font-semibold text-white md:mt-1.5 md:text-[1.08rem] md:tracking-[-0.04em]">
+                  {mode === "DIVIDEND"
+                    ? formatCurrencyByCode(dividendAmountValue, currency)
+                    : mode === "TRANSFER"
+                      ? `${formatEditableNumber(quantityValue)} ${selectedAsset?.symbol ?? "units"}`
+                      : formatCurrencyByCode(totalValue, currency)}
                 </p>
-              ) : null}
-            </div>
-          ) : null}
+              </section>
+            );
 
-          {mode !== "TRANSFER" ? (
-            <Field label="Broker (opcional)">
-              <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => setBroker(event.target.value)} placeholder={brokerPlaceholder} value={broker} />
-            </Field>
-          ) : null}
+            const submitButton = (
+              <button className={`w-full rounded-[0.82rem] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-55 md:text-[0.92rem] ${isEditing ? "bg-[#3861fb] hover:bg-[#4f74ff]" : "bg-[#3f8c53] hover:bg-[#4a9b5f]"}`} disabled={submitDisabled} onClick={handleSubmit} type="button">
+                {submitting ? (isEditing ? "Saving changes..." : "Saving transaction...") : submitLabel}
+              </button>
+            );
 
-          <div className="grid gap-3 md:grid-cols-[1.45fr_0.62fr_0.78fr] md:gap-2">
-            <div className="block rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 md:rounded-[0.95rem] md:py-2.5">
-              <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Date</span>
-              <div className="mt-1 md:mt-2">
-                <DateTimePicker max={createDefaultDateTime()} onChange={setTransactionDate} value={transactionDate} />
-              </div>
-            </div>
-            {mode === "DIVIDEND" ? (
-              <div className="col-span-2 flex items-center justify-end">
-                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("notes")} type="button">
-                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
-                  <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
-                </button>
-              </div>
-            ) : (
+            if (isBondBuy) {
+              return (
+                <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
+                  <div className="space-y-2">
+                    {assetRow}
+                    {quantityOrAmountFields}
+                    {bondDetails}
+                  </div>
+                  <div className="mt-2 space-y-2 md:mt-0">
+                    {brokerField}
+                    {dateFeeNotesRow}
+                    <ProblemAlert message={error} />
+                    {totalSpentSection}
+                    {submitButton}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
               <>
-                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("fee")} type="button">
-                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Fee</span>
-                  <p className="mt-1 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{feeValue > 0 ? formatFeeCurrency(feeValue, currency) : "Add fee"}</p>
-                </button>
-                <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem] md:py-2.5" onClick={() => setView("notes")} type="button">
-                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
-                  <p className="mt-1 line-clamp-2 text-[0.875rem] font-medium text-white md:mt-2 md:text-[0.84rem]">{notes.trim() ? notes : "Add notes"}</p>
-                </button>
+                {assetRow}
+                {quantityOrAmountFields}
+                {bondDetails}
+                {brokerField}
+                {dateFeeNotesRow}
+                <ProblemAlert message={error} />
+                {totalSpentSection}
+                {submitButton}
               </>
-            )}
-          </div>
-
-          <ProblemAlert message={error} />
-
-          <section className="mt-3 bg-transparent px-0 py-0 md:mt-0 md:rounded-[0.95rem] md:border md:border-[#1b2028] md:bg-[#101418] md:px-3.5 md:py-3">
-            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{mode === "DIVIDEND" ? "Monto recibido" : totalLabel}</p>
-            <p className="mt-1 text-[1rem] font-semibold text-white md:mt-1.5 md:text-[1.08rem] md:tracking-[-0.04em]">
-              {mode === "DIVIDEND"
-                ? formatCurrencyByCode(dividendAmountValue, currency)
-                : mode === "TRANSFER"
-                  ? `${formatEditableNumber(quantityValue)} ${selectedAsset?.symbol ?? "units"}`
-                  : formatCurrencyByCode(totalValue, currency)}
-            </p>
-          </section>
-
-          <button className={`w-full rounded-[0.82rem] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-55 md:py-3 md:text-[0.92rem] ${isEditing ? "bg-[#3861fb] hover:bg-[#4f74ff]" : "bg-[#3f8c53] hover:bg-[#4a9b5f]"}`} disabled={submitDisabled} onClick={handleSubmit} type="button">
-            {submitting ? (isEditing ? "Saving changes..." : "Saving transaction...") : submitLabel}
-          </button>
+            );
+          })()}
         </div>
       ) : null}
     </Modal>
@@ -741,7 +848,7 @@ function SimpleEditor({ children, cta, onBack, stepLabel, title }: { children: R
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
-  return <label className="block rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 md:rounded-[0.95rem] md:py-2.5 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"><span className="block text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{label}</span><div className="mt-1 md:mt-2">{children}</div></label>;
+  return <label className="block rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 md:rounded-[0.95rem] md:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"><span className="block text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.66rem]">{label}</span><div className="mt-0.5">{children}</div></label>;
 }
 
 
@@ -764,6 +871,21 @@ function toLocalDateTimeInput(value: string) {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// CETES symbols encode their term in days (CETES28, CETES91, CETES182, ...).
+function parseCetesTermDays(symbol: string) {
+  const match = symbol.match(/(\d+)/);
+  if (!match) return null;
+  const days = Number(match[1]);
+  return Number.isFinite(days) && days > 0 ? days : null;
 }
 
 function parseDecimal(value: string) {

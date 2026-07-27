@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { CetesMarkToMarketCard } from "@/components/cetes/CetesMarkToMarketCard";
 import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-modal";
 import { PortfolioDetailCard } from "@/components/portfolio/portfolio-widgets";
 import { PortfolioSidebar } from "@/components/portfolio/portfolio-sidebar";
@@ -29,7 +30,7 @@ import type { TransactionResponse } from "@/features/transactions/types/transact
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
-import { getAssetDisplayName } from "@/lib/utils/asset";
+import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
 
 const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND"]);
 const HOLDING_DETAIL_MEASURE_TYPES = {
@@ -268,6 +269,11 @@ export default function PortfolioSymbolPage() {
   );
   const _createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
   const transactionsEnabled = entry ? SUPPORTED_TRANSACTION_TYPES.has(entry.assetType) : false;
+  const isCetesHolding = entry ? normalizeAssetType(entry.assetType, entry.assetSymbol) === "GOVERNMENT_BOND" : false;
+  const cetesBuyTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.transactionType === "BUY"),
+    [transactions],
+  );
   const initialAsset = useMemo<AssetOption | null>(() => {
     if (!entry) return null;
 
@@ -322,6 +328,15 @@ export default function PortfolioSymbolPage() {
 
           {loading ? <HoldingDetailSkeleton /> : null}
           {!loading && entry ? <PortfolioDetailCard entry={entry} /> : null}
+          {!loading && entry && isCetesHolding && !transactionsLoading
+            ? cetesBuyTransactions.map((transaction) => (
+                <CetesMarkToMarketCard
+                  assetName={getAssetDisplayName(entry.assetSymbol)}
+                  key={transaction.transactionId}
+                  transactionId={transaction.transactionId}
+                />
+              ))
+            : null}
           {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && entry ? <AssetPriceChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && error ? (

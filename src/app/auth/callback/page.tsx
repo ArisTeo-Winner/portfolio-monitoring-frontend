@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { persistSession } from "@/features/auth/lib/session";
+import { verifyAndConsumeOAuthState } from "@/features/auth/lib/oauth-state";
 import { ensureClientRuntimeConfig } from "@/lib/config/env";
 
 export default function AuthCallbackPage() {
@@ -28,10 +29,24 @@ export default function AuthCallbackPage() {
         const params = new URLSearchParams(raw);
         const accessToken = params.get("accessToken");
         const refreshToken = params.get("refreshToken");
+        // The OAuth `state` nonce may arrive in the fragment or the query string.
+        const state =
+          params.get("state") ?? new URLSearchParams(window.location.search).get("state");
 
         // Remove tokens from the URL immediately so they don't persist in
         // browser history or appear in the address bar after this point.
         history.replaceState(null, "", window.location.pathname + window.location.search);
+
+        // Bind the flow to this browser: reject unless a nonce was stored by
+        // startGoogleLogin() in this tab (and, when the backend echoes state,
+        // unless it matches). This blocks a crafted /auth/callback# link from
+        // fixating an attacker-controlled session in the victim's browser. The
+        // nonce is consumed here (one-time use) before any token is trusted.
+        if (!verifyAndConsumeOAuthState(state)) {
+          if (!cancelled)
+            setError("This Google sign-in could not be verified. Please start the sign-in again.");
+          return;
+        }
 
         if (!accessToken || !refreshToken) {
           if (!cancelled) setError("Google login returned without tokens. Please retry the sign-in flow.");

@@ -1,9 +1,23 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { mockBackendAPIs } from "./helpers";
 import { skipUnlessMobile } from "./project-guards";
 
 const FAKE_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.dGVzdA.dGVzdA";
 const FAKE_REFRESH_TOKEN = "fake-refresh-token-for-testing";
+const OAUTH_STATE_KEY = "cpm.oauth.state";
+
+// The callback now requires a state nonce that startGoogleLogin() stores in
+// sessionStorage in the same tab before redirecting. Tests that drive the
+// callback URL directly must seed that nonce to simulate a legitimate flow.
+async function seedOAuthState(page: Page): Promise<void> {
+  await page.addInitScript((key) => {
+    try {
+      window.sessionStorage.setItem(key, "e2e-oauth-state-nonce");
+    } catch {
+      /* sessionStorage unavailable — nothing to seed */
+    }
+  }, OAUTH_STATE_KEY);
+}
 
 test.describe("OAuth2 / Google Login", () => {
   test.setTimeout(30_000);
@@ -37,6 +51,7 @@ test.describe("OAuth2 / Google Login", () => {
       }),
     );
 
+    await seedOAuthState(page);
     await page.goto(
       `/auth/callback#accessToken=${FAKE_ACCESS_TOKEN}&refreshToken=${FAKE_REFRESH_TOKEN}`,
     );
@@ -85,6 +100,7 @@ test.describe("OAuth2 / Google Login", () => {
     await page.route("/api/auth/session", () => new Promise(() => {}));
     await mockBackendAPIs(page);
 
+    await seedOAuthState(page);
     void page.goto(
       `/auth/callback#accessToken=${FAKE_ACCESS_TOKEN}&refreshToken=${FAKE_REFRESH_TOKEN}`,
     );
@@ -106,6 +122,7 @@ test.describe("OAuth2 / Google Login", () => {
       }),
     );
 
+    await seedOAuthState(page);
     await page.goto(
       `/auth/callback#accessToken=${FAKE_ACCESS_TOKEN}&refreshToken=${FAKE_REFRESH_TOKEN}`,
     );

@@ -6,6 +6,15 @@ def runCommand(String unixCommand, String windowsCommand) {
   }
 }
 
+// Reject any operator-supplied URL parameter that is not a plain http(s) URL.
+// This is a strict allowlist that cannot contain shell metacharacters, so the
+// value is safe to place in the process environment (see withEnv usage below).
+def assertSafeUrl(String name, String value) {
+  if (!(value ==~ '^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$')) {
+    error("Refusing build: parameter ${name} is not a valid http(s) URL")
+  }
+}
+
 pipeline {
   agent any
 
@@ -42,10 +51,14 @@ pipeline {
     stage('Build Next.js') {
       steps {
         script {
-          runCommand(
-            "NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' npm run build",
-            "set NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}&& set NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL}&& npm run build"
-          )
+          assertSafeUrl('NEXT_PUBLIC_API_BASE_URL', params.NEXT_PUBLIC_API_BASE_URL)
+          assertSafeUrl('NEXT_PUBLIC_APP_URL', params.NEXT_PUBLIC_APP_URL)
+          withEnv([
+            "NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}",
+            "NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL}"
+          ]) {
+            runCommand('npm run build', 'npm run build')
+          }
         }
       }
     }
@@ -53,10 +66,17 @@ pipeline {
     stage('Build Docker Image') {
       steps {
         script {
-          runCommand(
-            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' --build-arg NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest .",
-            "docker build --build-arg NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} --build-arg NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL} -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
-          )
+          assertSafeUrl('NEXT_PUBLIC_API_BASE_URL', params.NEXT_PUBLIC_API_BASE_URL)
+          assertSafeUrl('NEXT_PUBLIC_APP_URL', params.NEXT_PUBLIC_APP_URL)
+          withEnv([
+            "NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}",
+            "NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL}"
+          ]) {
+            runCommand(
+              "docker build --build-arg NEXT_PUBLIC_API_BASE_URL --build-arg NEXT_PUBLIC_APP_URL -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest .",
+              "docker build --build-arg NEXT_PUBLIC_API_BASE_URL --build-arg NEXT_PUBLIC_APP_URL -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
+            )
+          }
         }
       }
     }

@@ -2,49 +2,11 @@ import type { NextConfig } from "next";
 
 const distDir = process.env.NEXT_OUTPUT_DIR?.trim() || ".next";
 
-function resolveApiOrigin(): string {
-  const configuredBaseUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-
-  try {
-    return new URL(configuredBaseUrl).origin;
-  } catch {
-    return "http://localhost:8080";
-  }
-}
-
-function buildContentSecurityPolicy(): string {
-  const isDevelopment = process.env.NODE_ENV !== "production";
-  const scriptSources = ["'self'", "'unsafe-inline'"];
-  // CoinGecko/CoinMarketCap must always be called server-side (Route Handlers),
-  // never fetched directly from the browser — keeps connect-src minimal so a
-  // compromised frontend has no whitelisted exfiltration destination.
-  const connectSources = ["'self'", resolveApiOrigin()];
-
-  if (isDevelopment) {
-    scriptSources.push("'unsafe-eval'");
-    connectSources.push("ws:", "wss:");
-  }
-
-  return [
-    "default-src 'self'",
-    `script-src ${scriptSources.join(" ")}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "font-src 'self' data: https:",
-    `connect-src ${connectSources.join(" ")}`,
-    "object-src 'none'",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join("; ");
-}
-
+// The Content-Security-Policy is generated per request in `src/middleware.ts`
+// so `script-src` can carry a per-request nonce instead of 'unsafe-inline'. A
+// static build-time header cannot mint that nonce, so CSP is intentionally
+// absent from this list; the headers below remain static.
 export const securityHeaders = [
-  {
-    key: "Content-Security-Policy",
-    value: buildContentSecurityPolicy(),
-  },
   {
     key: "Strict-Transport-Security",
     value: "max-age=31536000; includeSubDomains; preload",

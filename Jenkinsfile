@@ -98,10 +98,19 @@ pipeline {
       }
       steps {
         script {
-          runCommand(
-            "docker rm -f crypto_portfolio_frontend || true && docker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL='${params.NEXT_PUBLIC_API_BASE_URL}' -e NEXT_PUBLIC_APP_URL='${params.NEXT_PUBLIC_APP_URL}' ${env.IMAGE_NAME}:${env.IMAGE_TAG}",
-            "docker rm -f crypto_portfolio_frontend 2>NUL\r\ndocker run -d --name crypto_portfolio_frontend -p ${params.FRONTEND_PORT}:3000 -e NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL} -e NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL} ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-          )
+          def frontendPort = params.FRONTEND_PORT
+          if (!(frontendPort ==~ /^[0-9]{1,5}$/) || frontendPort.toInteger() < 1 || frontendPort.toInteger() > 65535) {
+            error('FRONTEND_PORT must be an integer between 1 and 65535')
+          }
+          withEnv([
+            "NEXT_PUBLIC_API_BASE_URL=${params.NEXT_PUBLIC_API_BASE_URL}",
+            "NEXT_PUBLIC_APP_URL=${params.NEXT_PUBLIC_APP_URL}"
+          ]) {
+            runCommand(
+              "docker rm -f crypto_portfolio_frontend || true && docker run -d --name crypto_portfolio_frontend -p ${frontendPort}:3000 -e NEXT_PUBLIC_API_BASE_URL -e NEXT_PUBLIC_APP_URL ${env.IMAGE_NAME}:${env.IMAGE_TAG}",
+              "docker rm -f crypto_portfolio_frontend 2>NUL\r\ndocker run -d --name crypto_portfolio_frontend -p ${frontendPort}:3000 -e NEXT_PUBLIC_API_BASE_URL -e NEXT_PUBLIC_APP_URL ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+            )
+          }
         }
       }
     }

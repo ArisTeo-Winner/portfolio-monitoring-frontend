@@ -3,6 +3,8 @@ import { ApiError, type ProblemDetails } from "@/lib/api/problem-details";
 import { endpoints } from "@/lib/api/endpoints";
 import { expireSession, persistSession, readSession } from "@/features/auth/lib/session";
 
+// body accepts FormData too — doApiRequest below branches on `instanceof FormData`
+// to skip JSON.stringify/Content-Type for uploads.
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
   auth?: boolean;
@@ -33,6 +35,19 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return doApiRequest<T>(path, options, true);
 }
 
+/**
+ * Like apiRequest, but sends a FormData body (e.g. file uploads) instead of
+ * JSON. The browser sets the multipart Content-Type/boundary itself, so it
+ * must never be forced here.
+ */
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  options: Omit<RequestOptions, "body"> = {},
+): Promise<T> {
+  return doApiRequest<T>(path, { ...options, body: formData }, true);
+}
+
 async function doApiRequest<T>(
   path: string,
   options: RequestOptions,
@@ -42,8 +57,9 @@ async function doApiRequest<T>(
 
   const headers = new Headers(options.headers ?? {});
   const { accessToken } = options.auth ? readSession() : { accessToken: null };
+  const isFormData = options.body instanceof FormData;
 
-  if (!headers.has("Content-Type") && options.body !== undefined) {
+  if (!isFormData && !headers.has("Content-Type") && options.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -54,7 +70,12 @@ async function doApiRequest<T>(
   const response = await fetch(`${env.apiBaseUrl}${path}`, {
     ...options,
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body:
+      options.body === undefined
+        ? undefined
+        : options.body instanceof FormData
+          ? options.body
+          : JSON.stringify(options.body),
     cache: "no-store",
     // Required: sends the HttpOnly refresh-token cookie on every backend request.
     // Without this the browser silently omits the cookie and silent refresh fails.

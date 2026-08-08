@@ -52,4 +52,8 @@ export const endpoints = {
     usdMxnRate: "/api/v1/marketdata/fx/usdmxn",
     banxicoCetesCurve: "/api/v1/marketdata/banxico/cetes/curve",
   },
+  import: {
+    preview: "/api/v1/me/import/preview",
+    confirm: "/api/v1/me/import/confirm",
+  },
 };

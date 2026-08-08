@@ -11,6 +11,7 @@ const settingsNav = [
   { href: "/settings/security", label: "Seguridad" },
   { href: "/settings/sessions", label: "Sesiones" },
   { href: "/settings/preferences", label: "Preferencias" },
+  { href: "/settings/connections", label: "Conexiones" },
 ];
 
 export function SettingsShell({ children }: { children: ReactNode }) {

@@ -1,108 +1,100 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ProblemAlert } from "@/components/ui/problem-alert";
-import { ComingSoonPanel } from "@/components/import/coming-soon-panel";
-import { ImportSummary } from "@/components/import/import-summary";
-import { PreviewTable } from "@/components/import/preview-table";
+import { ImportJobCard } from "@/components/import/import-job-card";
 import { useGbmImport } from "@/features/import/hooks/use-gbm-import";
-import type { GbmDocType } from "@/features/import/types/import.types";
 
 type Props = {
-  docType: GbmDocType;
-  title: string;
-  subtitle: string;
-  multiple: boolean;
-  testId: string;
+  /** Called once per job that completes with at least one accepted transaction. */
   onImported?: () => void;
 };
 
-export function GbmUploadSection({ docType, title, subtitle, multiple, testId, onImported }: Props) {
+export function GbmUploadSection({ onImported }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { state, summary, selectFiles, toggleRow, confirmSelected, reset } = useGbmImport(docType);
+  const { jobs, uploading, uploadError, retryErrors, loadingRecent, stalled, upload, retry, refresh, loadRecent } =
+    useGbmImport();
+
+  // Load the recent-uploads history once on mount.
+  useEffect(() => {
+    void loadRecent();
+  }, [loadRecent]);
+
+  // Fire onImported exactly once per newly-completed job that imported rows.
+  const notifiedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!onImported) return;
+    for (const job of jobs) {
+      if (job.status === "COMPLETED" && (job.result?.accepted ?? 0) > 0 && !notifiedRef.current.has(job.jobId)) {
+        notifiedRef.current.add(job.jobId);
+        onImported();
+      }
+    }
+  }, [jobs, onImported]);
 
   function handleFilesChosen(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    void selectFiles(files);
+    void upload(files);
   }
 
   return (
-    <div className="space-y-3" data-testid={testId}>
+    <div className="space-y-4" data-testid="gbm-upload-section">
       <div>
         <Button
-          data-testid={`${testId}-trigger`}
-          disabled={state.status === "loading" || state.status === "confirming"}
+          data-testid="gbm-import-trigger"
+          disabled={uploading}
           onClick={() => inputRef.current?.click()}
           type="button"
           variant="secondary"
         >
-          {title}
+          {uploading ? "Subiendo…" : "Seleccionar comprobantes (.pdf)"}
         </Button>
-        <p className="mt-1 text-xs text-neutral-500">{subtitle}</p>
+        <p className="mt-1 text-xs text-neutral-500">
+          Detectamos el broker automáticamente. Puedes subir uno o varios PDF a la vez.
+        </p>
         <input
-          accept=".pdf"
+          accept=".pdf,application/pdf"
           className="hidden"
-          data-testid={`${testId}-input`}
-          multiple={multiple}
+          data-testid="gbm-import-input"
+          multiple
           onChange={handleFilesChosen}
           ref={inputRef}
           type="file"
         />
       </div>
 
-      {state.notImplemented ? <ComingSoonPanel /> : null}
+      {uploadError ? <ProblemAlert message={uploadError} /> : null}
 
-      {state.scannedPdfWarning ? (
+      {stalled ? (
         <div
-          className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-400"
-          data-testid={`${testId}-scanned-pdf-warning`}
+          className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300"
+          data-testid="import-poll-stalled"
         >
-          PDF escaneado, súbelo en texto o regístralo manual.
+          <span>La verificación está tardando más de lo normal.</span>
+          <Button data-testid="import-refresh" onClick={refresh} type="button" variant="outline">
+            Actualizar estado
+          </Button>
         </div>
       ) : null}
 
-      {state.error ? <ProblemAlert message={state.error} /> : null}
-
-      {state.status === "loading" ? (
-        <p className="text-sm text-neutral-400" data-testid={`${testId}-loading`}>
-          Procesando PDF…
+      {jobs.length > 0 ? (
+        <div className="space-y-3" data-testid="import-jobs-list">
+          <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Cargas recientes</h4>
+          {jobs.map((job) => (
+            <ImportJobCard job={job} key={job.jobId} onRetry={retry} retryError={retryErrors[job.jobId]} />
+          ))}
+        </div>
+      ) : loadingRecent ? (
+        <p className="text-sm text-neutral-500" data-testid="import-jobs-loading">
+          Cargando historial…
         </p>
-      ) : null}
-
-      {state.status === "previewed" || state.status === "confirming" ? (
-        <div className="space-y-3">
-          <PreviewTable onToggle={toggleRow} rows={state.rows} selectedRowIds={state.selectedRowIds} />
-          <ImportSummary
-            duplicateCount={summary.duplicateCount}
-            errorCount={summary.errorCount}
-            newCount={summary.newCount}
-          />
-          <Button
-            data-testid={`${testId}-confirm`}
-            disabled={state.selectedRowIds.size === 0 || state.status === "confirming"}
-            onClick={() => void confirmSelected(onImported)}
-            type="button"
-          >
-            {state.status === "confirming" ? "Importando…" : "Importar seleccionadas"}
-          </Button>
-        </div>
-      ) : null}
-
-      {state.status === "confirmed" ? (
-        <div className="space-y-3">
-          <p
-            className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400"
-            data-testid={`${testId}-success`}
-          >
-            {state.importedCount} transacciones importadas correctamente.
-          </p>
-          <Button onClick={reset} type="button" variant="outline">
-            Cargar otro archivo
-          </Button>
-        </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-neutral-500" data-testid="import-jobs-empty">
+          Aún no has subido comprobantes.
+        </p>
+      )}
     </div>
   );
 }

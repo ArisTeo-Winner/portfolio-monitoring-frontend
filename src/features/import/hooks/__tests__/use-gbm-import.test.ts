@@ -1,146 +1,211 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useGbmImport } from "../use-gbm-import";
-import { confirmImport, previewImport } from "@/features/import/api/import-broker-documents";
+import {
+  getImportJob,
+  listImportJobs,
+  retryImportJob,
+  uploadBrokerDocuments,
+} from "@/features/import/api/import-broker-documents";
 import { ApiError } from "@/lib/api/problem-details";
-import { SCANNED_PDF_ERROR_CODE, type ImportPreviewResponse } from "@/features/import/types/import.types";
+import type { ImportJob } from "@/features/import/types/import.types";
 
 vi.mock("@/features/import/api/import-broker-documents", () => ({
-  previewImport: vi.fn(),
-  confirmImport: vi.fn(),
+  uploadBrokerDocuments: vi.fn(),
+  getImportJob: vi.fn(),
+  listImportJobs: vi.fn(),
+  retryImportJob: vi.fn(),
 }));
 
-const mockedPreviewImport = vi.mocked(previewImport);
-const mockedConfirmImport = vi.mocked(confirmImport);
+const mockedUpload = vi.mocked(uploadBrokerDocuments);
+const mockedGetJob = vi.mocked(getImportJob);
+const mockedListJobs = vi.mocked(listImportJobs);
+const mockedRetry = vi.mocked(retryImportJob);
 
 function pdfFile(name = "statement.pdf") {
   return new File(["%PDF-1.4"], name, { type: "application/pdf" });
 }
 
-const PREVIEW_RESPONSE: ImportPreviewResponse = {
-  previewId: "preview-1",
-  docType: "DRIVEWEALTH_CONFIRMATION",
-  rows: [
-    { rowId: "r1", assetSymbol: "AAPL", assetType: "STOCK", quantity: 1, pricePerUnit: 100, transactionDate: "2026-01-01", status: "NEW" },
-    { rowId: "r2", assetSymbol: "MSFT", assetType: "STOCK", quantity: 2, pricePerUnit: 200, transactionDate: "2026-01-02", status: "DUPLICATE", statusReason: "Ya existe" },
-    { rowId: "r3", assetSymbol: "TSLA", assetType: "STOCK", quantity: 3, pricePerUnit: 300, transactionDate: "2026-01-03", status: "ERROR", statusReason: "Precio inválido" },
-  ],
-};
+function job(overrides: Partial<ImportJob> = {}): ImportJob {
+  return {
+    jobId: "j1",
+    fileName: "statement.pdf",
+    jobType: "GBM_MONTHLY_STATEMENT",
+    status: "QUEUED",
+    result: null,
+    errorMessage: null,
+    attemptCount: 0,
+    createdAt: "2026-08-22T10:00:00Z",
+    completedAt: null,
+    ...overrides,
+  };
+}
 
 describe("useGbmImport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
   });
 
-  it("rejects non-PDF files client-side without calling previewImport", async () => {
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rejects non-PDF files client-side without calling the upload endpoint", async () => {
+    const { result } = renderHook(() => useGbmImport());
 
     await act(async () => {
-      await result.current.selectFiles([new File(["x"], "statement.txt", { type: "text/plain" })]);
+      await result.current.upload([new File(["x"], "note.txt", { type: "text/plain" })]);
     });
 
-    expect(mockedPreviewImport).not.toHaveBeenCalled();
-    expect(result.current.state.error).toBe("Solo se permiten archivos PDF.");
+    expect(mockedUpload).not.toHaveBeenCalled();
+    expect(result.current.uploadError).toBe("Solo se permiten archivos PDF.");
   });
 
-  it("previews successfully and pre-selects only NEW rows", async () => {
-    mockedPreviewImport.mockResolvedValue(PREVIEW_RESPONSE);
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
+  it("uploads, then polls each job until COMPLETED and stops at the terminal state", async () => {
+    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedGetJob
+      .mockResolvedValueOnce(job({ status: "PROCESSING" }))
+      .mockResolvedValueOnce(
+        job({
+          status: "COMPLETED",
+          completedAt: "2026-08-22T10:01:00Z",
+          result: { fileName: "statement.pdf", accepted: 3, duplicate: 1, skipped: 0, rejected: 0, messages: [] },
+        }),
+      );
+
+    const { result } = renderHook(() => useGbmImport());
 
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await result.current.upload([pdfFile()]);
     });
+    expect(result.current.jobs[0].status).toBe("QUEUED");
 
-    expect(result.current.state.status).toBe("previewed");
-    expect(result.current.state.rows).toEqual(PREVIEW_RESPONSE.rows);
-    expect(result.current.state.selectedRowIds).toEqual(new Set(["r1"]));
-    expect(result.current.summary).toEqual({ newCount: 1, duplicateCount: 1, errorCount: 1 });
-  });
-
-  it("does not allow toggling a DUPLICATE or ERROR row", async () => {
-    mockedPreviewImport.mockResolvedValue(PREVIEW_RESPONSE);
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
-
+    // Tick 1 -> PROCESSING
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await vi.advanceTimersByTimeAsync(2000);
     });
+    expect(result.current.jobs[0].status).toBe("PROCESSING");
 
-    act(() => {
-      result.current.toggleRow("r2");
-    });
-
-    expect(result.current.state.selectedRowIds.has("r2")).toBe(false);
-  });
-
-  it("sets notImplemented on a 501 response", async () => {
-    mockedPreviewImport.mockRejectedValue(new ApiError(501, "Not implemented"));
-    const { result } = renderHook(() => useGbmImport("GBM_MONTHLY_STATEMENT"));
-
+    // Tick 2 -> COMPLETED (terminal -> polling stops)
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await vi.advanceTimersByTimeAsync(2000);
     });
+    expect(result.current.jobs[0].status).toBe("COMPLETED");
+    expect(result.current.jobs[0].result?.accepted).toBe(3);
+    expect(result.current.activeCount).toBe(0);
 
-    expect(result.current.state.notImplemented).toBe(true);
-    expect(result.current.state.status).toBe("idle");
+    const callsAfterTerminal = mockedGetJob.mock.calls.length;
+    // No further polling once terminal.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(mockedGetJob.mock.calls.length).toBe(callsAfterTerminal);
   });
 
-  it("sets scannedPdfWarning on a 422 SCANNED_PDF response", async () => {
-    mockedPreviewImport.mockRejectedValue(
-      new ApiError(422, "Unprocessable", { status: 422, errorCode: SCANNED_PDF_ERROR_CODE }),
+  it("stops polling when a job reaches DEAD_LETTER and exposes its error", async () => {
+    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedGetJob.mockResolvedValueOnce(
+      job({ status: "DEAD_LETTER", errorMessage: "Formato de PDF no reconocido." }),
     );
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
 
+    const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await result.current.upload([pdfFile()]);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(result.current.state.scannedPdfWarning).toBe(true);
+    expect(result.current.jobs[0].status).toBe("DEAD_LETTER");
+    expect(result.current.jobs[0].errorMessage).toBe("Formato de PDF no reconocido.");
+    expect(result.current.activeCount).toBe(0);
   });
 
-  it("sets a generic error message for other failures", async () => {
-    mockedPreviewImport.mockRejectedValue(new ApiError(500, "Server error"));
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
+  it("retries a DEAD_LETTER job and resumes polling to COMPLETED", async () => {
+    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedGetJob.mockResolvedValueOnce(job({ status: "DEAD_LETTER", errorMessage: "boom" }));
+    mockedRetry.mockResolvedValue(job({ status: "QUEUED", attemptCount: 1 }));
+
+    const { result } = renderHook(() => useGbmImport());
+    await act(async () => {
+      await result.current.upload([pdfFile()]);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.jobs[0].status).toBe("DEAD_LETTER");
+
+    mockedGetJob.mockResolvedValueOnce(
+      job({ status: "COMPLETED", result: { fileName: "statement.pdf", accepted: 2, duplicate: 0, skipped: 0, rejected: 0, messages: [] } }),
+    );
 
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await result.current.retry("j1");
     });
+    expect(mockedRetry).toHaveBeenCalledWith("j1");
+    expect(result.current.jobs[0].status).toBe("QUEUED");
 
-    expect(result.current.state.error).toBe("Server error");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.jobs[0].status).toBe("COMPLETED");
   });
 
-  it("confirms only selected NEW rowIds and fires onConfirmed", async () => {
-    mockedPreviewImport.mockResolvedValue(PREVIEW_RESPONSE);
-    mockedConfirmImport.mockResolvedValue({ importedCount: 1 });
-    const onConfirmed = vi.fn();
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
+  it("surfaces the problem+json detail as the retry error when retry fails", async () => {
+    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedGetJob.mockResolvedValueOnce(job({ status: "DEAD_LETTER", errorMessage: "boom" }));
+    mockedRetry.mockRejectedValue(
+      new ApiError(429, "Too many requests", { status: 429, detail: "Demasiados reintentos, espera un momento." }),
+    );
 
+    const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await result.current.upload([pdfFile()]);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    await act(async () => {
+      await result.current.retry("j1");
     });
 
-    await act(async () => {
-      await result.current.confirmSelected(onConfirmed);
-    });
-
-    expect(mockedConfirmImport).toHaveBeenCalledWith({ previewId: "preview-1", rowIds: ["r1"] });
-    expect(onConfirmed).toHaveBeenCalledTimes(1);
-    expect(result.current.state.status).toBe("confirmed");
-    expect(result.current.state.importedCount).toBe(1);
+    expect(result.current.retryErrors["j1"]).toBe("Demasiados reintentos, espera un momento.");
   });
 
-  it("reset returns to idle state", async () => {
-    mockedPreviewImport.mockResolvedValue(PREVIEW_RESPONSE);
-    const { result } = renderHook(() => useGbmImport("DRIVEWEALTH_CONFIRMATION"));
+  it("loadRecent populates the jobs list newest-first", async () => {
+    mockedListJobs.mockResolvedValue([
+      job({ jobId: "old", createdAt: "2026-08-20T10:00:00Z", status: "COMPLETED", result: { fileName: "a.pdf", accepted: 1, duplicate: 0, skipped: 0, rejected: 0, messages: [] } }),
+      job({ jobId: "new", createdAt: "2026-08-22T10:00:00Z", status: "COMPLETED", result: { fileName: "b.pdf", accepted: 1, duplicate: 0, skipped: 0, rejected: 0, messages: [] } }),
+    ]);
 
+    const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.selectFiles([pdfFile()]);
+      await result.current.loadRecent();
     });
 
-    act(() => {
-      result.current.reset();
+    expect(result.current.jobs.map((j) => j.jobId)).toEqual(["new", "old"]);
+  });
+
+  it("stops polling and flags stalled after the safety timeout", async () => {
+    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedGetJob.mockResolvedValue(job({ status: "PROCESSING" }));
+
+    const { result } = renderHook(() => useGbmImport({ pollIntervalMs: 1000, pollTimeoutMs: 3000 }));
+    await act(async () => {
+      await result.current.upload([pdfFile()]);
     });
 
-    await waitFor(() => expect(result.current.state.status).toBe("idle"));
-    expect(result.current.state.rows).toEqual([]);
+    // Advance past the safety timeout while the job never finishes.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(result.current.stalled).toBe(true);
+    const callsAtStall = mockedGetJob.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(mockedGetJob.mock.calls.length).toBe(callsAtStall);
   });
 });

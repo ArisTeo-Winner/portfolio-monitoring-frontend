@@ -52,8 +52,12 @@ export const endpoints = {
     usdMxnRate: "/api/v1/marketdata/fx/usdmxn",
     banxicoCetesCurve: "/api/v1/marketdata/banxico/cetes/curve",
   },
-  import: {
-    preview: "/api/v1/me/import/preview",
-    confirm: "/api/v1/me/import/confirm",
+  brokerImport: {
+    // Auto-detects the broker from each uploaded PDF (1..N files). Returns 202
+    // with one async job per file.
+    upload: "/api/v1/me/broker/gbm/import",
+    jobs: "/api/v1/me/broker/gbm/import-jobs",
+    job: (jobId: string) => `/api/v1/me/broker/gbm/import-jobs/${encodeURIComponent(jobId)}`,
+    retry: (jobId: string) => `/api/v1/me/broker/gbm/import-jobs/${encodeURIComponent(jobId)}/retry`,
   },
 };

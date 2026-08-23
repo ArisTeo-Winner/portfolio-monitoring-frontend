@@ -1,21 +1,32 @@
 import path from "node:path";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Route } from "@playwright/test";
 import { loginAs, mockBackendAPIs } from "./helpers";
 import { skipUnlessXsMobile } from "./project-guards";
 
 const SAMPLE_PDF = path.join(__dirname, "..", "fixtures", "sample-statement.pdf");
 
-const PREVIEW_RESPONSE = {
-  previewId: "preview-1",
-  docType: "DRIVEWEALTH_CONFIRMATION",
-  rows: [
-    { rowId: "r1", assetSymbol: "AAPL", assetType: "STOCK", quantity: 1, pricePerUnit: 100, transactionDate: "2026-01-01", status: "NEW" },
-    { rowId: "r2", assetSymbol: "MSFT", assetType: "STOCK", quantity: 2, pricePerUnit: 200, transactionDate: "2026-01-02", status: "DUPLICATE", statusReason: "Ya existe" },
-    { rowId: "r3", assetSymbol: "TSLA", assetType: "STOCK", quantity: 3, pricePerUnit: 300, transactionDate: "2026-01-03", status: "ERROR", statusReason: "Precio inválido" },
-  ],
-};
+const JOB_ID = "job-1";
 
-test.describe("Broker import (GBM)", () => {
+function baseJob(overrides: Record<string, unknown> = {}) {
+  return {
+    jobId: JOB_ID,
+    fileName: "sample-statement.pdf",
+    jobType: "GBM_MONTHLY_STATEMENT",
+    status: "QUEUED",
+    result: null,
+    errorMessage: null,
+    attemptCount: 0,
+    createdAt: "2026-08-22T10:00:00Z",
+    completedAt: null,
+    ...overrides,
+  };
+}
+
+function json(route: Route, body: unknown, status = 200) {
+  return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+}
+
+test.describe("Broker import (GBM) — async job flow", () => {
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -24,69 +35,95 @@ test.describe("Broker import (GBM)", () => {
     await loginAs(page);
   });
 
-  test("DriveWealth: preview muestra la tabla y confirmar importa las filas NEW seleccionadas", async ({ page }) => {
-    await page.route(/\/api\/v1\/me\/import\/preview/, (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(PREVIEW_RESPONSE) }),
-    );
+  test("upload → polling → shows N transacciones importadas", async ({ page }) => {
+    let pollCount = 0;
+
+    await page.route(/\/api\/v1\/me\/broker\/gbm\/import/, (route) => {
+      const req = route.request();
+      const url = req.url();
+      const method = req.method();
+
+      if (method === "POST" && url.endsWith("/import")) {
+        return json(route, [baseJob({ status: "QUEUED" })], 202);
+      }
+      if (method === "GET" && url.endsWith("/import-jobs")) {
+        return json(route, []); // no history on mount
+      }
+      if (method === "GET" && /\/import-jobs\/[^/]+$/.test(url)) {
+        pollCount += 1;
+        if (pollCount === 1) return json(route, baseJob({ status: "PROCESSING" }));
+        return json(
+          route,
+          baseJob({
+            status: "COMPLETED",
+            completedAt: "2026-08-22T10:01:00Z",
+            result: { fileName: "sample-statement.pdf", accepted: 2, duplicate: 1, skipped: 0, rejected: 0, messages: [] },
+          }),
+        );
+      }
+      return route.continue();
+    });
 
     await page.goto("/settings/connections");
     await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
 
-    await page.getByTestId("gbm-drivewealth-confirmation-input").setInputFiles([SAMPLE_PDF, SAMPLE_PDF]);
+    await page.getByTestId("gbm-import-input").setInputFiles(SAMPLE_PDF);
 
-    await expect(page.getByTestId("import-preview-table")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("import-summary")).toHaveText("1 nueva, 1 duplicada, 1 error");
+    const card = page.getByTestId("import-job-card");
+    await expect(card).toBeVisible({ timeout: 10_000 });
 
-    const rows = page.getByTestId("import-preview-row");
-    await expect(rows).toHaveCount(3);
-    await expect(rows.nth(1).getByTestId("import-row-checkbox")).toBeDisabled();
-    await expect(rows.nth(2).getByTestId("import-row-checkbox")).toBeDisabled();
-
-    await page.route(/\/api\/v1\/me\/import\/confirm/, (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ importedCount: 1 }) }),
-    );
-
-    await page.getByTestId("gbm-drivewealth-confirmation-confirm").click();
-
-    await expect(page.getByTestId("gbm-drivewealth-confirmation-success")).toHaveText(
-      "1 transacciones importadas correctamente.",
-    );
+    await expect(page.getByTestId("import-job-accepted")).toHaveText(/2 transacciones importadas/, {
+      timeout: 15_000,
+    });
+    await expect(card).toHaveAttribute("data-status", "COMPLETED");
   });
 
-  test("Estado de Cuenta Mensual: backend 501 muestra el panel Próximamente", async ({ page }) => {
-    await page.route(/\/api\/v1\/me\/import\/preview/, (route) =>
-      route.fulfill({
-        status: 501,
-        contentType: "application/json",
-        body: JSON.stringify({ title: "Not Implemented", status: 501 }),
-      }),
-    );
+  test("DEAD_LETTER muestra el error y permite reintentar hasta completar", async ({ page }) => {
+    let retried = false;
+
+    await page.route(/\/api\/v1\/me\/broker\/gbm\/import/, (route) => {
+      const req = route.request();
+      const url = req.url();
+      const method = req.method();
+
+      if (method === "POST" && url.endsWith("/import")) {
+        return json(route, [baseJob({ status: "QUEUED" })], 202);
+      }
+      if (method === "GET" && url.endsWith("/import-jobs")) {
+        return json(route, []);
+      }
+      if (method === "POST" && /\/retry$/.test(url)) {
+        retried = true;
+        return json(route, baseJob({ status: "QUEUED", attemptCount: 1 }));
+      }
+      if (method === "GET" && /\/import-jobs\/[^/]+$/.test(url)) {
+        if (!retried) {
+          return json(route, baseJob({ status: "DEAD_LETTER", errorMessage: "Formato de PDF no reconocido." }));
+        }
+        return json(
+          route,
+          baseJob({
+            status: "COMPLETED",
+            result: { fileName: "sample-statement.pdf", accepted: 1, duplicate: 0, skipped: 0, rejected: 0, messages: [] },
+          }),
+        );
+      }
+      return route.continue();
+    });
 
     await page.goto("/settings/connections");
     await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
 
-    await page.getByTestId("gbm-monthly-statement-input").setInputFiles(SAMPLE_PDF);
+    await page.getByTestId("gbm-import-input").setInputFiles(SAMPLE_PDF);
 
-    await expect(page.getByTestId("gbm-import-coming-soon")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("import-preview-table")).toHaveCount(0);
-  });
+    await expect(page.getByTestId("import-job-error")).toHaveText(/Formato de PDF no reconocido\./, {
+      timeout: 15_000,
+    });
 
-  test("PDF escaneado: backend 422 SCANNED_PDF muestra el mensaje específico", async ({ page }) => {
-    await page.route(/\/api\/v1\/me\/import\/preview/, (route) =>
-      route.fulfill({
-        status: 422,
-        contentType: "application/json",
-        body: JSON.stringify({ title: "Unprocessable Entity", status: 422, errorCode: "SCANNED_PDF" }),
-      }),
-    );
+    await page.getByTestId("import-job-retry").click();
 
-    await page.goto("/settings/connections");
-    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
-
-    await page.getByTestId("gbm-drivewealth-confirmation-input").setInputFiles(SAMPLE_PDF);
-
-    await expect(page.getByText("PDF escaneado, súbelo en texto o regístralo manual.")).toBeVisible({
-      timeout: 10_000,
+    await expect(page.getByTestId("import-job-accepted")).toHaveText(/1 transacción importada/, {
+      timeout: 15_000,
     });
   });
 });

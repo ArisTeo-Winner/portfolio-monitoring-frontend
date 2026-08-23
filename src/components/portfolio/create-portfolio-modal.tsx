@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ProblemAlert } from "@/components/ui/problem-alert";
+import { GbmUploadSection } from "@/components/import/gbm-upload-section";
+import { invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
 import { usePortfolioStore } from "@/state/portfolio.store";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -12,7 +15,7 @@ const AVATAR_OPTIONS = ["💰", "📈", "🪙", "🏦", "💎", "🚀", "⚡", "
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "method" | "manual" | "avatar" | "wallet" | "binance";
+type Step = "method" | "manual" | "avatar" | "wallet" | "binance" | "okx" | "gbm";
 
 type Props = {
   isOpen: boolean;
@@ -27,13 +30,6 @@ type Props = {
 
 const METHODS = [
   {
-    id: "manual" as const,
-    icon: <ManualIcon />,
-    title: "Add Transactions Manually",
-    description: "Enter all transaction details at your own pace to track your portfolio.",
-    available: false,
-  },
-  {
     id: "wallet" as const,
     icon: <WalletIcon />,
     title: "Connect Your Wallet",
@@ -44,6 +40,25 @@ const METHODS = [
       </>
     ),
     available: false,
+  },
+  {
+    id: "manual" as const,
+    icon: <ManualIcon />,
+    title: "Add Transactions Manually",
+    description: "Enter all transaction details at your own pace to track your portfolio.",
+    available: false,
+  },
+  {
+    id: "gbm" as const,
+    icon: <GbmIcon />,
+    title: "Importar desde GBM",
+    description: (
+      <>
+        Sube tu estado de cuenta mensual o tus confirmaciones DriveWealth{" "}
+        <strong className="text-white">en PDF</strong> y las transacciones se importan automáticamente.
+      </>
+    ),
+    available: true,
   },
   {
     id: "binance" as const,
@@ -57,6 +72,18 @@ const METHODS = [
     ),
     available: false,
   },
+  {
+    id: "okx" as const,
+    icon: <OkxIcon />,
+    title: "Connect OKX Account",
+    description: (
+      <>
+        Securely sync assets from your OKX account{" "}
+        <strong className="text-white">without using API key</strong>.
+      </>
+    ),
+    available: false,
+  },
 ] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -64,6 +91,13 @@ const METHODS = [
 export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAssetTypes, editingPortfolio }: Props) {
   const addPortfolio = usePortfolioStore((s) => s.addPortfolio);
   const editPortfolio = usePortfolioStore((s) => s.editPortfolio);
+  const queryClient = useQueryClient();
+
+  const refreshPortfolioAfterImport = useCallback(async () => {
+    invalidatePortfolioCache();
+    await queryClient.invalidateQueries({ queryKey: ["portfolio-holdings-performance"] });
+    await queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
+  }, [queryClient]);
 
   const isEditMode = Boolean(editingPortfolio);
 
@@ -133,6 +167,8 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
     : step === "manual" ? "Add portfolio"
     : step === "avatar" ? "Choose avatar"
     : step === "wallet" ? "Connect Wallet"
+    : step === "okx" ? "Connect OKX"
+    : step === "gbm" ? "Importar desde GBM"
     : "Connect Binance";
 
   const canGoBack = step !== "method" && !isEditMode;
@@ -209,6 +245,9 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
                   </div>
                 </button>
               ))}
+              <p className="pt-1 text-center text-[0.8rem] text-[#5f6d82]">
+                ¿No ves tu exchange preferido? Escríbenos.
+              </p>
             </div>
           ) : null}
 
@@ -344,6 +383,16 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
           {step === "binance" ? (
             <ComingSoon description="La integración con Binance estará disponible en una próxima versión." icon={<BinanceIcon large />} title="Connect Binance" />
           ) : null}
+          {step === "okx" ? (
+            <ComingSoon description="La integración con OKX estará disponible en una próxima versión." icon={<OkxIcon large />} title="Connect OKX" />
+          ) : null}
+
+          {/* ── Step: GBM import (reuses the same flow as Settings → Conexiones) ── */}
+          {step === "gbm" ? (
+            <div className="space-y-6">
+              <GbmUploadSection onImported={refreshPortfolioAfterImport} />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -389,6 +438,29 @@ function BinanceIcon({ large }: { large?: boolean }) {
   return (
     <svg className={`${s} text-[#f0b90b]`} fill="currentColor" viewBox="0 0 24 24">
       <path d="M12 2l2.4 2.4-7.6 7.6-2.4-2.4L12 2zM4.8 9.6l2.4 2.4-2.4 2.4-2.4-2.4 2.4-2.4zm14.4 0l2.4 2.4-2.4 2.4-2.4-2.4 2.4-2.4zm-7.2 2.4l2.4 2.4-7.6 7.6-2.4-2.4 7.6-7.6zm2.4 2.4l2.4-2.4 2.4 2.4-2.4 2.4-2.4-2.4z" />
+    </svg>
+  );
+}
+
+function OkxIcon({ large }: { large?: boolean }) {
+  const s = large ? "h-8 w-8" : "h-5 w-5";
+  return (
+    <svg className={`${s} text-[#e6e6e6]`} fill="currentColor" viewBox="0 0 24 24">
+      <rect height="6" width="6" x="2" y="9" />
+      <rect height="6" width="6" x="9" y="2" />
+      <rect height="6" width="6" x="9" y="16" />
+      <rect height="6" width="6" x="16" y="9" />
+    </svg>
+  );
+}
+
+function GbmIcon({ large }: { large?: boolean }) {
+  const s = large ? "h-8 w-8" : "h-5 w-5";
+  return (
+    <svg className={`${s} text-[#17c784]`} fill="none" viewBox="0 0 24 24">
+      <path d="M7 3h7l4 4v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+      <path d="M14 3v4h4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+      <path d="M9 16l2.2 2.2L15 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
     </svg>
   );
 }

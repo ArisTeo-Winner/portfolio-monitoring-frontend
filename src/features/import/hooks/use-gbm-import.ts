@@ -1,147 +1,199 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getProblemMessage } from "@/lib/api/problem-details";
-import { confirmImport, previewImport } from "@/features/import/api/import-broker-documents";
-import { SCANNED_PDF_ERROR_CODE } from "@/features/import/types/import.types";
-import type { GbmDocType, ImportPreviewRow } from "@/features/import/types/import.types";
+import {
+  getImportJob,
+  listImportJobs,
+  retryImportJob,
+  uploadBrokerDocuments,
+} from "@/features/import/api/import-broker-documents";
+import { isTerminal, type ImportJob } from "@/features/import/types/import.types";
 
-type ImportStatus = "idle" | "loading" | "previewed" | "confirming" | "confirmed";
+export const POLL_INTERVAL_MS = 2000;
+// Safety net: stop polling a still-running job after this long so a stuck
+// backend job never keeps the client polling forever.
+export const POLL_TIMEOUT_MS = 120_000;
 
-type GbmImportState = {
-  status: ImportStatus;
-  rows: ImportPreviewRow[];
-  previewId: string | null;
-  selectedRowIds: Set<string>;
-  error: string | null;
-  notImplemented: boolean;
-  scannedPdfWarning: boolean;
-  importedCount: number | null;
-};
-
-const INITIAL_STATE: GbmImportState = {
-  status: "idle",
-  rows: [],
-  previewId: null,
-  selectedRowIds: new Set(),
-  error: null,
-  notImplemented: false,
-  scannedPdfWarning: false,
-  importedCount: null,
+type Options = {
+  pollIntervalMs?: number;
+  pollTimeoutMs?: number;
 };
 
 function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 }
 
-export function useGbmImport(docType: GbmDocType) {
-  const [state, setState] = useState<GbmImportState>(INITIAL_STATE);
+/**
+ * Prefer the backend's curated problem+json `detail` (per the brief), falling
+ * back to the status-based localized message. Raw non-JSON errors are never
+ * ProblemDetails, so they fall through to the safe localized copy.
+ */
+function messageFromError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    return error.problem?.detail?.trim() || getProblemMessage(error);
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
-  const summary = useMemo(
-    () => ({
-      newCount: state.rows.filter((row) => row.status === "NEW").length,
-      duplicateCount: state.rows.filter((row) => row.status === "DUPLICATE").length,
-      errorCount: state.rows.filter((row) => row.status === "ERROR").length,
-    }),
-    [state.rows],
+function sortByNewest(a: ImportJob, b: ImportJob) {
+  return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+}
+
+export function useGbmImport(options: Options = {}) {
+  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const pollTimeoutMs = options.pollTimeoutMs ?? POLL_TIMEOUT_MS;
+
+  const [jobsById, setJobsById] = useState<Record<string, ImportJob>>({});
+  const [order, setOrder] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  // Bumped to force the polling effect to restart (e.g. after a manual refresh
+  // once polling has been stopped by the safety timeout).
+  const [pollNonce, setPollNonce] = useState(0);
+
+  const jobs = useMemo(
+    () => order.map((id) => jobsById[id]).filter((job): job is ImportJob => Boolean(job)),
+    [order, jobsById],
   );
 
-  const reset = useCallback(() => {
-    setState(INITIAL_STATE);
-  }, []);
-
-  const selectFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) return;
-
-      if (files.some((file) => !isPdfFile(file))) {
-        setState({ ...INITIAL_STATE, error: "Solo se permiten archivos PDF." });
-        return;
-      }
-
-      setState({ ...INITIAL_STATE, status: "loading" });
-
-      try {
-        const response = await previewImport(docType, files);
-        const selectedRowIds = new Set(
-          response.rows.filter((row) => row.status === "NEW").map((row) => row.rowId),
-        );
-
-        setState({
-          ...INITIAL_STATE,
-          status: "previewed",
-          rows: response.rows,
-          previewId: response.previewId,
-          selectedRowIds,
-        });
-      } catch (requestError) {
-        if (requestError instanceof ApiError) {
-          if (requestError.status === 501) {
-            setState({ ...INITIAL_STATE, notImplemented: true });
-            return;
-          }
-
-          if (requestError.status === 422 && requestError.problem?.errorCode === SCANNED_PDF_ERROR_CODE) {
-            setState({ ...INITIAL_STATE, scannedPdfWarning: true });
-            return;
-          }
-
-          setState({ ...INITIAL_STATE, error: getProblemMessage(requestError) });
-          return;
-        }
-
-        setState({
-          ...INITIAL_STATE,
-          error: requestError instanceof Error ? requestError.message : "No se pudo procesar el archivo.",
-        });
-      }
-    },
-    [docType],
+  const activeIds = useMemo(
+    () => order.filter((id) => jobsById[id] && !isTerminal(jobsById[id])),
+    [order, jobsById],
   );
+  // Stable identity for the *set* of active jobs, so the polling effect only
+  // restarts when the set changes — not on every status tick.
+  const activeKey = useMemo(() => [...activeIds].sort().join(","), [activeIds]);
 
-  const toggleRow = useCallback((rowId: string) => {
-    setState((current) => {
-      const row = current.rows.find((candidate) => candidate.rowId === rowId);
-      if (!row || row.status !== "NEW") return current;
-
-      const selectedRowIds = new Set(current.selectedRowIds);
-      if (selectedRowIds.has(rowId)) {
-        selectedRowIds.delete(rowId);
-      } else {
-        selectedRowIds.add(rowId);
-      }
-
-      return { ...current, selectedRowIds };
+  const mergeJobs = useCallback((incoming: ImportJob[], prepend = false) => {
+    if (incoming.length === 0) return;
+    setJobsById((prev) => {
+      const next = { ...prev };
+      for (const job of incoming) next[job.jobId] = job;
+      return next;
+    });
+    setOrder((prev) => {
+      const known = new Set(prev);
+      const fresh = incoming.map((job) => job.jobId).filter((id) => !known.has(id));
+      return prepend ? [...fresh, ...prev] : [...prev, ...fresh];
     });
   }, []);
 
-  const confirmSelected = useCallback(
-    async (onConfirmed?: () => void) => {
-      if (!state.previewId || state.selectedRowIds.size === 0) return;
+  const loadRecent = useCallback(async () => {
+    setLoadingRecent(true);
+    try {
+      const recent = await listImportJobs();
+      const sorted = [...recent].sort(sortByNewest);
+      setJobsById(Object.fromEntries(sorted.map((job) => [job.jobId, job])));
+      setOrder(sorted.map((job) => job.jobId));
+    } catch {
+      // Recent-uploads history is non-critical; a fresh upload still works.
+    } finally {
+      setLoadingRecent(false);
+    }
+  }, []);
 
-      setState((current) => ({ ...current, status: "confirming", error: null }));
+  const upload = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
 
-      try {
-        const response = await confirmImport({
-          previewId: state.previewId,
-          rowIds: Array.from(state.selectedRowIds),
-        });
+    if (files.some((file) => !isPdfFile(file))) {
+      setUploadError("Solo se permiten archivos PDF.");
+      return;
+    }
 
-        setState((current) => ({ ...current, status: "confirmed", importedCount: response.importedCount }));
-        onConfirmed?.();
-      } catch (requestError) {
-        const message =
-          requestError instanceof ApiError
-            ? getProblemMessage(requestError)
-            : requestError instanceof Error
-              ? requestError.message
-              : "No se pudo importar la selección.";
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const created = await uploadBrokerDocuments(files);
+      mergeJobs([...created].sort(sortByNewest), true);
+      setStalled(false);
+    } catch (error) {
+      setUploadError(messageFromError(error, "No se pudieron subir los archivos."));
+    } finally {
+      setUploading(false);
+    }
+  }, [mergeJobs]);
 
-        setState((current) => ({ ...current, status: "previewed", error: message }));
+  const retry = useCallback(async (jobId: string) => {
+    setRetryErrors((prev) => {
+      const next = { ...prev };
+      delete next[jobId];
+      return next;
+    });
+    try {
+      const requeued = await retryImportJob(jobId);
+      mergeJobs([requeued]);
+      setStalled(false);
+      setPollNonce((n) => n + 1);
+    } catch (error) {
+      setRetryErrors((prev) => ({
+        ...prev,
+        [jobId]: messageFromError(error, "No se pudo reintentar la carga."),
+      }));
+    }
+  }, [mergeJobs]);
+
+  // Manual re-poll after the safety timeout stopped polling.
+  const refresh = useCallback(() => {
+    setStalled(false);
+    setPollNonce((n) => n + 1);
+  }, []);
+
+  // ── Polling loop ────────────────────────────────────────────────────────────
+  const activeIdsRef = useRef(activeIds);
+  activeIdsRef.current = activeIds;
+
+  useEffect(() => {
+    if (activeIds.length === 0) return;
+
+    const startedAt = Date.now();
+    let disposed = false;
+
+    const tick = async () => {
+      if (disposed) return;
+      if (Date.now() - startedAt >= pollTimeoutMs) {
+        setStalled(true);
+        clearInterval(timer);
+        return;
       }
-    },
-    [state.previewId, state.selectedRowIds],
-  );
+      const ids = activeIdsRef.current;
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const updated = await getImportJob(id);
+            if (!disposed) mergeJobs([updated]);
+          } catch {
+            // Transient poll failure — keep polling; a later tick may succeed.
+          }
+        }),
+      );
+    };
 
-  return { state, summary, selectFiles, toggleRow, confirmSelected, reset };
+    // `tick` closes over `timer`; the interval never fires before this line
+    // runs, so the reference is always resolved by the time `tick` executes.
+    const timer = setInterval(() => void tick(), pollIntervalMs);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+    // Restart only when the active set changes or a manual refresh is requested.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey, pollNonce, pollIntervalMs, pollTimeoutMs, mergeJobs]);
+
+  return {
+    jobs,
+    activeCount: activeIds.length,
+    uploading,
+    uploadError,
+    retryErrors,
+    loadingRecent,
+    stalled,
+    upload,
+    retry,
+    refresh,
+    loadRecent,
+  };
 }

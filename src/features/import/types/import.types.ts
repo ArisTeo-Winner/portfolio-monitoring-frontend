@@ -1,43 +1,39 @@
-// ASSUMPTION (backend contract not finalized as of 2026-08-07): field names
-// below follow the existing transaction.types.ts convention (assetSymbol/
-// assetType/pricePerUnit) since preview rows are expected to map onto the
-// same transaction domain once confirmed. Single edit point if the real
-// backend contract differs.
+// Contract for the GBM broker-import feature (finalized backend, springdoc).
 //
-// Special-case signaling is by HTTP status: 501 Not Implemented on
-// /import/preview means the docType isn't supported yet (e.g. currently
-// GBM_MONTHLY_STATEMENT); 422 Unprocessable Entity with
-// errorCode === SCANNED_PDF_ERROR_CODE means the uploaded PDF has no
-// extractable text layer.
+// Upload is asynchronous: POST .../broker/gbm/import returns 202 with one job
+// per uploaded PDF. Each job is then polled until it reaches a terminal state
+// (COMPLETED or DEAD_LETTER). Amounts inside COMPLETED results are integer
+// counts, not money, so there is no decimal-precision concern here.
 
-export type GbmDocType = "GBM_MONTHLY_STATEMENT" | "DRIVEWEALTH_CONFIRMATION";
+export type ImportJobStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "DEAD_LETTER";
 
-export type ImportRowStatus = "NEW" | "DUPLICATE" | "ERROR";
-
-export type ImportPreviewRow = {
-  rowId: string;
-  assetSymbol: string;
-  assetType: string;
-  quantity: number;
-  pricePerUnit: number;
-  transactionDate: string;
-  status: ImportRowStatus;
-  statusReason?: string;
+/** Present only when status === "COMPLETED". */
+export type ImportJobResult = {
+  fileName: string;
+  accepted: number;
+  duplicate: number;
+  skipped: number;
+  rejected: number;
+  messages: string[];
 };
 
-export type ImportPreviewResponse = {
-  previewId: string;
-  docType: GbmDocType;
-  rows: ImportPreviewRow[];
+export type ImportJob = {
+  jobId: string;
+  fileName: string;
+  jobType: string | null;
+  status: ImportJobStatus;
+  result: ImportJobResult | null;
+  errorMessage: string | null;
+  attemptCount: number;
+  createdAt: string;
+  completedAt: string | null;
 };
 
-export type ImportConfirmRequest = {
-  previewId: string;
-  rowIds: string[];
-};
+export const TERMINAL_STATUSES: ReadonlySet<ImportJobStatus> = new Set<ImportJobStatus>([
+  "COMPLETED",
+  "DEAD_LETTER",
+]);
 
-export type ImportConfirmResponse = {
-  importedCount: number;
-};
-
-export const SCANNED_PDF_ERROR_CODE = "SCANNED_PDF";
+export function isTerminal(job: Pick<ImportJob, "status">): boolean {
+  return TERMINAL_STATUSES.has(job.status);
+}

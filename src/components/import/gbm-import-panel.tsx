@@ -19,28 +19,12 @@ export function GbmImportPanel() {
   return (
     <SettingsCard data-testid="gbm-import-panel">
       <SettingsHeader
-        description="Sube tus estados de cuenta o confirmaciones para importar transacciones automáticamente."
-        title="Conectar Broker: GBM"
+        description="Sube tus estados de cuenta o confirmaciones (GBM, DriveWealth) y detectamos el broker automáticamente para importar tus transacciones."
+        title="Importar comprobantes"
       />
 
-      <div className={`${settingsDensity.contentCard} space-y-6`}>
-        <GbmUploadSection
-          docType="GBM_MONTHLY_STATEMENT"
-          multiple={false}
-          onImported={refreshPortfolio}
-          subtitle="Para Smart Cash y Trading México"
-          testId="gbm-monthly-statement"
-          title="Cargar Estado de Cuenta Mensual (.pdf)"
-        />
-
-        <GbmUploadSection
-          docType="DRIVEWEALTH_CONFIRMATION"
-          multiple
-          onImported={refreshPortfolio}
-          subtitle="Para Trading Global / USA — Permite selección múltiple"
-          testId="gbm-drivewealth-confirmation"
-          title="Cargar Confirmaciones DriveWealth (.pdf)"
-        />
+      <div className={settingsDensity.contentCard}>
+        <GbmUploadSection onImported={refreshPortfolio} />
       </div>
     </SettingsCard>
   );

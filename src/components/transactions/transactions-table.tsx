@@ -13,6 +13,7 @@ import type { TransactionDetailsResponse, TransactionResponse } from "@/features
 import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
+import { FrictionBreakdownCard } from "@/components/transactions/friction-breakdown-card";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
 
@@ -291,7 +292,7 @@ export function TransactionsTable({
       setTransactionToDelete(null);
     } catch (error) {
       console.error("Failed to delete transaction", error);
-      setDeleteError("No fue posible eliminar la transaccion.");
+      setDeleteError("No fue posible eliminar la transacción.");
     } finally {
       setDeletingId(null);
     }
@@ -312,7 +313,7 @@ export function TransactionsTable({
       setDetailsData(details);
     } catch (error) {
       console.error("Failed to load transaction details", error);
-      setDetailsError("No fue posible cargar el detalle completo de la transaccion.");
+      setDetailsError("No fue posible cargar el detalle completo de la transacción.");
     } finally {
       setDetailsLoading(false);
     }
@@ -648,8 +649,8 @@ function TransactionsEmptyState() {
   return (
     <div className="mt-0 bg-[#121214] px-0 pb-0 pt-0">
       <div className="rounded-[1rem] border border-zinc-800/60 bg-[#121214] px-6 py-14 text-center shadow-[0_20px_70px_rgba(0,0,0,0.18)]">
-        <p className="text-[0.9rem] font-semibold text-white">No tienes transacciones registradas aun</p>
-        <p className="mt-2 text-[0.82rem] text-[#8a94a6]">Agrega una transaccion para ver el historial de este portafolio aqui.</p>
+        <p className="text-[0.9rem] font-semibold text-white">No tienes transacciones registradas aún</p>
+        <p className="mt-2 text-[0.82rem] text-[#8a94a6]">Agrega una transacción para ver el historial de este portafolio aquí.</p>
       </div>
     </div>
   );
@@ -801,7 +802,7 @@ function MobileAssetActionRow({
           />
           <MobileRowMenuAction
             icon={<PlusIcon className="h-4 w-4" />}
-            label="Agregar transaccion"
+            label="Agregar transacción"
             onClick={() => onAddTransaction(asset)}
           />
         </div>
@@ -936,7 +937,7 @@ function MobileAssetActionPanel({
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <ActionPanelButton accent="emerald" label="Agregar transaccion" onClick={() => onAddTransaction(asset)} />
+          <ActionPanelButton accent="emerald" label="Agregar transacción" onClick={() => onAddTransaction(asset)} />
           <ActionPanelButton accent="blue" label="Transferir" onClick={() => onRegisterTransfer(asset)} />
         </div>
 
@@ -1238,9 +1239,9 @@ function DeleteTransactionDialog({
           </div>
 
           <div className="min-w-0 md:hidden">
-            <h3 className="text-[1rem] font-semibold text-white">Eliminar transaccion</h3>
+            <h3 className="text-[1rem] font-semibold text-white">Eliminar transacción</h3>
             <p className="mt-1 text-[0.8125rem] leading-5 text-[#9aa6bb]">
-              Esta accion quitara el movimiento de {transaction.assetSymbol.toUpperCase()}.
+              Esta acción quitará el movimiento de {transaction.assetSymbol.toUpperCase()}.
             </p>
           </div>
         </div>
@@ -1373,6 +1374,14 @@ function TransactionDetailsDialog({
               </>
             )}
             <DetailRow label="Notes" multiline value={notes} />
+
+            {details?.frictionBreakdown ? (
+              <FrictionBreakdownCard
+                breakdown={details.frictionBreakdown}
+                feeCurrency={details.feeCurrency}
+                transactionType={transactionType}
+              />
+            ) : null}
 
             {error ? (
               <div className="mt-4 rounded-[0.95rem] border border-[#ea3943]/30 bg-[#ea3943]/10 px-4 py-3 text-[0.82rem] text-[#ffb0b4]">

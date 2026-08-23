@@ -65,6 +65,35 @@ export type TransactionResponse = {
   updatedAt: string;
 };
 
+export type FrictionReviewStatus = "OK" | "REQUIERE_REVISION";
+
+/**
+ * Backend-computed brokerage friction audit for a single transaction.
+ *
+ * Every value here is calculated server-side; the UI only renders them and
+ * never performs arithmetic on money, so there is no float precision loss to
+ * worry about (see the money-handling note in the brief). We keep the numeric
+ * shape the backend sends rather than coercing to string, to stay consistent
+ * with the rest of TransactionDetailsResponse.
+ *
+ * The four "fine-grained" fields (brokerCommission, brokerIva, otherFees,
+ * reviewStatus) are null on manual entries — they are only meaningful for
+ * broker-imported transactions. Render them ONLY when brokerCommission != null.
+ * The derived fields (grossAmount / totalFrictionCost / finalNetCost /
+ * adjustedUnitPrice) are always present (adjustedUnitPrice is null only when
+ * quantity is 0).
+ */
+export type FrictionBreakdown = {
+  grossAmount: number;
+  brokerCommission: number | null;
+  brokerIva: number | null;
+  otherFees: number | null;
+  totalFrictionCost: number;
+  finalNetCost: number;
+  adjustedUnitPrice: number | null;
+  reviewStatus: FrictionReviewStatus | null;
+};
+
 export type TransactionDetailsResponse = {
   id: string;
   assetSymbol: string;
@@ -83,5 +112,6 @@ export type TransactionDetailsResponse = {
   source?: string | null;
   exchange?: string | null;
   status?: string | null;
+  frictionBreakdown?: FrictionBreakdown | null;
 };
 

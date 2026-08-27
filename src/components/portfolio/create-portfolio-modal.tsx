@@ -180,10 +180,10 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
     >
       <div className="absolute inset-0 bg-[#070a11]/80 backdrop-blur-[6px]" />
 
-      <div className="relative w-full max-w-[480px] overflow-hidden rounded-[1.4rem] border border-[#1f2430] bg-[#111317] shadow-[0_40px_100px_rgba(0,0,0,0.56)]">
+      <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[480px] flex-col overflow-hidden rounded-[1.4rem] border border-[#1f2430] bg-[#111317] shadow-[0_40px_100px_rgba(0,0,0,0.56)]">
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#1a1f29] px-6 py-5">
+        {/* Header — pinned so the close control stays reachable no matter how tall the body grows */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[#1a1f29] px-6 py-5">
           <div className="flex items-center gap-3">
             {canGoBack ? (
               <button
@@ -207,8 +207,8 @@ export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAsset
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-5 py-5">
+        {/* Body — the only scroll area; keeps the pinned header and viewport height stable */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
 
           {/* ── Step: method ── */}
           {step === "method" ? (

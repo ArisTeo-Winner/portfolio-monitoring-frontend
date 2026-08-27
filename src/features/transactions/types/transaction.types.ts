@@ -63,6 +63,11 @@ export type TransactionResponse = {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Present on broker-linked transactions (both imported and manual). The
+  // backend returns these on the list response; used to attribute an imported
+  // transaction back to the channel that created it. See the import-review flow.
+  broker?: string | null;
+  currency?: string | null;
 };
 
 export type FrictionReviewStatus = "OK" | "REQUIERE_REVISION";

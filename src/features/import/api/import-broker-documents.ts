@@ -3,6 +3,35 @@ import { endpoints } from "@/lib/api/endpoints";
 import type { ImportJob } from "@/features/import/types/import.types";
 
 /**
+ * Channel 1 — GBM monthly account statement (MXN). A single PDF per month;
+ * the multipart field name is `file`. Returns one async job.
+ */
+export function uploadMonthlyStatement(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiUpload<ImportJob>(endpoints.brokerImport.statements, formData, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+/**
+ * Channel 2 — DriveWealth trade confirmations (USD). One or more PDFs, one per
+ * trading day; the multipart field name is `files` (repeated per file). Returns
+ * one async job per file.
+ */
+export function uploadDriveWealthConfirmations(files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  return apiUpload<ImportJob[]>(endpoints.brokerImport.drivewealthConfirmations, formData, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+/**
  * Uploads 1..N PDFs for broker auto-detection. Returns 202 with one job per
  * file. The multipart field name is `files` (repeated per file); the browser
  * sets the multipart Content-Type/boundary itself (see apiUpload).

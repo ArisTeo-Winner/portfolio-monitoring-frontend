@@ -19,8 +19,8 @@ export function GbmImportPanel() {
   return (
     <SettingsCard data-testid="gbm-import-panel">
       <SettingsHeader
-        description="Sube tus estados de cuenta o confirmaciones (GBM, DriveWealth) y detectamos el broker automáticamente para importar tus transacciones."
-        title="Importar comprobantes"
+        description="Elige el canal según la moneda de tu operación: estado de cuenta mensual en pesos (MXN) o confirmaciones DriveWealth en dólares (USD)."
+        title="Conectar broker: GBM"
       />
 
       <div className={settingsDensity.contentCard}>

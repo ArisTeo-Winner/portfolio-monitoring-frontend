@@ -6,9 +6,13 @@ import {
   getImportJob,
   listImportJobs,
   retryImportJob,
-  uploadBrokerDocuments,
+  uploadDriveWealthConfirmations,
+  uploadMonthlyStatement,
 } from "@/features/import/api/import-broker-documents";
 import { isTerminal, type ImportJob } from "@/features/import/types/import.types";
+
+/** The two ingest channels, one per GBM document family. */
+export type ImportChannel = "statement" | "confirmations";
 
 export const POLL_INTERVAL_MS = 2000;
 // Safety net: stop polling a still-running job after this long so a stuck
@@ -46,8 +50,14 @@ export function useGbmImport(options: Options = {}) {
 
   const [jobsById, setJobsById] = useState<Record<string, ImportJob>>({});
   const [order, setOrder] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<Record<ImportChannel, boolean>>({
+    statement: false,
+    confirmations: false,
+  });
+  const [uploadError, setUploadError] = useState<Record<ImportChannel, string | null>>({
+    statement: null,
+    confirmations: null,
+  });
   const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [stalled, setStalled] = useState(false);
@@ -96,26 +106,47 @@ export function useGbmImport(options: Options = {}) {
     }
   }, []);
 
-  const upload = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
+  // Shared upload pipeline for both channels: validate PDFs, run the channel's
+  // uploader, then merge the returned job(s) and reset the stalled flag.
+  const runUpload = useCallback(
+    async (channel: ImportChannel, files: File[], uploader: () => Promise<ImportJob[]>) => {
+      if (files.length === 0) return;
 
-    if (files.some((file) => !isPdfFile(file))) {
-      setUploadError("Solo se permiten archivos PDF.");
-      return;
-    }
+      if (files.some((file) => !isPdfFile(file))) {
+        setUploadError((prev) => ({ ...prev, [channel]: "Solo se permiten archivos PDF." }));
+        return;
+      }
 
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const created = await uploadBrokerDocuments(files);
-      mergeJobs([...created].sort(sortByNewest), true);
-      setStalled(false);
-    } catch (error) {
-      setUploadError(messageFromError(error, "No se pudieron subir los archivos."));
-    } finally {
-      setUploading(false);
-    }
-  }, [mergeJobs]);
+      setUploading((prev) => ({ ...prev, [channel]: true }));
+      setUploadError((prev) => ({ ...prev, [channel]: null }));
+      try {
+        const created = await uploader();
+        mergeJobs([...created].sort(sortByNewest), true);
+        setStalled(false);
+      } catch (error) {
+        setUploadError((prev) => ({
+          ...prev,
+          [channel]: messageFromError(error, "No se pudieron subir los archivos."),
+        }));
+      } finally {
+        setUploading((prev) => ({ ...prev, [channel]: false }));
+      }
+    },
+    [mergeJobs],
+  );
+
+  // Channel 1 — GBM monthly statement (MXN). One file per month; the endpoint
+  // returns a single job, normalized to an array for the shared pipeline.
+  const uploadStatement = useCallback(
+    (file: File) => runUpload("statement", [file], async () => [await uploadMonthlyStatement(file)]),
+    [runUpload],
+  );
+
+  // Channel 2 — DriveWealth confirmations (USD). One or more files per upload.
+  const uploadConfirmations = useCallback(
+    (files: File[]) => runUpload("confirmations", files, () => uploadDriveWealthConfirmations(files)),
+    [runUpload],
+  );
 
   const retry = useCallback(async (jobId: string) => {
     setRetryErrors((prev) => {
@@ -191,7 +222,8 @@ export function useGbmImport(options: Options = {}) {
     retryErrors,
     loadingRecent,
     stalled,
-    upload,
+    uploadStatement,
+    uploadConfirmations,
     retry,
     refresh,
     loadRecent,

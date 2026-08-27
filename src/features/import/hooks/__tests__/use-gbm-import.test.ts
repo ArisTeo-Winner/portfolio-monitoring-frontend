@@ -5,19 +5,22 @@ import {
   getImportJob,
   listImportJobs,
   retryImportJob,
-  uploadBrokerDocuments,
+  uploadDriveWealthConfirmations,
+  uploadMonthlyStatement,
 } from "@/features/import/api/import-broker-documents";
 import { ApiError } from "@/lib/api/problem-details";
 import type { ImportJob } from "@/features/import/types/import.types";
 
 vi.mock("@/features/import/api/import-broker-documents", () => ({
-  uploadBrokerDocuments: vi.fn(),
+  uploadMonthlyStatement: vi.fn(),
+  uploadDriveWealthConfirmations: vi.fn(),
   getImportJob: vi.fn(),
   listImportJobs: vi.fn(),
   retryImportJob: vi.fn(),
 }));
 
-const mockedUpload = vi.mocked(uploadBrokerDocuments);
+const mockedUploadStatement = vi.mocked(uploadMonthlyStatement);
+const mockedUploadConfirmations = vi.mocked(uploadDriveWealthConfirmations);
 const mockedGetJob = vi.mocked(getImportJob);
 const mockedListJobs = vi.mocked(listImportJobs);
 const mockedRetry = vi.mocked(retryImportJob);
@@ -55,15 +58,38 @@ describe("useGbmImport", () => {
     const { result } = renderHook(() => useGbmImport());
 
     await act(async () => {
-      await result.current.upload([new File(["x"], "note.txt", { type: "text/plain" })]);
+      await result.current.uploadConfirmations([new File(["x"], "note.txt", { type: "text/plain" })]);
     });
 
-    expect(mockedUpload).not.toHaveBeenCalled();
-    expect(result.current.uploadError).toBe("Solo se permiten archivos PDF.");
+    expect(mockedUploadConfirmations).not.toHaveBeenCalled();
+    expect(result.current.uploadError.confirmations).toBe("Solo se permiten archivos PDF.");
+  });
+
+  it("uploads a monthly statement (single job) and polls it to COMPLETED", async () => {
+    mockedUploadStatement.mockResolvedValue(job({ status: "QUEUED", jobType: "GBM_MONTHLY_STATEMENT" }));
+    mockedGetJob.mockResolvedValueOnce(
+      job({
+        status: "COMPLETED",
+        result: { fileName: "statement.pdf", accepted: 4, duplicate: 0, skipped: 0, rejected: 0, messages: [] },
+      }),
+    );
+
+    const { result } = renderHook(() => useGbmImport());
+    await act(async () => {
+      await result.current.uploadStatement(pdfFile());
+    });
+    expect(mockedUploadStatement).toHaveBeenCalledTimes(1);
+    expect(result.current.jobs[0].status).toBe("QUEUED");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.jobs[0].status).toBe("COMPLETED");
+    expect(result.current.jobs[0].result?.accepted).toBe(4);
   });
 
   it("uploads, then polls each job until COMPLETED and stops at the terminal state", async () => {
-    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedUploadConfirmations.mockResolvedValue([job({ status: "QUEUED" })]);
     mockedGetJob
       .mockResolvedValueOnce(job({ status: "PROCESSING" }))
       .mockResolvedValueOnce(
@@ -77,7 +103,7 @@ describe("useGbmImport", () => {
     const { result } = renderHook(() => useGbmImport());
 
     await act(async () => {
-      await result.current.upload([pdfFile()]);
+      await result.current.uploadConfirmations([pdfFile()]);
     });
     expect(result.current.jobs[0].status).toBe("QUEUED");
 
@@ -104,14 +130,14 @@ describe("useGbmImport", () => {
   });
 
   it("stops polling when a job reaches DEAD_LETTER and exposes its error", async () => {
-    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedUploadConfirmations.mockResolvedValue([job({ status: "QUEUED" })]);
     mockedGetJob.mockResolvedValueOnce(
       job({ status: "DEAD_LETTER", errorMessage: "Formato de PDF no reconocido." }),
     );
 
     const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.upload([pdfFile()]);
+      await result.current.uploadConfirmations([pdfFile()]);
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
@@ -123,13 +149,13 @@ describe("useGbmImport", () => {
   });
 
   it("retries a DEAD_LETTER job and resumes polling to COMPLETED", async () => {
-    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedUploadConfirmations.mockResolvedValue([job({ status: "QUEUED" })]);
     mockedGetJob.mockResolvedValueOnce(job({ status: "DEAD_LETTER", errorMessage: "boom" }));
     mockedRetry.mockResolvedValue(job({ status: "QUEUED", attemptCount: 1 }));
 
     const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.upload([pdfFile()]);
+      await result.current.uploadConfirmations([pdfFile()]);
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
@@ -153,7 +179,7 @@ describe("useGbmImport", () => {
   });
 
   it("surfaces the problem+json detail as the retry error when retry fails", async () => {
-    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedUploadConfirmations.mockResolvedValue([job({ status: "QUEUED" })]);
     mockedGetJob.mockResolvedValueOnce(job({ status: "DEAD_LETTER", errorMessage: "boom" }));
     mockedRetry.mockRejectedValue(
       new ApiError(429, "Too many requests", { status: 429, detail: "Demasiados reintentos, espera un momento." }),
@@ -161,7 +187,7 @@ describe("useGbmImport", () => {
 
     const { result } = renderHook(() => useGbmImport());
     await act(async () => {
-      await result.current.upload([pdfFile()]);
+      await result.current.uploadConfirmations([pdfFile()]);
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
@@ -188,12 +214,12 @@ describe("useGbmImport", () => {
   });
 
   it("stops polling and flags stalled after the safety timeout", async () => {
-    mockedUpload.mockResolvedValue([job({ status: "QUEUED" })]);
+    mockedUploadConfirmations.mockResolvedValue([job({ status: "QUEUED" })]);
     mockedGetJob.mockResolvedValue(job({ status: "PROCESSING" }));
 
     const { result } = renderHook(() => useGbmImport({ pollIntervalMs: 1000, pollTimeoutMs: 3000 }));
     await act(async () => {
-      await result.current.upload([pdfFile()]);
+      await result.current.uploadConfirmations([pdfFile()]);
     });
 
     // Advance past the safety timeout while the job never finishes.

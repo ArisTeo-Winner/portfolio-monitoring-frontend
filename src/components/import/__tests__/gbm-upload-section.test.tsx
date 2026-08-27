@@ -17,12 +17,13 @@ function hookState(overrides: Partial<HookReturn> = {}): HookReturn {
   return {
     jobs: [],
     activeCount: 0,
-    uploading: false,
-    uploadError: null,
+    uploading: { statement: false, confirmations: false },
+    uploadError: { statement: null, confirmations: null },
     retryErrors: {},
     loadingRecent: false,
     stalled: false,
-    upload: vi.fn(),
+    uploadStatement: vi.fn(),
+    uploadConfirmations: vi.fn(),
     retry: vi.fn(),
     refresh: vi.fn(),
     loadRecent: vi.fn(),
@@ -60,20 +61,37 @@ describe("GbmUploadSection", () => {
     expect(screen.getByTestId("import-jobs-empty")).toBeInTheDocument();
   });
 
-  it("forwards chosen files to upload()", async () => {
-    const upload = vi.fn();
-    mockedUseGbmImport.mockReturnValue(hookState({ upload }));
+  it("forwards a chosen statement PDF to uploadStatement()", async () => {
+    const uploadStatement = vi.fn();
+    mockedUseGbmImport.mockReturnValue(hookState({ uploadStatement }));
 
     render(<GbmUploadSection />);
-    const file = new File(["%PDF-1.4"], "statement.pdf", { type: "application/pdf" });
-    await userEvent.upload(screen.getByTestId("gbm-import-input"), file);
+    const file = new File(["%PDF-1.4"], "estado-cuenta.pdf", { type: "application/pdf" });
+    await userEvent.upload(screen.getByTestId("gbm-channel-statement-input"), file);
 
-    expect(upload).toHaveBeenCalledTimes(1);
-    expect(upload.mock.calls[0][0]).toHaveLength(1);
+    expect(uploadStatement).toHaveBeenCalledTimes(1);
+    expect(uploadStatement.mock.calls[0][0]).toBeInstanceOf(File);
   });
 
-  it("renders the upload error via ProblemAlert", () => {
-    mockedUseGbmImport.mockReturnValue(hookState({ uploadError: "Solo se permiten archivos PDF." }));
+  it("forwards chosen confirmation PDFs to uploadConfirmations()", async () => {
+    const uploadConfirmations = vi.fn();
+    mockedUseGbmImport.mockReturnValue(hookState({ uploadConfirmations }));
+
+    render(<GbmUploadSection />);
+    const files = [
+      new File(["%PDF-1.4"], "dw-1.pdf", { type: "application/pdf" }),
+      new File(["%PDF-1.4"], "dw-2.pdf", { type: "application/pdf" }),
+    ];
+    await userEvent.upload(screen.getByTestId("gbm-channel-drivewealth-input"), files);
+
+    expect(uploadConfirmations).toHaveBeenCalledTimes(1);
+    expect(uploadConfirmations.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it("renders a channel upload error", () => {
+    mockedUseGbmImport.mockReturnValue(
+      hookState({ uploadError: { statement: "Solo se permiten archivos PDF.", confirmations: null } }),
+    );
     render(<GbmUploadSection />);
     expect(screen.getByText("Solo se permiten archivos PDF.")).toBeInTheDocument();
   });

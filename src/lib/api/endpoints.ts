@@ -53,6 +53,12 @@ export const endpoints = {
     banxicoCetesCurve: "/api/v1/marketdata/banxico/cetes/curve",
   },
   brokerImport: {
+    // Channel 1 — GBM monthly account statement (MXN). One file per month.
+    // Multipart field `file`; returns a single async job.
+    statements: "/api/v1/me/broker/gbm/statements",
+    // Channel 2 — DriveWealth trade confirmations (USD). Multiple files, one
+    // per trading day. Multipart field `files`; returns one job per file.
+    drivewealthConfirmations: "/api/v1/me/broker/gbm/drivewealth-confirmations",
     // Auto-detects the broker from each uploaded PDF (1..N files). Returns 202
     // with one async job per file.
     upload: "/api/v1/me/broker/gbm/import",

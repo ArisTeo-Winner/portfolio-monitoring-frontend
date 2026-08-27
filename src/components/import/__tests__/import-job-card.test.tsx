@@ -4,6 +4,12 @@ import { describe, it, expect, vi } from "vitest";
 import { ImportJobCard } from "@/components/import/import-job-card";
 import type { ImportJob } from "@/features/import/types/import.types";
 
+// The review panel fetches transactions on mount; stub it so job-card tests stay
+// isolated from the transactions API.
+vi.mock("@/components/import/import-review-panel", () => ({
+  ImportReviewPanel: () => <div data-testid="import-review-panel-stub" />,
+}));
+
 function job(overrides: Partial<ImportJob> = {}): ImportJob {
   return {
     jobId: "j1",
@@ -67,5 +73,35 @@ describe("ImportJobCard", () => {
       />,
     );
     expect(screen.getByTestId("import-job-retry-error")).toHaveTextContent("Demasiados reintentos.");
+  });
+
+  it("offers a review toggle for a completed job with accepted rows and reveals the panel", async () => {
+    render(
+      <ImportJobCard
+        job={job({
+          status: "COMPLETED",
+          result: { fileName: "dw.pdf", accepted: 2, duplicate: 0, skipped: 0, rejected: 0, messages: [] },
+        })}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId("import-job-review-toggle");
+    expect(screen.queryByTestId("import-review-panel-stub")).not.toBeInTheDocument();
+    await userEvent.click(toggle);
+    expect(screen.getByTestId("import-review-panel-stub")).toBeInTheDocument();
+  });
+
+  it("hides the review toggle when the job imported zero rows", () => {
+    render(
+      <ImportJobCard
+        job={job({
+          status: "COMPLETED",
+          result: { fileName: "dw.pdf", accepted: 0, duplicate: 3, skipped: 0, rejected: 0, messages: [] },
+        })}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("import-job-review-toggle")).not.toBeInTheDocument();
   });
 });

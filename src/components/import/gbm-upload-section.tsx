@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { ProblemAlert } from "@/components/ui/problem-alert";
+import { GbmChannelCard } from "@/components/import/gbm-channel-card";
 import { ImportJobCard } from "@/components/import/import-job-card";
 import { useGbmImport } from "@/features/import/hooks/use-gbm-import";
 
@@ -12,9 +12,19 @@ type Props = {
 };
 
 export function GbmUploadSection({ onImported }: Props) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const { jobs, uploading, uploadError, retryErrors, loadingRecent, stalled, upload, retry, refresh, loadRecent } =
-    useGbmImport();
+  const {
+    jobs,
+    uploading,
+    uploadError,
+    retryErrors,
+    loadingRecent,
+    stalled,
+    uploadStatement,
+    uploadConfirmations,
+    retry,
+    refresh,
+    loadRecent,
+  } = useGbmImport();
 
   // Load the recent-uploads history once on mount.
   useEffect(() => {
@@ -33,39 +43,41 @@ export function GbmUploadSection({ onImported }: Props) {
     }
   }, [jobs, onImported]);
 
-  function handleFilesChosen(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    void upload(files);
-  }
-
   return (
-    <div className="space-y-4" data-testid="gbm-upload-section">
-      <div>
-        <Button
-          data-testid="gbm-import-trigger"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          type="button"
-          variant="secondary"
-        >
-          {uploading ? "Subiendo…" : "Seleccionar comprobantes (.pdf)"}
-        </Button>
-        <p className="mt-1 text-xs text-neutral-500">
-          Detectamos el broker automáticamente. Puedes subir uno o varios PDF a la vez.
-        </p>
-        <input
-          accept=".pdf,application/pdf"
-          className="hidden"
-          data-testid="gbm-import-input"
+    <div className="space-y-5" data-testid="gbm-upload-section">
+      <div className="grid gap-3 md:grid-cols-2">
+        <GbmChannelCard
+          accent="mxn"
+          currency="MXN"
+          custodian="GBM · Mercado nacional"
+          title="Estado de cuenta mensual"
+          description="Saldos y operaciones en pesos: Smart Cash (renta fija y efectivo) y Trading México en BMV y SIC."
+          useCases={["Smart Cash", "Trading México", "BMV", "SIC"]}
+          loadRule="Un archivo por mes de consulta"
+          multiple={false}
+          dropHint="Cargar estado de cuenta (.pdf)"
+          uploading={uploading.statement}
+          error={uploadError.statement}
+          onFiles={(files) => void uploadStatement(files[0])}
+          testid="gbm-channel-statement"
+        />
+
+        <GbmChannelCard
+          accent="usd"
+          currency="USD"
+          custodian="Custodio DriveWealth LLC"
+          title="Confirmaciones DriveWealth"
+          description="Transacciones en dólares con soporte de fracciones para la estrategia de Trading Global / Trading USA."
+          useCases={["Trading Global", "Trading USA", "Fracciones"]}
+          loadRule="Carga múltiple: un PDF por día de operación"
           multiple
-          onChange={handleFilesChosen}
-          ref={inputRef}
-          type="file"
+          dropHint="Cargar confirmaciones (.pdf)"
+          uploading={uploading.confirmations}
+          error={uploadError.confirmations}
+          onFiles={(files) => void uploadConfirmations(files)}
+          testid="gbm-channel-drivewealth"
         />
       </div>
-
-      {uploadError ? <ProblemAlert message={uploadError} /> : null}
 
       {stalled ? (
         <div
@@ -83,7 +95,13 @@ export function GbmUploadSection({ onImported }: Props) {
         <div className="space-y-3" data-testid="import-jobs-list">
           <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Cargas recientes</h4>
           {jobs.map((job) => (
-            <ImportJobCard job={job} key={job.jobId} onRetry={retry} retryError={retryErrors[job.jobId]} />
+            <ImportJobCard
+              job={job}
+              key={job.jobId}
+              onRetry={retry}
+              onReviewChanged={onImported}
+              retryError={retryErrors[job.jobId]}
+            />
           ))}
         </div>
       ) : loadingRecent ? (

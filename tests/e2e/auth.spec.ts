@@ -46,7 +46,8 @@ test.describe("Login flow", () => {
     await page.getByTestId("password-input").locator("input").fill("WrongPass1!");
     await page.getByTestId("submit-login").click();
 
-    await expect(page.getByText(/credenciales incorrectas/i)).toBeVisible();
+    // The controlled message is status-based, not the raw backend `detail` text.
+    await expect(page.getByText(/no fue posible verificar tus credenciales/i)).toBeVisible();
   });
 
   test("redirige a /portfolio tras login exitoso", async ({ page }) => {
@@ -71,7 +72,7 @@ test.describe("Login flow", () => {
     skipUnlessXsMobile(testInfo);
 
     if (!(await page.getByTestId("email-input").isVisible().catch(() => false))) {
-      await page.getByTestId("open-login-btn").first().click();
+      await page.getByTestId("open-login-btn-mobile").click();
       await expect(page.getByTestId("email-input")).toBeVisible({ timeout: 8_000 });
     }
 

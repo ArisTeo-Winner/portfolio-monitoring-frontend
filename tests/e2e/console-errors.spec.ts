@@ -93,7 +93,10 @@ test.describe("Console errors — flujos críticos", () => {
     await page.getByTestId("email-input").locator("input").fill("user@test.com");
     await page.getByTestId("password-input").locator("input").fill("WrongPass1!");
     await page.getByTestId("submit-login").click();
-    await expect(page.getByText(/credenciales incorrectas/i)).toBeVisible({ timeout: 8_000 });
+    // The controlled message is status-based, not the raw backend `detail` text.
+    await expect(
+      page.getByText(/no fue posible verificar tus credenciales/i),
+    ).toBeVisible({ timeout: 8_000 });
     assertClean(errors, "/login — form interaction + error response");
   });
 

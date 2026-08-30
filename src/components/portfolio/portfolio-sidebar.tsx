@@ -90,8 +90,8 @@ export function PortfolioSidebar({
                 })
               ) : (
                 <div className="rounded-[1rem] bg-[#12151a] px-4 py-5 text-center shadow-[0_18px_36px_rgba(0,0,0,0.16)]">
-                  <p className="text-[0.86rem] font-semibold text-white">Aun no hay portfolios activos</p>
-                  <p className="mt-1.5 text-[0.76rem] leading-6 text-[#7f8aa3]">Registra una primera transaccion para empezar a construirlos.</p>
+                  <p className="text-[0.86rem] font-semibold text-white">Aún no hay portfolios activos</p>
+                  <p className="mt-1.5 text-[0.76rem] leading-6 text-[#7f8aa3]">Registra una primera transacción para empezar a construirlos.</p>
                 </div>
               )}
             </div>

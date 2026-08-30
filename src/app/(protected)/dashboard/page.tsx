@@ -152,7 +152,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-[2.35rem] font-semibold tracking-[-0.05em] text-white">Hola, Inversor</h1>
               <p className="mt-2 text-[0.98rem] text-[#7f8aa3]">
-                Aqui esta el resumen de tu patrimonio neto al dia de hoy.
+                Aquí está el resumen de tu patrimonio neto al día de hoy.
               </p>
             </div>
             <button
@@ -183,7 +183,7 @@ export default function DashboardPage() {
             <DashboardStatCard
               accent={totalProfit >= 0 ? "emerald" : "rose"}
               icon={<TrendDownIcon className="h-12 w-12" />}
-              label="Variacion (24h)"
+              label="Variación (24h)"
               subtitle={`${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`}
               value={formatSignedCurrency(totalProfit)}
             />
@@ -457,7 +457,7 @@ function DashboardDistributionCard({
   return (
     <section className="rounded-lg bg-[#111317] p-4 shadow-none sm:rounded-[1.4rem] sm:px-6 sm:py-6 sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
       <div className="flex items-center justify-between">
-        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Distribucion</h2>
+        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Distribución</h2>
         <ClockIcon className="h-5 w-5 text-[#8a94a6]" />
       </div>
 
@@ -480,7 +480,7 @@ function DashboardDistributionCard({
         </>
       ) : (
         <div className="flex min-h-[18rem] items-center justify-center text-center text-[0.9rem] text-[#7f8aa3]">
-          No hay activos suficientes para construir la distribucion.
+          No hay activos suficientes para construir la distribución.
         </div>
       )}
     </section>
@@ -538,7 +538,7 @@ function DashboardFeaturedMovesCard({
           })}
         </div>
       ) : (
-        <DashboardEmptyState description="Aun no hay activos en cartera para destacar." title="Sin movimientos destacados" />
+        <DashboardEmptyState description="Aún no hay activos en cartera para destacar." title="Sin movimientos destacados" />
       )}
     </section>
   );
@@ -598,7 +598,7 @@ function DashboardActivityCard({
           })}
         </div>
       ) : (
-        <DashboardEmptyState description="Las operaciones nuevas apareceran aqui automaticamente." title="Sin actividad reciente" />
+        <DashboardEmptyState description="Las operaciones nuevas aparecerán aquí automáticamente." title="Sin actividad reciente" />
       )}
     </section>
   );

@@ -1,5 +1,5 @@
 import { env, ensureClientRuntimeConfig } from "@/lib/config/env";
-import { ApiError, type ProblemDetails } from "@/lib/api/problem-details";
+import { ApiError, localizedErrorMessage, type ProblemDetails } from "@/lib/api/problem-details";
 import { endpoints } from "@/lib/api/endpoints";
 import { expireSession, persistSession, readSession } from "@/features/auth/lib/session";
 
@@ -99,13 +99,8 @@ async function doApiRequest<T>(
       expireSession();
     }
 
-    if (response.status === 403) {
-      throw new ApiError(403, "You do not have permission to perform this action.", undefined);
-    }
-
     const problem = isProblemDetails(payload) ? payload : undefined;
-    const message = problem?.detail || problem?.title || response.statusText || "Request failed";
-    throw new ApiError(response.status, message, problem);
+    throw new ApiError(response.status, localizedErrorMessage(response.status), problem);
   }
 
   return payload as T;

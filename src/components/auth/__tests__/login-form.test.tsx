@@ -160,7 +160,7 @@ describe("LoginForm – failed login", () => {
     await fillAndSubmit("user@example.com", "WrongPass1!");
 
     await waitFor(() => {
-      expect(screen.getByText(/no fue posible iniciar sesion/i)).toBeInTheDocument();
+      expect(screen.getByText(/no fue posible iniciar sesión/i)).toBeInTheDocument();
     });
   });
 

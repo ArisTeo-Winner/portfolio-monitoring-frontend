@@ -313,8 +313,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const brokerPlaceholder = currency === "MXN" ? "GBM / Bursanet / cetesdirecto" : "GBM / IBKR";
   const formTitle = isEditing ? "Edit Transaction" : "Add Transaction";
   const formDescription = isEditing
-    ? "Actualiza los datos de la operacion."
-    : `Paso ${shouldSelectAssetTypeFirst ? totalSteps : 2} de ${totalSteps}. Completa los datos de la operacion.`;
+    ? "Actualiza los datos de la operación."
+    : `Paso ${shouldSelectAssetTypeFirst ? totalSteps : 2} de ${totalSteps}. Completa los datos de la operación.`;
 
   const submitDisabled =
     submitting ||
@@ -329,13 +329,13 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   if (!isOpen) return null;
 
   async function handleSubmit() {
-    if (!selectedAsset) return setError("Selecciona un activo antes de registrar la transaccion.");
+    if (!selectedAsset) return setError("Selecciona un activo antes de registrar la transacción.");
     if (mode === "DIVIDEND") {
       if (dividendAmountValue <= 0) return setError("El monto del dividendo debe ser mayor que cero.");
     } else {
-      if (isBondBuy && investAmountValue > 0 && quantityValue <= 0) return setError("El monto ingresado no alcanza para comprar un titulo completo.");
+      if (isBondBuy && investAmountValue > 0 && quantityValue <= 0) return setError("El monto ingresado no alcanza para comprar un título completo.");
       if (quantityValue <= 0) return setError("La cantidad debe ser mayor que cero.");
-      if (mode !== "TRANSFER" && priceValue <= 0) return setError("No hay precio valido para completar la transaccion.");
+      if (mode !== "TRANSFER" && priceValue <= 0) return setError("No hay precio válido para completar la transacción.");
       if (isBondBuy && faceValueValue <= 0) return setError("El valor nominal (faceValue) del bono es requerido.");
       if (isBondBuy && !maturityDate) return setError("La fecha de vencimiento del bono es requerida.");
     }
@@ -427,9 +427,9 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
       onClose();
     } catch (submitError) {
       if (submitError instanceof ApiError && submitError.status === 409) {
-        setError("Ya se registro esta operacion (conflicto de idempotencia). Revisa el historial antes de reintentar.");
+        setError("Ya se registró esta operación (conflicto de idempotencia). Revisa el historial antes de reintentar.");
       } else {
-        setError(submitError instanceof Error ? submitError.message : isEditing ? "No fue posible actualizar la transaccion." : "No fue posible registrar la transaccion.");
+        setError(submitError instanceof Error ? submitError.message : isEditing ? "No fue posible actualizar la transacción." : "No fue posible registrar la transacción.");
       }
     } finally {
       setSubmitting(false);
@@ -575,7 +575,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                     <Field label="Fecha ex-dividendo (opcional)">
                       <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none md:text-[0.92rem]" onChange={(event) => setExDividendDate(event.target.value)} type="date" value={exDividendDate} />
                     </Field>
-                    <Field label="Retencion fiscal (opcional)">
+                    <Field label="Retención fiscal (opcional)">
                       <input className="w-full bg-transparent text-[0.875rem] font-medium text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" inputMode="decimal" onChange={(event) => setTaxWithheld(event.target.value)} placeholder="0.00" step="any" type="number" value={taxWithheld} />
                     </Field>
                   </div>
@@ -606,7 +606,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                 {bondUnitPrice !== null ? (
                   <p className="text-[0.76rem] font-medium text-[#9daccc]">
                     <span className="font-semibold uppercase tracking-[0.1em] text-[#6f7a8f]">Bono</span>{" "}
-                    · {bondTitulos} titulo{bondTitulos === 1 ? "" : "s"} a {formatCurrencyByCode(bondUnitPrice, currency)} c/u
+                    · {bondTitulos} título{bondTitulos === 1 ? "" : "s"} a {formatCurrencyByCode(bondUnitPrice, currency)} c/u
                     {bondRate !== undefined ? ` · tasa ${bondRate.toFixed(2)}%` : ""}
                   </p>
                 ) : (
@@ -621,7 +621,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                   </Field>
                 </div>
                 <label className="flex items-center justify-between rounded-[0.875rem] border border-[#232931] bg-[#181d24] px-3 py-1.5 md:rounded-[0.95rem]">
-                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Reinversion automatica</span>
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Reinversión automática</span>
                   <button className={autoReinvestment ? "rounded-full bg-[#3f8c53] px-2.5 py-1 text-[0.72rem] font-semibold text-white" : "rounded-full bg-[#232931] px-2.5 py-1 text-[0.72rem] font-semibold text-[#7f8aa3]"} onClick={() => setAutoReinvestment((value) => !value)} type="button">
                     {autoReinvestment ? "Si" : "No"}
                   </button>
@@ -758,7 +758,7 @@ function AssetTypeSelectionView({ filters, onClose, onSelect }: { filters: Selec
 }
 
 function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAssetType, onBack, onClose, onFilterChange, onQueryChange, onSelect, popularAssets, portfolioLabel, query, recentAssets, showFilterTabs, stepLabel }: { activeFilter: SelectorFilter; assets: AssetOption[]; filters: SelectorFilter[]; loading: boolean; lockedAssetType?: string; onBack?: () => void; onClose: () => void; onFilterChange: (value: SelectorFilter) => void; onQueryChange: (value: string) => void; onSelect: (asset: AssetOption) => void; popularAssets: PopularAssets; portfolioLabel: string; query: string; recentAssets: AssetOption[]; showFilterTabs: boolean; stepLabel: string }) {
-  if (activeFilter === "CRYPTO") return <div><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="hidden px-7 pb-7 pt-6 md:block"><p className="text-center text-[1.04rem] font-medium text-white">Selecciona una moneda para registrar tu operacion</p><p className="mt-1 text-center text-sm text-[#6f7a8f]">{portfolioLabel} wallet</p></div><div className="px-4 pb-4 md:px-7 md:pb-7"><CryptoSelector onChange={(crypto) => onSelect({ assetId: crypto.id, symbol: crypto.symbol.toUpperCase(), name: crypto.name, assetType: "CRYPTO", logoUrl: crypto.image ?? `https://assets.coingecko.com/coins/images/1/small/${crypto.id}.png`, supportedForTransactions: true, suggestedPrice: crypto.currentPrice })} value={null} /></div></div>;
+  if (activeFilter === "CRYPTO") return <div><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="hidden px-7 pb-7 pt-6 md:block"><p className="text-center text-[1.04rem] font-medium text-white">Selecciona una moneda para registrar tu operación</p><p className="mt-1 text-center text-sm text-[#6f7a8f]">{portfolioLabel} wallet</p></div><div className="px-4 pb-4 md:px-7 md:pb-7"><CryptoSelector onChange={(crypto) => onSelect({ assetId: crypto.id, symbol: crypto.symbol.toUpperCase(), name: crypto.name, assetType: "CRYPTO", logoUrl: crypto.image ?? `https://assets.coingecko.com/coins/images/1/small/${crypto.id}.png`, supportedForTransactions: true, suggestedPrice: crypto.currentPrice })} value={null} /></div></div>;
 
   const isBrowseMode = !query.trim();
   const visibleRecent = filterAssetsByType(recentAssets, activeFilter);
@@ -772,7 +772,7 @@ function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAsset
         ]
       : [{ label: "Populares", assets }];
 
-  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operacion</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><span className="text-[0.8125rem] text-[#6f7a8f] md:text-sm">Search</span><input className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar simbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7">
+  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operación</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><span className="text-[0.8125rem] text-[#6f7a8f] md:text-sm">Search</span><input className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar símbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7">
     {isBrowseMode ? (
       <div className="space-y-4">
         {visibleRecent.length ? (

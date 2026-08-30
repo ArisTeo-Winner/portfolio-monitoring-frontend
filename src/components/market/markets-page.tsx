@@ -295,7 +295,7 @@ export function MarketsPage() {
               />
             ))
           ) : (
-            <EmptyCardMessage message="Sin datos de variacion 24h disponibles." />
+            <EmptyCardMessage message="Sin datos de variación 24h disponibles." />
           )}
         </MarketInfoCard>
 
@@ -331,7 +331,7 @@ export function MarketsPage() {
               />
             ))
           ) : (
-            <EmptyCardMessage message="Tus activos recientes apareceran aqui." />
+            <EmptyCardMessage message="Tus activos recientes aparecerán aquí." />
           )}
         </MarketInfoCard>
       </section>
@@ -385,7 +385,7 @@ export function MarketsPage() {
                   <th className="px-5 py-4 text-right">7d %</th>
                   <th className="px-5 py-4 text-right">Market Cap</th>
                   <th className="px-5 py-4 text-right">Volumen (24h)</th>
-                  <th className="px-5 py-4 text-center">Ultimos 7 dias</th>
+                  <th className="px-5 py-4 text-center">Últimos 7 días</th>
                   <th className="w-28 px-5 py-4 text-center">Acciones</th>
                 </tr>
               </thead>

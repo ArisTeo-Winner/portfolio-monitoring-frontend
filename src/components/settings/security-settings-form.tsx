@@ -17,18 +17,18 @@ import type { AccountSettings } from "@/features/settings/types/settings.types";
 
 const passwordSchema = z
   .object({
-    confirmPassword: z.string().min(1, "Confirma la contrasena."),
-    currentPassword: z.string().min(1, "Ingresa tu contrasena actual."),
+    confirmPassword: z.string().min(1, "Confirma la contraseña."),
+    currentPassword: z.string().min(1, "Ingresa tu contraseña actual."),
     newPassword: z
       .string()
-      .min(8, "Minimo 8 caracteres.")
-      .regex(/[A-Z]/, "Incluye una mayuscula.")
-      .regex(/[a-z]/, "Incluye una minuscula.")
-      .regex(/[0-9]/, "Incluye un numero.")
-      .regex(/[^A-Za-z0-9]/, "Incluye un simbolo."),
+      .min(8, "Mínimo 8 caracteres.")
+      .regex(/[A-Z]/, "Incluye una mayúscula.")
+      .regex(/[a-z]/, "Incluye una minúscula.")
+      .regex(/[0-9]/, "Incluye un número.")
+      .regex(/[^A-Za-z0-9]/, "Incluye un símbolo."),
   })
   .refine((values) => values.newPassword === values.confirmPassword, {
-    message: "Las contrasenas no coinciden.",
+    message: "Las contraseñas no coinciden.",
     path: ["confirmPassword"],
   });
 
@@ -81,7 +81,7 @@ export function SecuritySettingsForm() {
       setSuccessOpen(true);
     } catch (requestError) {
       setConfirmOpen(false);
-      setError(requestError instanceof Error ? requestError.message : "No se pudo cambiar la contrasena.");
+      setError(requestError instanceof Error ? requestError.message : "No se pudo cambiar la contraseña.");
     }
   }
 
@@ -90,11 +90,11 @@ export function SecuritySettingsForm() {
       {/* Status: password last updated */}
       <SettingsCard data-testid="password-status-card">
         <SettingsHeader
-          title="Contrasena"
+          title="Contraseña"
           description="Control de acceso para tu portfolio tracker."
         />
         <div className="divide-y divide-neutral-800">
-          <StatusRow label="Ultima actualizacion" value={formatDate(account?.passwordLastUpdatedAt) ?? "Not available"}>
+          <StatusRow label="Última actualización" value={formatDate(account?.passwordLastUpdatedAt) ?? "Not available"}>
             <Badge tone={account?.passwordLastUpdatedAt ? "success" : "default"}>Tracked</Badge>
           </StatusRow>
         </div>
@@ -103,8 +103,8 @@ export function SecuritySettingsForm() {
       {/* Status: 2FA */}
       <SettingsCard data-testid="twofa-status-card">
         <SettingsHeader
-          title="Autenticacion de dos factores"
-          description="Estado reportado por el backend si la capacidad esta disponible."
+          title="Autenticación de dos factores"
+          description="Estado reportado por el backend si la capacidad está disponible."
         />
         <div className="divide-y divide-neutral-800">
           {typeof account?.twoFactorEnabled === "boolean" ? (
@@ -137,7 +137,7 @@ export function SecuritySettingsForm() {
 
         <form data-testid="security-settings-form" onSubmit={handleSubmit(requestConfirmation)}>
           <div className="divide-y divide-neutral-800">
-            <SettingsField label="Contrasena actual">
+            <SettingsField label="Contraseña actual">
               <Input
                 autoComplete="current-password"
                 data-testid="current-password-input"
@@ -150,7 +150,7 @@ export function SecuritySettingsForm() {
                 {...register("currentPassword")}
               />
             </SettingsField>
-            <SettingsField label="Nueva contrasena">
+            <SettingsField label="Nueva contraseña">
               <Input
                 autoComplete="new-password"
                 data-testid="new-password-input"
@@ -163,7 +163,7 @@ export function SecuritySettingsForm() {
                 {...register("newPassword")}
               />
             </SettingsField>
-            <SettingsField label="Confirmar contrasena">
+            <SettingsField label="Confirmar contraseña">
               <Input
                 autoComplete="new-password"
                 data-testid="confirm-password-input"

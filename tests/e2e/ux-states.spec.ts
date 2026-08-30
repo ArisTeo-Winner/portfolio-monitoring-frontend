@@ -65,9 +65,9 @@ test.describe("UX States – Empty & Error", () => {
     await loginAs(page);
     await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
 
-    // PortfolioErrorState renders with the ApiError message from client.ts 403 handler
+    // PortfolioErrorState renders the controlled, localized status-based message.
     await expect(
-      page.getByText(/you do not have permission to perform this action/i),
+      page.getByText(/no tienes permisos para realizar esta acci/i),
     ).toBeVisible({ timeout: 10_000 });
   });
 

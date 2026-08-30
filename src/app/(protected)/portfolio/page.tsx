@@ -216,7 +216,7 @@ function PortfolioErrorState({ message, onOpenModal, transactionsEnabled }: { me
           onClick={onOpenModal}
           type="button"
         >
-          Registrar transaccion
+          Registrar transacción
         </button>
       </div>
     </section>

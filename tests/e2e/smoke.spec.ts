@@ -25,7 +25,9 @@ test.describe("Smoke: Page availability", () => {
     // Either the open-login-btn is visible (home with dialog trigger)
     // or the login form is rendered inline.
     const loginTrigger = page
-      .locator('[data-testid="open-login-btn"]:visible, [data-testid="email-input"]:visible')
+      .locator(
+        '[data-testid="open-login-btn-mobile"]:visible, [data-testid="open-login-btn-desktop"]:visible, [data-testid="email-input"]:visible',
+      )
       .first();
     await expect(loginTrigger).toBeVisible({ timeout: 20_000 });
   });

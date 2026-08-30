@@ -14,11 +14,11 @@ type Props = {
 };
 
 const PASSWORD_RULES = [
-  { label: "Minimo 8 caracteres", test: (value: string) => value.length >= 8 },
-  { label: "Una mayuscula", test: (value: string) => /[A-Z]/.test(value) },
-  { label: "Una minuscula", test: (value: string) => /[a-z]/.test(value) },
-  { label: "Un numero", test: (value: string) => /[0-9]/.test(value) },
-  { label: "Un simbolo (@#$%^&+=!)", test: (value: string) => /[@#$%^&+=!]/.test(value) },
+  { label: "Mínimo 8 caracteres", test: (value: string) => value.length >= 8 },
+  { label: "Una mayúscula", test: (value: string) => /[A-Z]/.test(value) },
+  { label: "Una minúscula", test: (value: string) => /[a-z]/.test(value) },
+  { label: "Un número", test: (value: string) => /[0-9]/.test(value) },
+  { label: "Un símbolo (@#$%^&+=!)", test: (value: string) => /[@#$%^&+=!]/.test(value) },
 ] as const;
 
 export function RegisterForm({ onRegistered }: Props) {
@@ -129,7 +129,7 @@ export function RegisterForm({ onRegistered }: Props) {
           hideLabel
           icon={<LockIcon />}
           inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
-          label="Contrasena"
+          label="Contraseña"
           onChange={(event) => setPassword(event.target.value)}
           placeholder=".............."
           type={showPassword ? "text" : "password"}
@@ -143,7 +143,7 @@ export function RegisterForm({ onRegistered }: Props) {
             suppressHydrationWarning
             type="button"
           >
-            {showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+            {showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
           </button>
           <span className={strength.badgeClass}>{strength.label}</span>
         </div>
@@ -152,7 +152,7 @@ export function RegisterForm({ onRegistered }: Props) {
             <div className={strength.barClass} style={{ width: `${strength.width}%` }} />
           </div>
           <p className="mt-2 text-[0.6875rem] leading-4 text-[#727986] md:mt-3 md:text-xs md:leading-5">
-            Usa mayuscula, minuscula, numero y simbolo.
+            Usa mayúscula, minúscula, número y símbolo.
           </p>
           <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:mt-3 md:gap-2">
             {passwordChecks.map((rule) => (
@@ -164,7 +164,7 @@ export function RegisterForm({ onRegistered }: Props) {
                       : "flex h-4 w-4 items-center justify-center rounded-full bg-[#1d2128] text-[9px] font-bold text-[#7b8390] md:h-[1.125rem] md:w-[1.125rem] md:text-[10px]"
                   }
                 >
-                  {rule.valid ? "Y" : "-"}
+                  {rule.valid ? <CheckIcon className="h-2.5 w-2.5" /> : "-"}
                 </span>
                 <span className={rule.valid ? "text-[#b8e8d1]" : "text-[#818896]"}>{rule.label}</span>
               </div>
@@ -197,7 +197,7 @@ function getPasswordStrength(password: string, score: number) {
 
   if (score <= 2) {
     return {
-      label: "Debil",
+      label: "Débil",
       width: 33,
       barClass: "h-full rounded-full bg-[#ef4444] transition-all",
       badgeClass: "rounded-full bg-[#31151b] px-3 py-1 text-[11px] font-semibold text-[#ff8ea5]",
@@ -220,6 +220,21 @@ function getPasswordStrength(password: string, score: number) {
       badgeClass: "rounded-full bg-[#153225] px-3 py-1 text-[11px] font-semibold text-[#66f0b1]",
     };
   }
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
+      <path
+        d="M5 12.5 9.5 17 19 7"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
 
 function UserIcon() {
   return (

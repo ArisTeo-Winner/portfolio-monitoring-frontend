@@ -21,8 +21,12 @@ export async function openLoginDialog(page: Page) {
   const heading = page.getByRole("heading", { name: /bienvenido/i });
 
   if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-    // Use :visible to skip CSS-hidden siblings (e.g. sm:hidden at 640px+)
-    await page.locator('[data-testid="open-login-btn"]:visible').first().click();
+    // Mobile and desktop each render their own trigger (only one is ever
+    // display:block at a given viewport) — match whichever is visible.
+    await page
+      .locator('[data-testid="open-login-btn-mobile"]:visible, [data-testid="open-login-btn-desktop"]:visible')
+      .first()
+      .click();
   }
 
   // 30s to accommodate Vite cold-compile on first navigation in a fresh run
@@ -92,20 +96,41 @@ export async function mockBackendAPIs(page: Page) {
     }),
   );
 
-  const now = Date.now();
-  await page.route(/\/api\/v1\/portfolio\/history/, (route) =>
+  // Asset search — powers AssetAvatar logo lookups (prefetchAssetLogos). Left
+  // unmocked, this hits the real backend + a live image CDN, racing against
+  // screenshot capture (fallback avatar vs loaded logo) and causing flaky
+  // visual-regression diffs. Empty result keeps every avatar on the
+  // deterministic fallback (initials) with no follow-up image fetch.
+  await page.route(/\/api\/v1\/assets\/search/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const DAY_SECONDS = 86_400;
+  // NOTE: must include /me/ — endpoints.portfolio.history is "/api/v1/me/portfolio/history".
+  // A regex missing that segment never matches, silently falling through to the
+  // real backend for the holdings chart series (this was the case here before).
+  //
+  // NOTE: body must match PortfolioHistoryResponse ({ meta, series: [{ time, value }] },
+  // `time` in unix SECONDS) — a bare array of { timestamp, value } (this mock's shape
+  // before this fix) parses as `data.series === undefined`, so the chart silently
+  // falls back to the empty state no matter what values are here.
+  await page.route(/\/api\/v1\/me\/portfolio\/history/, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([
-        { timestamp: now - 6 * 86_400_000, value: 38_500 },
-        { timestamp: now - 5 * 86_400_000, value: 40_200 },
-        { timestamp: now - 4 * 86_400_000, value: 39_800 },
-        { timestamp: now - 3 * 86_400_000, value: 41_100 },
-        { timestamp: now - 2 * 86_400_000, value: 42_860 },
-        { timestamp: now - 1 * 86_400_000, value: 41_960 },
-        { timestamp: now, value: 42_860 },
-      ]),
+      body: JSON.stringify({
+        meta: { range: "ALL", resolution: "1d", from: nowSeconds - 6 * DAY_SECONDS, to: nowSeconds, currency: "USD", points: 7 },
+        series: [
+        { time: nowSeconds - 6 * DAY_SECONDS, value: 38_500 },
+        { time: nowSeconds - 5 * DAY_SECONDS, value: 40_200 },
+        { time: nowSeconds - 4 * DAY_SECONDS, value: 39_800 },
+        { time: nowSeconds - 3 * DAY_SECONDS, value: 41_100 },
+        { time: nowSeconds - 2 * DAY_SECONDS, value: 42_860 },
+        { time: nowSeconds - 1 * DAY_SECONDS, value: 41_960 },
+        { time: nowSeconds, value: 42_860 },
+        ],
+      }),
     }),
   );
 

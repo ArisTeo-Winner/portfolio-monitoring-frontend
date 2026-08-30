@@ -49,7 +49,7 @@ export function SessionsSettings() {
       setSessions((current) => current.filter((session) => session.id !== pendingSession.id));
       setPendingSession(null);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "No se pudo revocar la sesion.");
+      setError(requestError instanceof Error ? requestError.message : "No se pudo revocar la sesión.");
     } finally {
       setRevoking(false);
     }

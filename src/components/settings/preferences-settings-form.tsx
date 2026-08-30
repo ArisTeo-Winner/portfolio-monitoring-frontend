@@ -85,7 +85,7 @@ export function PreferencesSettingsForm() {
       <SettingsCard data-testid="settings-card-preferences">
         <SettingsHeader
           title="Preferencias del portfolio"
-          description="Calculo de PnL, moneda y datos por defecto."
+          description="Cálculo de PnL, moneda y datos por defecto."
           icon={<SlidersHorizontal className="text-blue-400" size={20} />}
         />
 
@@ -160,7 +160,7 @@ export function PreferencesSettingsForm() {
                 {...register("dataProviderPriority")}
               />
             </SettingsField>
-            <SettingsField label="Frecuencia de sincronizacion">
+            <SettingsField label="Frecuencia de sincronización">
               <SettingsSelect
                 data-testid="sync-frequency-select"
                 disabled={loading}
@@ -176,7 +176,7 @@ export function PreferencesSettingsForm() {
                 {...register("autoSyncFrequency")}
               />
             </SettingsField>
-            <SettingsField label="Sincronizacion automatica">
+            <SettingsField label="Sincronización automática">
               <Controller
                 control={control}
                 name="autoSyncEnabled"

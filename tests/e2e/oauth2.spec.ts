@@ -32,7 +32,10 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
+      await page
+        .locator('[data-testid="open-login-btn-mobile"]:visible, [data-testid="open-login-btn-desktop"]:visible')
+        .first()
+        .click();
     }
     await heading.waitFor({ timeout: 8_000 });
 
@@ -69,7 +72,10 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
+      await page
+        .locator('[data-testid="open-login-btn-mobile"]:visible, [data-testid="open-login-btn-desktop"]:visible')
+        .first()
+        .click();
     }
     await heading.waitFor({ timeout: 8_000 });
 
@@ -84,7 +90,10 @@ test.describe("OAuth2 / Google Login", () => {
 
     const heading = page.getByRole("heading", { name: /bienvenido/i });
     if (!(await heading.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      await page.locator('[data-testid="open-login-btn"]:visible').first().click();
+      await page
+        .locator('[data-testid="open-login-btn-mobile"]:visible, [data-testid="open-login-btn-desktop"]:visible')
+        .first()
+        .click();
     }
     await heading.waitFor({ timeout: 8_000 });
 

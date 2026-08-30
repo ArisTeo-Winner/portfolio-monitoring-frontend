@@ -390,7 +390,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
                   <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
                     <h4 className="text-sm font-bold text-zinc-50">Notificaciones</h4>
                     <button className="text-xs font-medium text-emerald-500 hover:text-emerald-400" type="button">
-                      Marcar leidas
+                      Marcar leídas
                     </button>
                   </div>
                   <div className="px-4 py-3">
@@ -408,7 +408,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
             <div className="relative">
               <DesktopIconButton
                 active={activeDropdown === "settings"}
-                ariaLabel="Configuracion"
+                ariaLabel="Configuración"
                 onClick={() => toggleDropdown("settings")}
               >
                 <Settings className="h-5 w-5" />
@@ -500,7 +500,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
                     type="button"
                   >
                     <LogOut className="h-4 w-4" />
-                    {loggingOut ? "Cerrando..." : "Cerrar sesion"}
+                    {loggingOut ? "Cerrando..." : "Cerrar sesión"}
                   </button>
                 </DesktopPopover>
               ) : null}
@@ -635,7 +635,7 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
                 />
                 <ProfileRow
                   icon={<Key className="h-[18px] w-[18px]" />}
-                  label="Cambiar contrasena"
+                  label="Cambiar contraseña"
                   onClick={() => handleMobileNavigation("/settings/security")}
                   value="Password"
                 />
@@ -748,7 +748,7 @@ function DesktopBalanceSummary({
   onAddAsset: () => void;
 }) {
   return (
-    <div className="mr-1 hidden h-10 items-center rounded-xl border border-zinc-800 bg-[#121214] p-1 lg:flex 2xl:hidden">
+    <div className="mr-1 hidden h-10 items-center rounded-xl border border-zinc-800 bg-[#121214] p-1 lg:flex">
       <div className="px-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
           Balance total
@@ -921,8 +921,8 @@ function NotificationItem() {
         <ArrowUpRight className="h-4 w-4 text-emerald-500" />
       </div>
       <div>
-        <p className="text-sm font-medium text-zinc-50">Sincronizacion Exitosa</p>
-        <p className="mt-0.5 text-xs text-zinc-400">Tus transacciones estan al dia.</p>
+        <p className="text-sm font-medium text-zinc-50">Sincronización Exitosa</p>
+        <p className="mt-0.5 text-xs text-zinc-400">Tus transacciones están al día.</p>
         <p className="mt-1 text-[11px] text-zinc-500">Hace 2 min</p>
       </div>
     </div>
@@ -992,7 +992,7 @@ function buildPrimaryNav(_marketsEnabled: boolean): NavItem[] {
       href: "/portfolio",
       label: "Portfolio",
       mobileLabel: "Portafolio",
-      description: "Holdings, rendimiento y distribucion",
+      description: "Holdings, rendimiento y distribución",
       icon: Briefcase,
       badge: getPortfolioNavBadge(),
     },

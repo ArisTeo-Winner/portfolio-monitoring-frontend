@@ -28,7 +28,7 @@ export function CetesMarkToMarketCard({ transactionId, assetName, maturityDate }
       })
       .catch((err) => {
         if (!active) return;
-        setError(err instanceof ApiError ? err.message : "No fue posible cargar la valuacion a mercado.");
+        setError(err instanceof ApiError ? err.message : "No fue posible cargar la valuación a mercado.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -74,7 +74,7 @@ function MaturedView({ assetName, data }: { assetName: string; data: MarkToMarke
     <div>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Posicion vencida</p>
+          <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Posición vencida</p>
           <h2 className="mt-2 text-[1.3rem] font-semibold text-white">{assetName}</h2>
         </div>
         <span className="rounded-full bg-[#0f2f24] px-3 py-1.5 text-[0.76rem] font-semibold text-[#20d48d]">
@@ -116,7 +116,7 @@ function LiveView({
         </div>
 
         <p className="mt-4 text-[0.78rem] text-[#7f8aa3]">
-          Valuacion a mercado no disponible temporalmente.
+          Valuación a mercado no disponible temporalmente.
         </p>
       </div>
     );
@@ -125,7 +125,7 @@ function LiveView({
   const pnl = data.mtmPnl ?? 0;
   const pnlPct = data.mtmPnlPct ?? 0;
   const positive = pnl >= 0;
-  const daysLabel = data.diasRestantes === 1 ? "Falta 1 dia" : `Faltan ${data.diasRestantes} dias`;
+  const daysLabel = data.diasRestantes === 1 ? "Falta 1 día" : `Faltan ${data.diasRestantes} días`;
 
   return (
     <div>
@@ -137,10 +137,10 @@ function LiveView({
           <h2 className="mt-2 text-[1.3rem] font-semibold text-white">{assetName}</h2>
         </div>
         <span
-          aria-label="Valor a mercado = cuanto obtendrias si vendieras hoy, segun la tasa actual de Banxico. Al vencimiento recibes el valor nominal."
+          aria-label="Valor a mercado = cuánto obtendrías si vendieras hoy, según la tasa actual de Banxico. Al vencimiento recibes el valor nominal."
           className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#1b2130] text-[0.68rem] font-semibold text-[#8ea1bb]"
           role="img"
-          title="Valor a mercado = cuanto obtendrias si vendieras hoy, segun la tasa actual de Banxico. Al vencimiento recibes el valor nominal."
+          title="Valor a mercado = cuánto obtendrías si vendieras hoy, según la tasa actual de Banxico. Al vencimiento recibes el valor nominal."
         >
           i
         </span>

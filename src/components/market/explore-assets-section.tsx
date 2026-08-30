@@ -70,7 +70,7 @@ export function ExploreAssetsSection({ onSelectAsset }: { onSelectAsset: (asset:
         {loading ? <div className="px-5 py-12 text-center text-[#7c8799]">Cargando activos...</div> : null}
         {!loading && error ? <div className="px-5 py-12 text-center text-[#ff7e8a]">{error}</div> : null}
         {!loading && !error && !assets.length ? (
-          <div className="px-5 py-12 text-center text-[#7c8799]">No hay activos disponibles en esta categoria.</div>
+          <div className="px-5 py-12 text-center text-[#7c8799]">No hay activos disponibles en esta categoría.</div>
         ) : null}
 
         {!loading && !error && assets.length ? (

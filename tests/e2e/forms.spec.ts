@@ -142,11 +142,16 @@ test.describe("Login form — estados y validación", () => {
     await page.getByTestId("password-input").locator("input").fill("WrongPass1!");
     await page.getByTestId("submit-login").click();
 
-    await expect(page.getByText(/credenciales incorrectas/i)).toBeVisible({ timeout: 5_000 });
+    // The controlled message is status-based, not the raw backend `detail` text.
+    await expect(
+      page.getByText(/no fue posible verificar tus credenciales/i),
+    ).toBeVisible({ timeout: 5_000 });
 
     // Submit again — the error message should disappear immediately (setError(null) in handleSubmit)
     await page.getByTestId("submit-login").click();
-    await expect(page.getByText(/credenciales incorrectas/i)).not.toBeVisible({ timeout: 3_000 });
+    await expect(
+      page.getByText(/no fue posible verificar tus credenciales/i),
+    ).not.toBeVisible({ timeout: 3_000 });
   });
 });
 

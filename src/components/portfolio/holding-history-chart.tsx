@@ -20,7 +20,7 @@ const HISTORY_RANGES: { key: HistoryRange; label: string; ms: number | null }[] 
   { key: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "30d", label: "30d", ms: 30 * 24 * 60 * 60 * 1000 },
   { key: "90d", label: "90d", ms: 90 * 24 * 60 * 60 * 1000 },
-  { key: "historical", label: "Historico", ms: null },
+  { key: "historical", label: "Histórico", ms: null },
 ];
 
 const VIEWBOX_WIDTH = 920;
@@ -52,11 +52,11 @@ export function HoldingHistoryChart({
     <section className="overflow-hidden rounded-[1.65rem] bg-[#111317] p-6 shadow-[inset_0_0_0_1px_#171a1f,0_28px_90px_rgba(0,0,0,0.28)]">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[0.74rem] font-medium uppercase tracking-[0.24em] text-fintech-positive">Comparacion temporal</p>
+          <p className="text-[0.74rem] font-medium uppercase tracking-[0.24em] text-fintech-positive">Comparación temporal</p>
           <h2 className="mt-3 text-[1.75rem] font-semibold tracking-[-0.05em] text-white">Historial de Holdings</h2>
           <div className="mt-3 flex flex-col gap-2 text-[0.94rem] sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
             <span className={historicalGain >= 0 ? "font-semibold text-[#22c55e]" : "font-semibold text-[#ff6b6b]"}>
-              Ganancia historica: {formatSignedCurrency(historicalGain)} ({historicalPercent >= 0 ? "+" : ""}
+              Ganancia histórica: {formatSignedCurrency(historicalGain)} ({historicalPercent >= 0 ? "+" : ""}
               {historicalPercent.toFixed(2)}%)
             </span>
             <span className="font-medium text-[#8fa0b8]">Costo base: {formatCurrency(baseCost)}</span>
@@ -191,7 +191,7 @@ export function HoldingHistoryChart({
             </div>
             <h3 className="mt-5 text-[1.2rem] font-semibold text-white">No hay suficiente historial todavia</h3>
             <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
-              Registra mas operaciones para desbloquear la evolucion temporal de este holding con comparacion por rango.
+              Registra más operaciones para desbloquear la evolución temporal de este holding con comparación por rango.
             </p>
           </div>
         )}

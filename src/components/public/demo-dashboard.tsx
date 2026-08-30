@@ -149,7 +149,7 @@ export function DemoDashboard({
             <div className="flex items-center gap-3">
               <button
                 className="flex items-center justify-center rounded-lg bg-[#19c37d] px-4 py-2 text-sm font-bold text-[#04120c] transition hover:bg-[#28d389] sm:hidden"
-                data-testid="open-login-btn"
+                data-testid="open-login-btn-mobile"
                 onClick={() => openAuth("login")}
                 suppressHydrationWarning
                 type="button"
@@ -158,7 +158,7 @@ export function DemoDashboard({
               </button>
               <button
                 className="hidden text-sm font-medium text-[#d0d7e2] transition hover:text-white sm:inline-flex"
-                data-testid="open-login-btn"
+                data-testid="open-login-btn-desktop"
                 onClick={() => openAuth("login")}
                 suppressHydrationWarning
                 type="button"

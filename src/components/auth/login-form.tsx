@@ -43,7 +43,7 @@ export function LoginForm({ initialEmail = "" }: Props) {
       router.push("/portfolio");
       router.refresh();
     } catch (err) {
-      setError(mapApiError(err, "No fue posible iniciar sesion."));
+      setError(mapApiError(err, "No fue posible iniciar sesión."));
     } finally {
       setPending(false);
     }
@@ -74,7 +74,7 @@ export function LoginForm({ initialEmail = "" }: Props) {
         hideLabel
         icon={<LockIcon />}
         inputClassName="text-[0.875rem] text-white placeholder:text-[#636c7a] md:text-[1.02rem]"
-        label="Contrasena"
+        label="Contraseña"
         onChange={(event) => setPassword(event.target.value)}
         placeholder=".............."
         type={showPassword ? "text" : "password"}
@@ -88,7 +88,7 @@ export function LoginForm({ initialEmail = "" }: Props) {
           suppressHydrationWarning
           type="button"
         >
-          {showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+          {showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         </button>
       </div>
       <Button

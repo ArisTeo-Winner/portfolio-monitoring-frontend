@@ -82,14 +82,14 @@ export function AuthDialog({
             <>
               No tienes cuenta?{" "}
               <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("register")} suppressHydrationWarning type="button">
-                Registrate
+                Regístrate
               </button>
             </>
           ) : (
             <>
               Ya tienes cuenta?{" "}
               <button className="font-semibold text-[#19c37d] transition hover:text-[#29d28d]" onClick={() => onModeChange("login")} suppressHydrationWarning type="button">
-                Inicia sesion
+                Inicia sesión
               </button>
             </>
           )}

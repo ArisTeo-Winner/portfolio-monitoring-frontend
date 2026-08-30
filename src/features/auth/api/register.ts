@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api/problem-details";
+import { ApiError, localizedErrorMessage } from "@/lib/api/problem-details";
 import type { RegisterPayload, UserResponse } from "@/features/auth/types/auth.types";
 
 export async function registerUser(payload: RegisterPayload) {
@@ -13,9 +13,7 @@ export async function registerUser(payload: RegisterPayload) {
   const body = tryParseJson(raw) as Record<string, unknown> | null;
 
   if (!response.ok) {
-    const message =
-      (body?.detail as string) || (body?.title as string) || response.statusText || "Register failed";
-    throw new ApiError(response.status, message, body ?? undefined);
+    throw new ApiError(response.status, localizedErrorMessage(response.status), body ?? undefined);
   }
 
   return body as UserResponse;

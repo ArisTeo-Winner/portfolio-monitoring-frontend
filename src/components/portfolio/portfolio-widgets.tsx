@@ -169,9 +169,9 @@ export function PortfolioTable({
               <thead>
                 <tr className="text-left text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b] [box-shadow:inset_0_-1px_0_#13161c]">
                   <th className="pb-4 pr-4">Activo</th>
-                  <th className="px-4 pb-4">Saldo</th>
-                  <th className="px-4 pb-4">Precio actual</th>
-                  <th className="px-4 pb-4">Valor</th>
+                  <th className="px-4 pb-4 text-right">Saldo</th>
+                  <th className="px-4 pb-4 text-right">Precio actual</th>
+                  <th className="px-4 pb-4 text-right">Valor</th>
                   <th className="pb-4 pl-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -187,7 +187,7 @@ export function PortfolioTable({
 
                   return (
                     <tr className="group transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#13161c]" key={entry.portfolioEntryId}>
-                      <td className="py-5 pr-4">
+                      <td className="py-3.5 pr-4">
                         <button className="flex w-full items-center gap-4 text-left" onClick={() => openHoldingDetail(entry.assetSymbol)} type="button">
                           <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                           <div className="min-w-0">
@@ -203,21 +203,19 @@ export function PortfolioTable({
                           </div>
                         </button>
                       </td>
-                      <td className="px-4 py-5">
+                      <td className="px-4 py-3.5 text-right">
                         <p className="text-[1rem] font-semibold text-white">{formatQuantity(entry.totalQuantity)}</p>
                         <p className="mt-1 text-[0.8rem] font-medium uppercase tracking-[0.12em] text-[#7f8aa3]">{entry.assetSymbol}</p>
                       </td>
-                      <td className="px-4 py-5">
+                      <td className="px-4 py-3.5 text-right">
                         <p className="text-[1rem] font-semibold text-white">{formatCurrencyByCode(currentPrice, entryCurrency)}</p>
-                        <p className={`mt-1 text-[0.82rem] font-semibold ${changePercent >= 0 ? "text-[#17c784]" : "text-[#ff6b6b]"}`}>
-                          {changePercent >= 0 ? "+" : "-"}{Math.abs(changePercent).toFixed(2)}%
-                        </p>
+                        <TrendBadge value={changePercent} />
                       </td>
-                      <td className="px-4 py-5">
+                      <td className="px-4 py-3.5 text-right">
                         <p className="text-[1.02rem] font-semibold text-white">{formatCurrencyByCode(entry.currentValue, entryCurrency)}</p>
                         <p className="mt-1 text-[0.82rem] font-medium text-[#7f8aa3]">Base: {formatCurrencyByCode(entry.totalInvested, entryCurrency)}</p>
                       </td>
-                      <td className="py-5 pl-4 text-right">
+                      <td className="py-3.5 pl-4 text-right">
                         <button
                           className="inline-flex items-center gap-2 rounded-[0.95rem] bg-[#0f1217] px-3 py-2 text-[0.84rem] font-semibold text-white shadow-[0_14px_30px_rgba(0,0,0,0.16)] transition hover:bg-[#14191d] hover:text-[#49e3a5]"
                           onClick={() => openHoldingDetail(entry.assetSymbol)}
@@ -248,7 +246,7 @@ export function PortfolioTable({
               onClick={onAddTransaction}
               type="button"
             >
-              + Registrar primera transaccion
+              + Registrar primera transacción
             </button>
           </div>
         )}
@@ -328,6 +326,34 @@ function SearchIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.7" />
       <path d="M16 16L21 21" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function TrendBadge({ value }: { value: number }) {
+  const positive = value >= 0;
+  const color = positive ? "#17c784" : "#ff4d67";
+
+  return (
+    <span className="mt-1 inline-flex items-center justify-end gap-1 text-[0.82rem] font-semibold" style={{ color }}>
+      {positive ? <TrendArrowUpIcon className="h-3 w-3" /> : <TrendArrowDownIcon className="h-3 w-3" />}
+      {Math.abs(value).toFixed(2)}%
+    </span>
+  );
+}
+
+function TrendArrowUpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 12 12">
+      <path d="M6 2 10.5 8.5H1.5L6 2Z" />
+    </svg>
+  );
+}
+
+function TrendArrowDownIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 12 12">
+      <path d="M6 10 1.5 3.5h9L6 10Z" />
     </svg>
   );
 }

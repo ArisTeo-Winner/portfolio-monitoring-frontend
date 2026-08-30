@@ -1,6 +1,6 @@
 import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
-import { ApiError } from "@/lib/api/problem-details";
+import { ApiError, localizedErrorMessage } from "@/lib/api/problem-details";
 import type { LoginPayload } from "@/features/auth/types/auth.types";
 
 export async function login(payload: LoginPayload): Promise<string> {
@@ -22,16 +22,13 @@ export async function login(payload: LoginPayload): Promise<string> {
     if (response.status === 429) {
       const retryAfter = response.headers.get("Retry-After");
       const wait = retryAfter ? Number(retryAfter) : undefined;
-      const message =
-        (body?.detail as string) ||
-        (body?.title as string) ||
-        `Too many login attempts. ${wait ? `Please wait ${wait} seconds.` : "Please try again later."}`;
+      const message = wait
+        ? `Demasiados intentos. Espera ${wait} segundos e intenta de nuevo.`
+        : localizedErrorMessage(429);
       throw new ApiError(429, message, body ?? undefined);
     }
 
-    const message =
-      (body?.detail as string) || (body?.title as string) || response.statusText || "Login failed";
-    throw new ApiError(response.status, message, body ?? undefined);
+    throw new ApiError(response.status, localizedErrorMessage(response.status), body ?? undefined);
   }
 
   if (typeof body?.accessToken !== "string") {

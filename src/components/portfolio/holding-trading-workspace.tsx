@@ -58,7 +58,7 @@ const transactionSchema = z.object({
   fee: z
     .string()
     .optional()
-    .refine((value) => value === undefined || value === "" || Number(value) >= 0, "La comision no puede ser negativa."),
+    .refine((value) => value === undefined || value === "" || Number(value) >= 0, "La comisión no puede ser negativa."),
   transactionDate: z.string().min(1, "La fecha es obligatoria."),
   notes: z.string().max(240, "Las notas no deben exceder 240 caracteres.").optional(),
 });
@@ -311,7 +311,7 @@ export function HoldingTradingWorkspace({
         notes: "",
       });
     } catch (error) {
-      setPriceError(error instanceof Error ? error.message : "No fue posible registrar la transaccion.");
+      setPriceError(error instanceof Error ? error.message : "No fue posible registrar la transacción.");
     } finally {
       setSubmitting(false);
     }
@@ -338,7 +338,7 @@ export function HoldingTradingWorkspace({
                     </span>
                   </div>
                   <p className="mt-1 text-[0.78rem] uppercase tracking-[0.2em] text-fintech-muted">
-                    Terminal de analisis del activo
+                    Terminal de análisis del activo
                   </p>
                 </div>
               </div>
@@ -397,7 +397,7 @@ export function HoldingTradingWorkspace({
 
               <div className="mb-3 flex items-center justify-between px-2">
                 <div className="text-[0.78rem] text-fintech-muted">
-                  Evolucion de {entry.assetSymbol} basada en tus movimientos y precio actual.
+                  Evolución de {entry.assetSymbol} basada en tus movimientos y precio actual.
                 </div>
                 <div className="text-[0.78rem] font-medium text-fintech-muted">
                   Holdings: <span className="text-white">{formatQuantity(holdings)}</span>
@@ -408,7 +408,7 @@ export function HoldingTradingWorkspace({
                 <div className="h-[30rem] w-full" ref={chartContainerRef} />
               ) : (
                 <div className="flex h-[30rem] items-center justify-center rounded-[1.2rem] bg-[#0d1015] text-center text-[0.9rem] text-fintech-muted shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-                  Registra mas movimientos para visualizar este activo en modo terminal.
+                  Registra más movimientos para visualizar este activo en modo terminal.
                 </div>
               )}
             </div>
@@ -444,7 +444,7 @@ export function HoldingTradingWorkspace({
                 />
               </Field>
 
-              <Field label="Precio de ejecucion" error={errors.pricePerUnit?.message}>
+              <Field label="Precio de ejecución" error={errors.pricePerUnit?.message}>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#708098]">$</span>
                   <input

@@ -49,12 +49,15 @@ describe("LoginForm – successful login (MSW)", () => {
     });
   });
 
-  it("stores the access token in sessionStorage after a successful login", async () => {
+  it("keeps the access token in memory only — never in sessionStorage", async () => {
     render(<LoginForm />);
     await fillAndSubmit(authFixtures.validEmail, authFixtures.validPassword);
 
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
-    expect(sessionStorage.getItem("cpm.accessToken")).toBe(authFixtures.accessToken);
+    // Contrato de seguridad: el token vive solo en memoria (Zustand), nunca en
+    // sessionStorage/localStorage (evita robo por XSS). La presencia en el store
+    // se verifica en el test "updates the Zustand session store".
+    expect(sessionStorage.getItem("cpm.accessToken")).toBeNull();
   });
 
   it("updates the Zustand session store with the access token", async () => {
@@ -80,7 +83,7 @@ describe("LoginForm – invalid credentials (MSW)", () => {
     await fillAndSubmit(authFixtures.validEmail, "WrongPassword1!");
 
     await waitFor(() => {
-      expect(screen.getByText("Credenciales invalidas.")).toBeInTheDocument();
+      expect(screen.getByText("No fue posible verificar tus credenciales.")).toBeInTheDocument();
     });
   });
 
@@ -89,7 +92,7 @@ describe("LoginForm – invalid credentials (MSW)", () => {
     await fillAndSubmit(authFixtures.validEmail, "WrongPassword1!");
 
     await waitFor(() => {
-      expect(screen.getByText("Credenciales invalidas.")).toBeInTheDocument();
+      expect(screen.getByText("No fue posible verificar tus credenciales.")).toBeInTheDocument();
     });
     expect(pushMock).not.toHaveBeenCalled();
   });
@@ -99,7 +102,7 @@ describe("LoginForm – invalid credentials (MSW)", () => {
     await fillAndSubmit(authFixtures.validEmail, "WrongPassword1!");
 
     await waitFor(() => {
-      expect(screen.getByText("Credenciales invalidas.")).toBeInTheDocument();
+      expect(screen.getByText("No fue posible verificar tus credenciales.")).toBeInTheDocument();
     });
     expect(sessionStorage.getItem("cpm.accessToken")).toBeNull();
   });
@@ -108,7 +111,7 @@ describe("LoginForm – invalid credentials (MSW)", () => {
 describe("LoginForm – server error (MSW)", () => {
   it("displays a controlled error message on 500", async () => {
     server.use(
-      http.post("http://localhost/api/auth/login", () =>
+      http.post("http://localhost:8080/api/v1/auth/login", () =>
         HttpResponse.json(
           { detail: "Servicio no disponible. Intente mas tarde." },
           { status: 500 },
@@ -121,7 +124,7 @@ describe("LoginForm – server error (MSW)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Servicio no disponible. Intente mas tarde."),
+        screen.getByText("No fue posible completar la solicitud. Intenta de nuevo."),
       ).toBeInTheDocument();
     });
     expect(pushMock).not.toHaveBeenCalled();
@@ -129,7 +132,7 @@ describe("LoginForm – server error (MSW)", () => {
 
   it("displays the HTTP status text when the server response body is empty", async () => {
     server.use(
-      http.post("http://localhost/api/auth/login", () =>
+      http.post("http://localhost:8080/api/v1/auth/login", () =>
         HttpResponse.json({}, { status: 502 }),
       ),
     );
@@ -137,9 +140,12 @@ describe("LoginForm – server error (MSW)", () => {
     render(<LoginForm />);
     await fillAndSubmit(authFixtures.validEmail, authFixtures.validPassword);
 
-    // No detail/title in body → login() uses response.statusText ("Bad Gateway")
+    // Sin detail/title en el body → login() lanza ApiError(502) y la UI muestra
+    // el mensaje localizado por status (localizedErrorMessage), no el statusText.
     await waitFor(() => {
-      expect(screen.getByText("Bad Gateway")).toBeInTheDocument();
+      expect(
+        screen.getByText("No fue posible completar la solicitud. Intenta de nuevo."),
+      ).toBeInTheDocument();
     });
     expect(pushMock).not.toHaveBeenCalled();
   });

@@ -44,30 +44,10 @@ describe("getPortfolio – happy path (MSW)", () => {
   });
 });
 
-describe("getPortfolio – assetType correction (MSW)", () => {
-  it("corrects assetType to STOCKS for known stock symbols", async () => {
-    server.use(
-      http.get("http://localhost:8080/api/v1/me/portfolio", () =>
-        HttpResponse.json([{ ...portfolioFixtures.stockEntry }]),
-      ),
-    );
-    const result = await getPortfolio({ force: true });
-    expect(result[0].assetType).toBe("STOCKS");
-  });
-
-  it("corrects assetType to INDEX for known index symbols", async () => {
-    server.use(
-      http.get("http://localhost:8080/api/v1/me/portfolio", () =>
-        HttpResponse.json([
-          { ...portfolioFixtures.stockEntry, assetSymbol: "SPY", assetType: "UNKNOWN" },
-        ]),
-      ),
-    );
-    const result = await getPortfolio({ force: true });
-    expect(result[0].assetType).toBe("INDEX");
-  });
-
-  it("leaves assetType unchanged for unknown symbols", async () => {
+describe("getPortfolio – assetType passthrough (MSW)", () => {
+  // getPortfolio ya no corrige el assetType en el cliente: devuelve exactamente
+  // lo que manda el backend (la clasificación de símbolos vive server-side).
+  it("returns the backend assetType unchanged", async () => {
     server.use(
       http.get("http://localhost:8080/api/v1/me/portfolio", () =>
         HttpResponse.json([
@@ -98,7 +78,7 @@ describe("getPortfolio – error handling (MSW)", () => {
     );
     await expect(getPortfolio({ force: true })).rejects.toMatchObject({
       status: 403,
-      message: "You do not have permission to perform this action.",
+      message: "No tienes permisos para realizar esta acción.",
     });
   });
 

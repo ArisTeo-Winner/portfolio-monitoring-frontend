@@ -52,7 +52,7 @@ describe("getAccountSettings – MSW integration", () => {
     );
     await expect(getAccountSettings()).rejects.toMatchObject({
       status: 403,
-      message: "You do not have permission to perform this action.",
+      message: "No tienes permisos para realizar esta acción.",
     });
   });
 });

@@ -10,7 +10,7 @@ import { settingsFixtures } from "./fixtures/settings";
 
 export const handlers = [
   // ── Auth (Next.js BFF route handlers) ────────────────────────────────────
-  http.post("http://localhost/api/auth/login", async ({ request }) => {
+  http.post("http://localhost:8080/api/v1/auth/login", async ({ request }) => {
     const body = (await request.json()) as { email: string; password: string };
 
     if (body.email === authFixtures.validEmail && body.password === authFixtures.validPassword) {
@@ -23,7 +23,7 @@ export const handlers = [
     );
   }),
 
-  http.post("http://localhost/api/auth/refresh", () => {
+  http.post("http://localhost:8080/api/v1/tokens/refresh", () => {
     return HttpResponse.json({ accessToken: authFixtures.accessToken });
   }),
 

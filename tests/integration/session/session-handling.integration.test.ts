@@ -72,7 +72,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
         }
         return HttpResponse.json(portfolioFixtures.entries);
       }),
-      http.post("http://localhost/api/auth/refresh", () =>
+      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
         HttpResponse.json({ accessToken: refreshedToken }),
       ),
     );
@@ -86,7 +86,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
       http.get("http://localhost:8080/api/v1/me/portfolio", () =>
         HttpResponse.json({ status: 401, title: "Unauthorized" }, { status: 401 }),
       ),
-      http.post("http://localhost/api/auth/refresh", () =>
+      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
     );
@@ -94,8 +94,9 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
     // Call should ultimately reject (expireSession is called, then ApiError is thrown)
     await getPortfolio({ force: true }).catch(() => {});
 
+    // El token vive solo en memoria (Zustand); basta con verificar que el store
+    // se limpió y que se disparó la redirección de sesión expirada.
     expect(useSessionStore.getState().accessToken).toBeNull();
-    expect(sessionStorage.getItem("cpm.accessToken")).toBeNull();
     expect(locationReplaceMock).toHaveBeenCalledWith("/login?session_expired=1");
   });
 
@@ -115,7 +116,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
       http.get("http://localhost:8080/api/v1/me/portfolio", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
-      http.post("http://localhost/api/auth/refresh", () =>
+      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
     );
@@ -138,7 +139,7 @@ describe("HTTP client – 403 handling (MSW)", () => {
     );
     await expect(getPortfolio({ force: true })).rejects.toMatchObject({
       status: 403,
-      message: "You do not have permission to perform this action.",
+      message: "No tienes permisos para realizar esta acción.",
     });
   });
 

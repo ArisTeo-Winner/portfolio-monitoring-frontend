@@ -165,13 +165,13 @@ describe("AssetChart", () => {
 
   it("calls history and markers endpoints with correct symbol", async () => {
     mockSuccess();
-    render(<AssetChart symbol="ETH" range="7d" />);
+    render(<AssetChart symbol="ETH" range="1S" />);
 
     await waitFor(() => expect(mockedApiRequest).toHaveBeenCalledTimes(2));
 
     const calls = mockedApiRequest.mock.calls.map((c) => c[0] as string);
-    expect(calls.some((u) => u.includes("/ETH/") && u.includes("range=7d") && u.includes("/history"))).toBe(true);
-    expect(calls.some((u) => u.includes("/ETH/") && u.includes("range=7d") && u.includes("/markers"))).toBe(true);
+    expect(calls.some((u) => u.includes("/ETH/") && u.includes("range=1S") && u.includes("/history"))).toBe(true);
+    expect(calls.some((u) => u.includes("/ETH/") && u.includes("range=1S") && u.includes("/markers"))).toBe(true);
   });
 
   it("works for stock symbol (AAPL)", async () => {
@@ -180,7 +180,7 @@ describe("AssetChart", () => {
       { time: 1771542044, value: 194.10 },
     ];
     mockSuccess(stockHistory, []);
-    render(<AssetChart symbol="AAPL" range="30d" />);
+    render(<AssetChart symbol="AAPL" range="1M" />);
 
     await waitFor(() => {
       expect(chartMock.setData).toHaveBeenCalledWith(
@@ -195,11 +195,11 @@ describe("AssetChart", () => {
 
     mockedApiRequest.mockImplementation(async (url: string) => {
       if (String(url).includes("/markers")) return [];
-      if (String(url).includes("range=7d")) return history7;
+      if (String(url).includes("range=1S")) return history7;
       return history90;
     });
 
-    const { rerender } = render(<AssetChart symbol="HYPE" range="90d" />);
+    const { rerender } = render(<AssetChart symbol="HYPE" range="3M" />);
 
     await waitFor(() => {
       expect(chartMock.setData).toHaveBeenCalledWith(
@@ -207,7 +207,7 @@ describe("AssetChart", () => {
       );
     });
 
-    rerender(<AssetChart symbol="HYPE" range="7d" />);
+    rerender(<AssetChart symbol="HYPE" range="1S" />);
 
     await waitFor(() => {
       expect(chartMock.setData).toHaveBeenLastCalledWith(

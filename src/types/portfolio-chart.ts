@@ -1,7 +1,10 @@
 // Strict TypeScript contracts aligned with backend historical engine contract.
 // DO NOT extend with frontend-inferred fields.
 
-export type ChartRange = "24h" | "7d" | "30d" | "90d" | "180d" | "1y" | "ALL";
+// Tokens canónicos de rango de historial (alineados con el backend). Los viejos
+// (24h/7d/30d/90d/180d/1y/all) siguen aceptándose como alias en el backend, pero el
+// frontend ya solo emite estos.
+export type ChartRange = "1D" | "1S" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 
 export type ChartResolution = "1m" | "5m" | "15m" | "1h" | "4h" | "8h" | "1d" | "1w";
 

@@ -87,15 +87,15 @@ describe("useAssetChart", () => {
 
   it("calls both history and markers endpoints in parallel", async () => {
     mockSuccess();
-    renderHook(() => useAssetChart("HYPE", "30d"));
+    renderHook(() => useAssetChart("HYPE", "1M"));
 
     await waitFor(() =>
       expect(mockedApiRequest).toHaveBeenCalledTimes(2),
     );
 
     const urls = mockedApiRequest.mock.calls.map((c) => c[0] as string);
-    expect(urls.some((u) => u.includes("/history") && u.includes("range=30d"))).toBe(true);
-    expect(urls.some((u) => u.includes("/markers") && u.includes("range=30d"))).toBe(true);
+    expect(urls.some((u) => u.includes("/history") && u.includes("range=1M"))).toBe(true);
+    expect(urls.some((u) => u.includes("/markers") && u.includes("range=1M"))).toBe(true);
   });
 
   it("passes auth: true in options", async () => {
@@ -136,19 +136,19 @@ describe("useAssetChart", () => {
 
     mockedApiRequest.mockImplementation(async (url: string) => {
       if (String(url).includes("/markers")) return [];
-      if (String(url).includes("range=7d")) return history7;
+      if (String(url).includes("range=1S")) return history7;
       return history90;
     });
 
     const { result, rerender } = renderHook(
-      ({ range }: { range: "90d" | "7d" }) => useAssetChart("HYPE", range),
-      { initialProps: { range: "90d" } as { range: "90d" | "7d" } },
+      ({ range }: { range: "3M" | "1S" }) => useAssetChart("HYPE", range),
+      { initialProps: { range: "3M" } as { range: "3M" | "1S" } },
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.history).toEqual(history90);
 
-    rerender({ range: "7d" });
+    rerender({ range: "1S" });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.history).toEqual(history7);
@@ -184,7 +184,7 @@ describe("useAssetChart", () => {
       return [];
     });
 
-    const { result } = renderHook(() => useAssetChart("HYPE", "24h"));
+    const { result } = renderHook(() => useAssetChart("HYPE", "1D"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -199,7 +199,7 @@ describe("useAssetChart", () => {
       return HISTORY;
     });
 
-    const { result } = renderHook(() => useAssetChart("HYPE", "90d"));
+    const { result } = renderHook(() => useAssetChart("HYPE", "3M"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -215,7 +215,7 @@ describe("useAssetChart", () => {
       throw new Error("500 Server Error");
     });
 
-    const { result } = renderHook(() => useAssetChart("HYPE", "90d"));
+    const { result } = renderHook(() => useAssetChart("HYPE", "3M"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 

@@ -14,8 +14,8 @@ type Props = {
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   OIDC_LOGIN_FAILED: "No fue posible completar el acceso con Google.",
-  OAUTH2_PRINCIPAL_INVALID: "La sesion de Google no pudo vincularse a una cuenta valida.",
-  OAUTH2_TOKEN_ISSUE_FAILED: "Google autentico la cuenta, pero el backend no pudo emitir los tokens.",
+  OAUTH2_PRINCIPAL_INVALID: "La sesión de Google no pudo vincularse a una cuenta válida.",
+  OAUTH2_TOKEN_ISSUE_FAILED: "Google autenticó la cuenta, pero el backend no pudo emitir los tokens.",
 };
 
 export function AuthExperience({ initialMode, openOnLoad = true }: Props) {
@@ -33,7 +33,7 @@ export function AuthExperience({ initialMode, openOnLoad = true }: Props) {
     ? (OAUTH_ERROR_MESSAGES[oauthError] ?? "No fue posible completar el acceso social.")
     : null;
   const sessionExpiredMessage = sessionExpired
-    ? "Tu sesion expiro o ya no pudo renovarse. Inicia sesion de nuevo para continuar."
+    ? "Tu sesión expiró o ya no pudo renovarse. Inicia sesión de nuevo para continuar."
     : null;
   const authMessage = sessionExpiredMessage ?? oauthErrorMessage;
 

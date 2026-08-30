@@ -1,10 +1,47 @@
-﻿import { apiRequest } from "@/lib/api/client";
+import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
-import type { JwtResponse, LoginPayload } from "@/features/auth/types/auth.types";
+import { ApiError, localizedErrorMessage } from "@/lib/api/problem-details";
+import type { LoginPayload } from "@/features/auth/types/auth.types";
 
-export function login(payload: LoginPayload) {
-  return apiRequest<JwtResponse>(endpoints.auth.login, {
+export async function login(payload: LoginPayload): Promise<string> {
+  const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.login}`, {
     method: "POST",
-    body: payload,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    // Required: the backend sets the HttpOnly refresh-token cookie on this
+    // response. Without credentials: "include" the browser discards the cookie.
+    credentials: "include",
   });
+
+  const raw = await response.text();
+  const body = tryParseJson(raw) as Record<string, unknown> | null;
+
+  if (!response.ok) {
+    // Handle 429 Too Many Requests with Retry-After header.
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const wait = retryAfter ? Number(retryAfter) : undefined;
+      const message = wait
+        ? `Demasiados intentos. Espera ${wait} segundos e intenta de nuevo.`
+        : localizedErrorMessage(429);
+      throw new ApiError(429, message, body ?? undefined);
+    }
+
+    throw new ApiError(response.status, localizedErrorMessage(response.status), body ?? undefined);
+  }
+
+  if (typeof body?.accessToken !== "string") {
+    throw new ApiError(502, "Invalid token response from server");
+  }
+
+  return body.accessToken;
+}
+
+function tryParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }

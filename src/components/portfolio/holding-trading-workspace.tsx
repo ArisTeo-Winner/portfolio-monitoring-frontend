@@ -11,7 +11,9 @@ import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
+import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { getAssetDisplayName, getAssetPalette } from "@/lib/utils/asset";
 
 type TradeRange = "1D" | "1W" | "1M" | "YTD" | "ALL";
 type TradeMode = "BUY" | "SELL";
@@ -39,9 +41,9 @@ const RANGE_OPTIONS: Array<{ key: TradeRange; label: string }> = [
   { key: "ALL", label: "All" },
 ];
 
-const POSITIVE = "#16c784";
-const NEGATIVE = "#ff5b6e";
-const GRID = "#1a2029";
+const POSITIVE = tokens.positive;
+const NEGATIVE = tokens.loss;
+const GRID = tokens.grid;
 const EMPTY_CANDLES: TradeCandle[] = [];
 
 const transactionSchema = z.object({
@@ -56,7 +58,7 @@ const transactionSchema = z.object({
   fee: z
     .string()
     .optional()
-    .refine((value) => value === undefined || value === "" || Number(value) >= 0, "La comision no puede ser negativa."),
+    .refine((value) => value === undefined || value === "" || Number(value) >= 0, "La comisión no puede ser negativa."),
   transactionDate: z.string().min(1, "La fecha es obligatoria."),
   notes: z.string().max(240, "Las notas no deben exceder 240 caracteres.").optional(),
 });
@@ -309,7 +311,7 @@ export function HoldingTradingWorkspace({
         notes: "",
       });
     } catch (error) {
-      setPriceError(error instanceof Error ? error.message : "No fue posible registrar la transaccion.");
+      setPriceError(error instanceof Error ? error.message : "No fue posible registrar la transacción.");
     } finally {
       setSubmitting(false);
     }
@@ -335,8 +337,8 @@ export function HoldingTradingWorkspace({
                       {entry.assetType}
                     </span>
                   </div>
-                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.2em] text-[#7f8aa3]">
-                    Terminal de analisis del activo
+                  <p className="mt-1 text-[0.78rem] uppercase tracking-[0.2em] text-fintech-muted">
+                    Terminal de análisis del activo
                   </p>
                 </div>
               </div>
@@ -387,17 +389,17 @@ export function HoldingTradingWorkspace({
                     top: `clamp(14px, calc(${tooltip.y}px - 86px), calc(100% - 92px))`,
                   }}
                 >
-                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">{tooltip.date}</p>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">{tooltip.date}</p>
                   <p className="mt-2 text-[0.98rem] font-semibold text-white">{tooltip.close}</p>
                   <p className="mt-1 text-[0.76rem] text-[#90a0b8]">Volumen: {tooltip.volume}</p>
                 </div>
               ) : null}
 
               <div className="mb-3 flex items-center justify-between px-2">
-                <div className="text-[0.78rem] text-[#7f8aa3]">
-                  Evolucion de {entry.assetSymbol} basada en tus movimientos y precio actual.
+                <div className="text-[0.78rem] text-fintech-muted">
+                  Evolución de {entry.assetSymbol} basada en tus movimientos y precio actual.
                 </div>
-                <div className="text-[0.78rem] font-medium text-[#7f8aa3]">
+                <div className="text-[0.78rem] font-medium text-fintech-muted">
                   Holdings: <span className="text-white">{formatQuantity(holdings)}</span>
                 </div>
               </div>
@@ -405,8 +407,8 @@ export function HoldingTradingWorkspace({
               {candles.length ? (
                 <div className="h-[30rem] w-full" ref={chartContainerRef} />
               ) : (
-                <div className="flex h-[30rem] items-center justify-center rounded-[1.2rem] bg-[#0d1015] text-center text-[0.9rem] text-[#7f8aa3] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-                  Registra mas movimientos para visualizar este activo en modo terminal.
+                <div className="flex h-[30rem] items-center justify-center rounded-[1.2rem] bg-[#0d1015] text-center text-[0.9rem] text-fintech-muted shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                  Registra más movimientos para visualizar este activo en modo terminal.
                 </div>
               )}
             </div>
@@ -419,7 +421,7 @@ export function HoldingTradingWorkspace({
                 <ModeButton active={mode === "SELL"} label="Sell" onClick={() => setMode("SELL")} />
               </div>
               <div className="mt-4 space-y-1">
-                <p className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">
+                <p className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">
                   Panel de registro
                 </p>
                 <p className="text-[0.9rem] text-[#c7d0de]">
@@ -442,7 +444,7 @@ export function HoldingTradingWorkspace({
                 />
               </Field>
 
-              <Field label="Precio de ejecucion" error={errors.pricePerUnit?.message}>
+              <Field label="Precio de ejecución" error={errors.pricePerUnit?.message}>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#708098]">$</span>
                   <input
@@ -493,7 +495,7 @@ export function HoldingTradingWorkspace({
               ) : null}
 
               <div className="rounded-[1rem] bg-[#0c1015] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-                <div className="flex items-center justify-between text-[0.82rem] text-[#7f8aa3]">
+                <div className="flex items-center justify-between text-[0.82rem] text-fintech-muted">
                   <span>Total estimado</span>
                   <span className="text-white">{formatCurrency(mode === "BUY" ? netValue : grossValue)}</span>
                 </div>
@@ -642,30 +644,6 @@ function toDateTimeLocal(date: Date) {
   return local.toISOString().slice(0, 16);
 }
 
-function getAssetDisplayName(symbol: string) {
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    DOGE: "Dogecoin",
-    PEPE: "Pepe",
-    HYPE: "Hyperliquid",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    NVDA: "NVIDIA Corp",
-    AMZN: "Amazon",
-    TSLA: "Tesla",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-  };
-
-  return names[symbol.toUpperCase()] ?? symbol.toUpperCase();
-}
 
 function WorkspaceStat({
   label,
@@ -679,7 +657,7 @@ function WorkspaceStat({
   return (
     <div className="rounded-[0.9rem] bg-[#0f1217] px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#74829a]">{label}</p>
-      <p className={`mt-2 text-[1rem] font-semibold ${tone === "positive" ? "text-[#16c784]" : tone === "negative" ? "text-[#ff5b6e]" : "text-white"}`}>{value}</p>
+      <p className={`mt-2 text-[1rem] font-semibold ${tone === "positive" ? "text-fintech-positive" : tone === "negative" ? "text-fintech-loss" : "text-white"}`}>{value}</p>
     </div>
   );
 }
@@ -687,7 +665,7 @@ function WorkspaceStat({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between rounded-[0.95rem] bg-[#0c1015] px-4 py-3 text-[0.84rem] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-      <span className="text-[#7f8aa3]">{label}</span>
+      <span className="text-fintech-muted">{label}</span>
       <span className="max-w-[60%] truncate text-right font-semibold text-white">{value}</span>
     </div>
   );
@@ -704,7 +682,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-2">
-      <span className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-[#7f8aa3]">{label}</span>
+      <span className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-fintech-muted">{label}</span>
       {children}
       {error ? <span className="block text-[0.76rem] text-[#ff9aa8]">{error}</span> : null}
     </label>
@@ -728,7 +706,7 @@ function ModeButton({ active, label, onClick }: { active: boolean; label: string
 function AssetOrb({ logoUrl, symbol }: { logoUrl: string | null; symbol: string }) {
   const [failed, setFailed] = useState(false);
   const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
+  const palette = getAssetPalette(symbol);
 
   if (logoUrl && !failed) {
     return (
@@ -754,15 +732,3 @@ function AssetOrb({ logoUrl, symbol }: { logoUrl: string | null; symbol: string 
   );
 }
 
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}

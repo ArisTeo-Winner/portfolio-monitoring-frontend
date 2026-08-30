@@ -1,5 +1,5 @@
 export const navFeatureAvailability = {
-  mercados: false,
+  mercados: true,
 } as const;
 
 export function isMercadosNavEnabled() {

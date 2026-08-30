@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
+import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
 
 type HistoryRange = "24h" | "7d" | "30d" | "90d" | "historical";
@@ -19,7 +20,7 @@ const HISTORY_RANGES: { key: HistoryRange; label: string; ms: number | null }[] 
   { key: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "30d", label: "30d", ms: 30 * 24 * 60 * 60 * 1000 },
   { key: "90d", label: "90d", ms: 90 * 24 * 60 * 60 * 1000 },
-  { key: "historical", label: "Historico", ms: null },
+  { key: "historical", label: "Histórico", ms: null },
 ];
 
 const VIEWBOX_WIDTH = 920;
@@ -51,11 +52,11 @@ export function HoldingHistoryChart({
     <section className="overflow-hidden rounded-[1.65rem] bg-[#111317] p-6 shadow-[inset_0_0_0_1px_#171a1f,0_28px_90px_rgba(0,0,0,0.28)]">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[0.74rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Comparacion temporal</p>
+          <p className="text-[0.74rem] font-medium uppercase tracking-[0.24em] text-fintech-positive">Comparación temporal</p>
           <h2 className="mt-3 text-[1.75rem] font-semibold tracking-[-0.05em] text-white">Historial de Holdings</h2>
           <div className="mt-3 flex flex-col gap-2 text-[0.94rem] sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
             <span className={historicalGain >= 0 ? "font-semibold text-[#22c55e]" : "font-semibold text-[#ff6b6b]"}>
-              Ganancia historica: {formatSignedCurrency(historicalGain)} ({historicalPercent >= 0 ? "+" : ""}
+              Ganancia histórica: {formatSignedCurrency(historicalGain)} ({historicalPercent >= 0 ? "+" : ""}
               {historicalPercent.toFixed(2)}%)
             </span>
             <span className="font-medium text-[#8fa0b8]">Costo base: {formatCurrency(baseCost)}</span>
@@ -68,7 +69,7 @@ export function HoldingHistoryChart({
             return (
               <button
                 className={`rounded-[0.9rem] px-3.5 py-2 text-[0.82rem] font-semibold transition ${
-                  active ? "bg-[#1a1e24] text-white shadow-[inset_0_0_0_1px_#232833]" : "text-[#7f8aa3] hover:bg-white/[0.04] hover:text-white"
+                  active ? "bg-[#1a1e24] text-white shadow-[inset_0_0_0_1px_#232833]" : "text-fintech-muted hover:bg-white/[0.04] hover:text-white"
                 }`}
                 key={item.key}
                 onClick={() => setRange(item.key)}
@@ -93,7 +94,7 @@ export function HoldingHistoryChart({
                     top: `clamp(8px, calc(${(activePoint.y / VIEWBOX_HEIGHT) * 100}% - 86px), calc(100% - 88px))`,
                   }}
                 >
-                  <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#7f8aa3]">{formatTooltipDate(activePoint.data.date)}</p>
+                  <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-fintech-muted">{formatTooltipDate(activePoint.data.date)}</p>
                   <p className="mt-2 text-[0.98rem] font-semibold text-white">Total Value: {formatCurrency(activePoint.data.value)}</p>
                   <p className="mt-1 text-[0.8rem] text-[#8fa0b8]">
                     Holdings: {formatQuantity(activePoint.data.quantity)} {entry.assetSymbol}
@@ -110,8 +111,8 @@ export function HoldingHistoryChart({
               >
                 <defs>
                   <linearGradient id="holdingAreaFill" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#17c784" stopOpacity="0.22" />
-                    <stop offset="100%" stopColor="#17c784" stopOpacity="0.02" />
+                    <stop offset="0%" stopColor={tokens.positive} stopOpacity="0.22" />
+                    <stop offset="100%" stopColor={tokens.positive} stopOpacity="0.02" />
                   </linearGradient>
                   <linearGradient id="holdingLineStroke" x1="0" x2="1" y1="0" y2="0">
                     <stop offset="0%" stopColor="#22c55e" />
@@ -145,11 +146,11 @@ export function HoldingHistoryChart({
                     <circle
                       cx={point.x}
                       cy={point.y}
-                      fill={active ? "#0d1117" : "#17c784"}
+                      fill={active ? tokens.deep : tokens.positive}
                       key={`${point.x}-${point.y}-${index}`}
                       onMouseEnter={() => setHoveredIndex(index)}
                       r={active ? 5.2 : 3.2}
-                      stroke="#17c784"
+                      stroke={tokens.positive}
                       strokeWidth={active ? 2.3 : 0}
                     />
                   );
@@ -186,11 +187,11 @@ export function HoldingHistoryChart({
         ) : (
           <div className="flex min-h-[23rem] flex-col items-center justify-center rounded-[1.2rem] bg-[#111317] px-6 text-center shadow-[inset_0_0_0_1px_#171a1f]">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#15181e] shadow-[inset_0_0_0_1px_#1c2028]">
-              <ChartLineIcon className="h-8 w-8 text-[#7f8aa3]" />
+              <ChartLineIcon className="h-8 w-8 text-fintech-muted" />
             </div>
             <h3 className="mt-5 text-[1.2rem] font-semibold text-white">No hay suficiente historial todavia</h3>
-            <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-[#7f8aa3]">
-              Registra mas operaciones para desbloquear la evolucion temporal de este holding con comparacion por rango.
+            <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
+              Registra más operaciones para desbloquear la evolución temporal de este holding con comparación por rango.
             </p>
           </div>
         )}

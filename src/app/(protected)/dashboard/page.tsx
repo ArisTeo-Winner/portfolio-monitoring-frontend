@@ -1,17 +1,20 @@
 ﻿"use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
+import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
+import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 const DISTRIBUTION_COLORS = ["#f7931a", "#5b8ff9", "#22c55e", "#a855f7", "#14b8a6"];
 type BackendHealthState = "idle" | "checking" | "up" | "slow" | "unreachable";
@@ -19,11 +22,11 @@ type BackendHealthState = "idle" | "checking" | "up" | "slow" | "unreachable";
 export default function DashboardPage() {
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
+  const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>(() => readAssetLogoRegistry());
   const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>(() => readCoinGeckoCryptoLogoMap());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const loadDashboard = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
@@ -33,13 +36,17 @@ export default function DashboardPage() {
         invalidatePortfolioCache();
       }
 
-      const [portfolioData, transactionData] = await Promise.all([
+      const [portfolioData, transactionData, fxRate] = await Promise.all([
         getPortfolio({ force }),
         getUserTransactions(),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
       ]);
 
       setEntries(portfolioData);
       setTransactions(transactionData);
+      setUsdMxnRate(fxRate);
       setLogoRegistry(readAssetLogoRegistry());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No fue posible cargar el dashboard.");
@@ -87,7 +94,9 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
+  const totals = useMemo(() => computePortfolioTotals(entries, usdMxnRate), [entries, usdMxnRate]);
+  const totalValue = totals.totalUsd;
+  const totalValueLabel = useMemo(() => formatPortfolioTotal(totals), [totals]);
   const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const totalProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const changePercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
@@ -139,11 +148,11 @@ export default function DashboardPage() {
       {!loading && error ? <DashboardErrorState message={error} /> : null}
       {!loading && !error ? (
         <>
-          <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <section className="hidden flex-col gap-4 sm:flex lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-[2.35rem] font-semibold tracking-[-0.05em] text-white">Hola, Inversor</h1>
               <p className="mt-2 text-[0.98rem] text-[#7f8aa3]">
-                Aqui esta el resumen de tu patrimonio neto al dia de hoy.
+                Aquí está el resumen de tu patrimonio neto al día de hoy.
               </p>
             </div>
             <button
@@ -157,18 +166,24 @@ export default function DashboardPage() {
             </button>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-4">
+          <DashboardMobileSummary
+            changePercent={changePercent}
+            totalProfit={totalProfit}
+            totalValueLabel={totalValueLabel}
+          />
+
+          <div className="hidden gap-4 sm:grid xl:grid-cols-4">
             <DashboardStatCard
               accent="neutral"
               icon={<WalletIcon className="h-12 w-12" />}
               label="Balance neto"
               subtitle={btcEquivalent > 0 ? `~ ${btcEquivalent.toFixed(3)} BTC` : "Sin referencia BTC"}
-              value={formatCurrency(totalValue)}
+              value={totalValueLabel}
             />
             <DashboardStatCard
               accent={totalProfit >= 0 ? "emerald" : "rose"}
               icon={<TrendDownIcon className="h-12 w-12" />}
-              label="Variacion (24h)"
+              label="Variación (24h)"
               subtitle={`${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`}
               value={formatSignedCurrency(totalProfit)}
             />
@@ -205,6 +220,33 @@ export default function DashboardPage() {
         </>
       ) : null}
     </main>
+  );
+}
+
+function DashboardMobileSummary({
+  changePercent,
+  totalProfit,
+  totalValueLabel,
+}: {
+  changePercent: number;
+  totalProfit: number;
+  totalValueLabel: string;
+}) {
+  const positive = totalProfit >= 0;
+
+  return (
+    <section className="rounded-lg bg-[#111317] px-4 py-4 sm:hidden">
+      <p className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[#71819b]">Balance neto</p>
+      <p className="mt-2 text-[1.375rem] font-semibold leading-tight text-white">{totalValueLabel}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className={`text-[0.875rem] font-semibold ${positive ? "text-[#17c784]" : "text-[#ea3943]"}`}>
+          {formatSignedCurrency(totalProfit)} ({changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}%) 24h
+        </span>
+        <span className="text-[0.75rem] font-medium text-[#8a94a6]">
+          {formatSignedCurrency(totalProfit)} All-Time
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -413,22 +455,22 @@ function DashboardDistributionCard({
   totalAssets: number;
 }) {
   return (
-    <section className="rounded-[1.4rem] bg-[#111317] px-6 py-6 shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
+    <section className="rounded-lg bg-[#111317] p-4 shadow-none sm:rounded-[1.4rem] sm:px-6 sm:py-6 sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
       <div className="flex items-center justify-between">
-        <h2 className="text-[1.05rem] font-semibold text-white">Distribucion</h2>
+        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Distribución</h2>
         <ClockIcon className="h-5 w-5 text-[#8a94a6]" />
       </div>
 
       {distribution.length ? (
         <>
-          <div className="mt-6 flex justify-center">
+          <div className="mt-3 flex justify-center sm:mt-6">
             <DistributionDonut assetCount={totalAssets} segments={distribution} />
           </div>
-          <div className="mt-6 space-y-3">
+          <div className="mt-3 space-y-2 sm:mt-6 sm:space-y-3">
             {distribution.map((item) => (
-              <div className="flex items-center justify-between gap-3 text-[0.95rem]" key={item.symbol}>
-                <div className="flex items-center gap-3 text-[#d7dfeb]">
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+              <div className="flex items-center justify-between gap-2 text-[0.75rem] sm:gap-3 sm:text-[0.95rem]" key={item.symbol}>
+                <div className="flex items-center gap-2 text-[#d7dfeb] sm:gap-3">
+                  <span className="h-2.5 w-2.5 rounded-full sm:h-3 sm:w-3" style={{ backgroundColor: item.color }} />
                   <span>{item.label}</span>
                 </div>
                 <span className="font-semibold text-[#9fb0c8]">{item.share.toFixed(0)}%</span>
@@ -438,7 +480,7 @@ function DashboardDistributionCard({
         </>
       ) : (
         <div className="flex min-h-[18rem] items-center justify-center text-center text-[0.9rem] text-[#7f8aa3]">
-          No hay activos suficientes para construir la distribucion.
+          No hay activos suficientes para construir la distribución.
         </div>
       )}
     </section>
@@ -455,9 +497,9 @@ function DashboardFeaturedMovesCard({
   cryptoLogoMap: Record<string, string>;
 }) {
   return (
-    <section className="overflow-hidden rounded-[1.4rem] bg-[#111317] shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
-      <div className="flex items-center justify-between border-b border-[#171b22] px-6 py-5">
-        <h2 className="text-[1.05rem] font-semibold text-white">Movimientos Destacados (24h)</h2>
+    <section className="overflow-hidden rounded-lg bg-[#111317] shadow-none sm:rounded-[1.4rem] sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
+      <div className="flex items-center justify-between border-b border-white/5 px-4 py-3 sm:border-[#171b22] sm:px-6 sm:py-5">
+        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Movimientos Destacados (24h)</h2>
         <TrendMiniIcon className="h-5 w-5 text-[#8a94a6]" />
       </div>
 
@@ -471,23 +513,23 @@ function DashboardFeaturedMovesCard({
             const percent = totalInvested > 0 ? (Number(entry.totalProfitLoss) / totalInvested) * 100 : 0;
 
             return (
-              <article className="flex items-center justify-between gap-4 px-6 py-4" key={entry.portfolioEntryId}>
-                <div className="flex min-w-0 items-center gap-4">
+              <article className="flex min-h-[56px] items-center justify-between gap-2 border-b border-white/5 px-4 py-2 last:border-b-0 sm:gap-4 sm:border-b-0 sm:px-6 sm:py-4" key={entry.portfolioEntryId}>
+                <div className="flex min-w-0 items-center gap-2 sm:gap-4">
                   <AssetAvatar
                     logoUrl={resolveAssetLogo(entry.assetSymbol, entry.assetType, logoRegistry, cryptoLogoMap)}
                     symbol={entry.assetSymbol}
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-[1rem] font-semibold text-white">{getAssetDisplayName(entry.assetSymbol)}</p>
-                    <p className="mt-1 text-[0.82rem] text-[#7f8aa3]">
+                    <p className="truncate text-[0.875rem] font-semibold text-white sm:text-[1rem]">{getAssetDisplayName(entry.assetSymbol)}</p>
+                    <p className="mt-0.5 text-[0.6875rem] text-[#7f8aa3] sm:mt-1 sm:text-[0.82rem]">
                       {formatQuantity(entry.totalQuantity)} {entry.assetSymbol.toUpperCase()}
                     </p>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[1rem] font-semibold text-white">{formatCurrency(currentPrice)}</p>
-                  <p className={`mt-1 text-[0.82rem] font-semibold ${percent >= 0 ? "text-[#17c784]" : "text-[#ea3943]"}`}>
+                  <p className="text-[0.8125rem] font-semibold text-white sm:text-[1rem]">{formatCurrency(currentPrice)}</p>
+                  <p className={`mt-0.5 text-[0.6875rem] font-semibold sm:mt-1 sm:text-[0.82rem] ${percent >= 0 ? "text-[#17c784]" : "text-[#ea3943]"}`}>
                     {percent >= 0 ? "+" : "-"} {Math.abs(percent).toFixed(2)}%
                   </p>
                 </div>
@@ -496,7 +538,7 @@ function DashboardFeaturedMovesCard({
           })}
         </div>
       ) : (
-        <DashboardEmptyState description="Aun no hay activos en cartera para destacar." title="Sin movimientos destacados" />
+        <DashboardEmptyState description="Aún no hay activos en cartera para destacar." title="Sin movimientos destacados" />
       )}
     </section>
   );
@@ -512,10 +554,10 @@ function DashboardActivityCard({
   cryptoLogoMap: Record<string, string>;
 }) {
   return (
-    <section className="overflow-hidden rounded-[1.4rem] bg-[#111317] shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
-      <div className="flex items-center justify-between border-b border-[#171b22] px-6 py-5">
-        <h2 className="text-[1.05rem] font-semibold text-white">Actividad Reciente</h2>
-        <Link className="text-[0.92rem] font-semibold text-[#17c784] transition hover:text-[#33e09b]" href="/transactions">
+    <section className="overflow-hidden rounded-lg bg-[#111317] shadow-none sm:rounded-[1.4rem] sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
+      <div className="flex items-center justify-between border-b border-white/5 px-4 py-3 sm:border-[#171b22] sm:px-6 sm:py-5">
+        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Actividad Reciente</h2>
+        <Link className="text-[0.75rem] font-semibold text-[#17c784] transition hover:text-[#33e09b] sm:text-[0.92rem]" href="/transactions">
           Ver todas {"->"}
         </Link>
       </div>
@@ -527,36 +569,36 @@ function DashboardActivityCard({
             const logoUrl = resolveAssetLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap);
 
             return (
-              <article className="flex items-center justify-between gap-4 px-6 py-4" key={transaction.transactionId}>
-                <div className="flex min-w-0 items-center gap-4">
+              <article className="flex min-h-[56px] items-center justify-between gap-2 border-b border-white/5 px-4 py-2 last:border-b-0 sm:gap-4 sm:border-b-0 sm:px-6 sm:py-4" key={transaction.transactionId}>
+                <div className="flex min-w-0 items-center gap-2 sm:gap-4">
                   <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isSell ? "bg-[#30191d] text-[#ea3943]" : "bg-[#0f2f24] text-[#17c784]"}`}
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9 ${isSell ? "bg-[#30191d] text-[#ea3943]" : "bg-[#0f2f24] text-[#17c784]"}`}
                   >
                     {isSell ? <ArrowDownIcon className="h-4 w-4" /> : <ArrowUpIcon className="h-4 w-4" />}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-[1rem] font-semibold text-white">
+                    <p className="truncate text-[0.875rem] font-semibold text-white sm:text-[1rem]">
                       {isSell ? "Venta" : "Compra"} de {getAssetDisplayName(transaction.assetSymbol)}
                     </p>
-                    <p className="mt-1 text-[0.82rem] text-[#7f8aa3]">{formatActivityMeta(transaction)}</p>
+                    <p className="mt-0.5 text-[0.6875rem] text-[#7f8aa3] sm:mt-1 sm:text-[0.82rem]">{formatActivityMeta(transaction)}</p>
                   </div>
                 </div>
 
                 <div className="text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <AssetAvatar logoUrl={logoUrl} symbol={transaction.assetSymbol} small />
-                    <p className={`text-[1rem] font-semibold ${isSell ? "text-[#ea3943]" : "text-[#17c784]"}`}>
+                    <AssetAvatar logoUrl={logoUrl} symbol={transaction.assetSymbol} size="sm" />
+                    <p className={`text-[0.8125rem] font-semibold sm:text-[1rem] ${isSell ? "text-[#ea3943]" : "text-[#17c784]"}`}>
                       {isSell ? "-" : "+"}{formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
                     </p>
                   </div>
-                  <p className="mt-1 text-[0.82rem] text-[#8a94a6]">{formatCurrency(transaction.totalValue)}</p>
+                  <p className="mt-0.5 text-[0.6875rem] text-[#8a94a6] sm:mt-1 sm:text-[0.82rem]">{formatCurrency(transaction.totalValue)}</p>
                 </div>
               </article>
             );
           })}
         </div>
       ) : (
-        <DashboardEmptyState description="Las operaciones nuevas apareceran aqui automaticamente." title="Sin actividad reciente" />
+        <DashboardEmptyState description="Las operaciones nuevas aparecerán aquí automáticamente." title="Sin actividad reciente" />
       )}
     </section>
   );
@@ -571,43 +613,6 @@ function DashboardEmptyState({ title, description }: { title: string; descriptio
   );
 }
 
-function AssetAvatar({
-  logoUrl,
-  symbol,
-  small = false,
-}: {
-  logoUrl: string | null;
-  symbol: string;
-  small?: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
-  const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
-  const sizeClass = small ? "h-7 w-7 text-[0.68rem]" : "h-10 w-10 text-[0.8rem]";
-
-  if (logoUrl && !failed) {
-    return (
-      <Image
-        alt={symbol}
-        className={`${sizeClass} shrink-0 rounded-full bg-[#0f131b] object-cover`}
-        onError={() => setFailed(true)}
-        src={logoUrl}
-        unoptimized
-        width={small ? 28 : 40}
-        height={small ? 28 : 40}
-      />
-    );
-  }
-
-  return (
-    <span
-      className={`flex shrink-0 items-center justify-center rounded-full font-bold shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${sizeClass}`}
-      style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
-    >
-      {initials}
-    </span>
-  );
-}
 
 function DistributionDonut({
   assetCount,
@@ -636,8 +641,8 @@ function DistributionDonut({
   }, []);
 
   return (
-    <div className="relative flex h-[14rem] w-full items-center justify-center">
-      <svg className="h-[13rem] w-[13rem] -rotate-90" viewBox="0 0 140 140">
+    <div className="relative flex h-[10rem] w-full items-center justify-center sm:h-[14rem]">
+      <svg className="h-[10rem] w-[10rem] -rotate-90 sm:h-[13rem] sm:w-[13rem]" viewBox="0 0 140 140">
         <circle cx="70" cy="70" fill="none" r={radius} stroke="#16191e" strokeWidth="16" />
         {renderedSegments.map((segment) => {
           const strokeDasharray = `${segment.length} ${circumference - segment.length}`;
@@ -660,8 +665,8 @@ function DistributionDonut({
       </svg>
 
       <div className="absolute text-center">
-        <p className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{assetCount}</p>
-        <p className="mt-1 text-[0.86rem] text-[#7f8aa3]">Activos</p>
+        <p className="text-[1.375rem] font-semibold text-white sm:text-[2rem] sm:tracking-[-0.05em]">{assetCount}</p>
+        <p className="mt-0.5 text-[0.75rem] text-[#7f8aa3] sm:mt-1 sm:text-[0.86rem]">Activos</p>
       </div>
     </div>
   );
@@ -696,46 +701,6 @@ function resolveAssetLogo(
     : null;
 }
 
-function normalizeAssetType(assetType: string) {
-  const normalized = assetType.toUpperCase();
-  if (normalized === "STOCKS") return "STOCK";
-  return normalized;
-}
-
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    NVDA: "NVIDIA Corp",
-    HYPE: "HYPE",
-  };
-
-  return names[key] ?? key;
-}
-
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
-
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
-}
 
 function formatActivityMeta(transaction: TransactionResponse) {
   const exchange = transaction.notes?.trim() ? transaction.notes : "Sin nota";

@@ -1,20 +1,43 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddTransactionModal, type InitialTransactionDraft } from "@/components/transactions/add-transaction-modal";
 import { Modal } from "@/components/ui/modal";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
+import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { deleteTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionDetailsResponse, TransactionResponse } from "@/features/transactions/types/transaction.types";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
+import { getAssetDisplayName } from "@/lib/utils/asset";
+import { AssetAvatar } from "@/components/shared/AssetAvatar";
+import { FrictionBreakdownCard } from "@/components/transactions/friction-breakdown-card";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
 
-export function TransactionsTable({ assetType, onDeleted }: { assetType?: string; onDeleted?: () => void | Promise<void> }) {
+type AssetActionSummary = {
+  key: string;
+  symbol: string;
+  name: string;
+  assetType: string;
+  logoUrl: string | null;
+  movementCount: number;
+  netQuantity: number;
+  grossValue: number;
+  lastTransactionAt: string;
+  lastNote: string | null;
+  transactions: TransactionResponse[];
+};
+
+export function TransactionsTable({
+  assetType,
+  onDeleted,
+}: {
+  assetType?: string;
+  onDeleted?: () => void | Promise<void>;
+}) {
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
   const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>({});
@@ -32,6 +55,8 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
   const [detailsData, setDetailsData] = useState<TransactionDetailsResponse | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [mobileAssetPanel, setMobileAssetPanel] = useState<AssetActionSummary | null>(null);
+  const [activeMobileMenuKey, setActiveMobileMenuKey] = useState<string | null>(null);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -39,6 +64,12 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
       const data = await getUserTransactions({ assetType });
       setTransactions(data);
       setLogoRegistry(readAssetLogoRegistry());
+
+      if (data.length) {
+        void prefetchAssetLogos(
+          data.map((t) => ({ symbol: t.assetSymbol, assetType: t.assetType })),
+        ).then((updated) => setLogoRegistry(updated));
+      }
     } catch (error) {
       console.error("Failed to fetch transactions", error);
       setTransactions([]);
@@ -82,6 +113,23 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
     };
   }, []);
 
+  useEffect(() => {
+    if (!activeMobileMenuKey) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-mobile-asset-actions='true']")) {
+        return;
+      }
+      setActiveMobileMenuKey(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [activeMobileMenuKey]);
+
   const assetOptions = useMemo(() => {
     const unique = new Set<string>();
     transactions.forEach((transaction) => unique.add(transaction.assetSymbol.toUpperCase()));
@@ -95,6 +143,56 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
       return matchesType && matchesAsset;
     });
   }, [assetFilter, transactions, typeFilter]);
+
+  const mobileAssetSummaries = useMemo(() => {
+    const grouped = new Map<string, AssetActionSummary>();
+
+    filteredTransactions.forEach((transaction) => {
+      const assetType = normalizeTransactionAssetType(transaction.assetType);
+      const symbol = transaction.assetSymbol.toUpperCase();
+      const key = `${assetType}:${symbol}`;
+      const normalizedType = normalizeTransactionType(transaction.transactionType);
+      const signedQuantity =
+        normalizedType === "BUY" ? Number(transaction.quantity) :
+        normalizedType === "SELL" ? -Number(transaction.quantity) :
+        0;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          key,
+          symbol,
+          name: getAssetDisplayName(symbol),
+          assetType,
+          logoUrl: resolveTransactionLogo(symbol, transaction.assetType, logoRegistry, cryptoLogoMap),
+          movementCount: 0,
+          netQuantity: 0,
+          grossValue: 0,
+          lastTransactionAt: transaction.transactionDate,
+          lastNote: transaction.notes?.trim() || null,
+          transactions: [],
+        });
+      }
+
+      const summary = grouped.get(key)!;
+      summary.movementCount += 1;
+      summary.netQuantity += signedQuantity;
+      summary.grossValue += Math.abs(Number(transaction.totalValue) || 0);
+      if (new Date(transaction.transactionDate).getTime() >= new Date(summary.lastTransactionAt).getTime()) {
+        summary.lastTransactionAt = transaction.transactionDate;
+        summary.lastNote = transaction.notes?.trim() || null;
+      }
+      summary.transactions.push(transaction);
+    });
+
+    return Array.from(grouped.values())
+      .map((summary) => ({
+        ...summary,
+        transactions: [...summary.transactions].sort(
+          (left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime(),
+        ),
+      }))
+      .sort((left, right) => new Date(right.lastTransactionAt).getTime() - new Date(left.lastTransactionAt).getTime());
+  }, [cryptoLogoMap, filteredTransactions, logoRegistry]);
 
   function openTransactionEditor(
     transaction: TransactionResponse,
@@ -121,6 +219,38 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
     });
 
     setEditingId(transaction.transactionId);
+    setModalOpen(true);
+  }
+
+  function openAssetTransactionForm(assetSummary: AssetActionSummary, mode: InitialTransactionDraft["mode"]) {
+    setActiveMobileMenuKey(null);
+    setMobileAssetPanel(null);
+    setDraftAsset({
+      assetId: assetSummary.key,
+      symbol: assetSummary.symbol,
+      name: assetSummary.name,
+      assetType: assetSummary.assetType,
+      logoUrl: assetSummary.logoUrl,
+      supportedForTransactions: true,
+    });
+    setDraftTransaction({ mode });
+    setEditingId(null);
+    setModalOpen(true);
+  }
+
+  function openAssetAddForm(assetSummary: AssetActionSummary) {
+    setActiveMobileMenuKey(null);
+    setMobileAssetPanel(null);
+    setDraftAsset({
+      assetId: assetSummary.key,
+      symbol: assetSummary.symbol,
+      name: assetSummary.name,
+      assetType: assetSummary.assetType,
+      logoUrl: assetSummary.logoUrl,
+      supportedForTransactions: true,
+    });
+    setDraftTransaction(null);
+    setEditingId(null);
     setModalOpen(true);
   }
 
@@ -162,7 +292,7 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
       setTransactionToDelete(null);
     } catch (error) {
       console.error("Failed to delete transaction", error);
-      setDeleteError("No fue posible eliminar la transaccion.");
+      setDeleteError("No fue posible eliminar la transacción.");
     } finally {
       setDeletingId(null);
     }
@@ -183,7 +313,7 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
       setDetailsData(details);
     } catch (error) {
       console.error("Failed to load transaction details", error);
-      setDetailsError("No fue posible cargar el detalle completo de la transaccion.");
+      setDetailsError("No fue posible cargar el detalle completo de la transacción.");
     } finally {
       setDetailsLoading(false);
     }
@@ -198,52 +328,82 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
   }
 
   return (
-          <div className="mt-0 bg-[#121214] px-0 pb-0 pt-0">
-            {/* Filters */}
-            <div className="mb-4 flex items-center justify-between pt-0">
-              <div className="flex items-center gap-3">
-          <FilterSelect
-            label="All Type"
-            onChange={(event) => setTypeFilter(event.target.value as TransactionFilter)}
-            value={typeFilter}
-          >
-            <option value="ALL">All Type</option>
-            <option value="BUY">Buy</option>
-            <option value="SELL">Sell</option>
-            <option value="TRANSFER">Transfer</option>
-          </FilterSelect>
+    <div className="mt-0 bg-transparent px-0 pb-0 pt-0">
+      <div className="space-y-3 md:space-y-4">
+        <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex flex-wrap items-center gap-1.5 md:gap-3">
+              <FilterSelect
+                label="All Type"
+                onChange={(event) => setTypeFilter(event.target.value as TransactionFilter)}
+                value={typeFilter}
+              >
+                <option value="ALL">All Type</option>
+                <option value="BUY">Buy</option>
+                <option value="SELL">Sell</option>
+                <option value="TRANSFER">Transfer</option>
+              </FilterSelect>
 
-          <FilterSelect
-            label="All Assets"
-            onChange={(event) => setAssetFilter(event.target.value)}
-            value={assetFilter}
-          >
-            <option value="ALL">All Assets</option>
-            {assetOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </FilterSelect>
+              <FilterSelect
+                label="All Assets"
+                onChange={(event) => setAssetFilter(event.target.value)}
+                value={assetFilter}
+              >
+                <option value="ALL">All Assets</option>
+                {assetOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FilterSelect>
+            </div>
+
+          </div>
+
+          <div className="hidden text-[0.76rem] font-medium text-[#8a94a6] md:block">
+            Showing {filteredTransactions.length} of {transactions.length} transactions
+          </div>
         </div>
 
-        <div className="text-[0.76rem] font-medium text-[#8a94a6]">
-          Showing {filteredTransactions.length} of {transactions.length} transactions
-        </div>
-      </div>
+        <section className="relative mt-2 overflow-hidden rounded-xl border border-white/5 bg-slate-900/50 md:hidden" data-testid="transactions-list">
+          <div className="border-b border-white/5 px-3 py-2.5">
+            <h2 className="text-[0.9375rem] font-semibold text-white">Activos con movimientos</h2>
+          </div>
+          {mobileAssetSummaries.length ? (
+            <div className="divide-y divide-white/5">
+              {mobileAssetSummaries.map((asset) => (
+                <MobileAssetActionRow
+                  asset={asset}
+                  isMenuOpen={activeMobileMenuKey === asset.key}
+                  key={asset.key}
+                  onAddTransaction={openAssetAddForm}
+                  onMenuToggle={() => setActiveMobileMenuKey((current) => current === asset.key ? null : asset.key)}
+                  onOpenPanel={() => {
+                    setActiveMobileMenuKey(null);
+                    setMobileAssetPanel(asset);
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="px-0 py-6 text-[0.8125rem] text-[#7f8aa3]">
+              No hay activos disponibles para esta vista.
+            </div>
+          )}
+        </section>
 
-      <div className="overflow-x-auto rounded-lg border border-zinc-800/60">
-        <table className="w-full text-left text-sm whitespace-nowrap">
+        <div className="hidden overflow-x-auto md:block">
+        <table className="w-full border-collapse text-left text-sm whitespace-nowrap">
           <thead>
-            <tr className="border-b border-zinc-800/60 text-zinc-500 text-xs font-medium bg-zinc-900/40">
-              <th className="px-5 py-3.5">Type</th>
-              <th className="px-5 py-3.5">Date</th>
-              <th className="px-5 py-3.5">Assets</th>
-              <th className="px-5 py-3.5 text-right">Price</th>
-              <th className="px-5 py-3.5 text-right">Amount</th>
-              <th className="px-5 py-3.5 text-right">Fees</th>
-              <th className="px-5 py-3.5 text-right">Notes</th>
-              <th className="px-5 py-3.5 text-center">Actions</th>
+            <tr className="text-left text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b] [box-shadow:inset_0_-1px_0_#1a1f29]">
+              <th className="pb-4 pr-4 font-medium">Type</th>
+              <th className="px-4 pb-4 font-medium">Date</th>
+              <th className="px-4 pb-4 font-medium">Assets</th>
+              <th className="px-4 pb-4 text-right font-medium">Price</th>
+              <th className="px-4 pb-4 text-right font-medium">Amount</th>
+              <th className="px-4 pb-4 text-right font-medium">Fees</th>
+              <th className="px-4 pb-4 text-right font-medium">Notes</th>
+              <th className="pb-4 pl-4 text-center font-medium">Actions</th>
             </tr>
           </thead>
 
@@ -260,7 +420,7 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
 
               return (
                 <tr
-                  className="cursor-pointer border-b border-[#222b39] transition hover:bg-[#151d2a]"
+                  className="cursor-pointer transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#1a1f29]"
                   key={transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`}
                   onClick={() => void handleViewTransactionDetails(transaction)}
                   onKeyDown={(event) => {
@@ -282,17 +442,17 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
                   </td>
 
                   <td className="px-5 py-4">
-                    <div className="text-[0.82rem] font-medium text-[#c7cedb]">
+                    <div className="text-[0.82rem] font-medium text-slate-400">
                       {dateLabel}, {timeLabel}
                     </div>
                   </td>
 
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <AssetAvatar symbol={transaction.assetSymbol} logoUrl={resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap)} />
+                      <AssetAvatar assetType={transaction.assetType} symbol={transaction.assetSymbol} logoUrl={resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap)} />
                       <div className="min-w-0">
-                        <p className="text-[0.86rem] font-semibold text-white">{getAssetDisplayName(transaction.assetSymbol)}</p>
-                        <p className="mt-0.5 text-[0.74rem] font-medium text-[#8a94a6]">{transaction.assetSymbol.toUpperCase()}</p>
+                        <p className="text-[0.86rem] font-medium text-white">{getAssetDisplayName(transaction.assetSymbol)}</p>
+                        <p className="mt-0.5 text-[0.74rem] font-medium text-slate-400">{transaction.assetSymbol.toUpperCase()}</p>
                       </div>
                     </div>
                   </td>
@@ -304,17 +464,17 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
                   </td>
 
                   <td className="px-5 py-4 text-right">
-                    <span className={`block text-[0.86rem] font-semibold ${isBuy ? "text-[#16c784]" : isSell ? "text-[#ea3943]" : "text-white"}`}>
+                    <span className={`block text-[0.86rem] font-semibold ${isBuy ? "text-emerald-500" : isSell ? "text-rose-400" : "text-white"}`}>
                       {amountPrefix}{formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
                     </span>
-                    <span className="mt-1 block text-[0.74rem] font-medium text-white">
+                    <span className="mt-1 block text-[0.74rem] font-medium text-slate-400">
                       {formatCurrency(transaction.totalValue)}
                     </span>
                   </td>
 
                   <td className="px-5 py-4 text-right">
                     <span className="block text-[0.84rem] font-semibold text-white">
-                      {transaction.fee > 0 ? formatCurrency(transaction.fee) : "--"}
+                      {transaction.fee > 0 ? formatFeeCurrency(transaction.fee) : "--"}
                     </span>
                   </td>
 
@@ -350,15 +510,16 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
             })}
           </tbody>
         </table>
-      </div>
+        </div>
 
-      <div className="flex flex-col gap-3 border-t border-[#222b39] px-5 py-3.5 text-[0.72rem] font-medium text-[#8a94a6] md:flex-row md:items-center md:justify-between">
-        <div>Showing 1 - {filteredTransactions.length} out of {filteredTransactions.length}</div>
-        <div className="flex items-center gap-3">
-          <span className="flex h-7 min-w-7 items-center justify-center rounded-[0.55rem] bg-[#3861fb] px-2 text-white">1</span>
-          <div className="flex items-center gap-2 rounded-[0.65rem] border border-[#2a3344] bg-[#161d29] px-3 py-1.5">
-            <span>Show rows</span>
-            <span className="font-semibold text-white">20</span>
+        <div className="hidden flex-col gap-3 border-t border-[#222b39] px-5 py-3.5 text-[0.72rem] font-medium text-[#8a94a6] md:flex md:flex-row md:items-center md:justify-between">
+          <div>Showing 1 - {filteredTransactions.length} out of {filteredTransactions.length}</div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-[0.55rem] bg-[#3861fb] px-2 text-white">1</span>
+            <div className="flex items-center gap-2 rounded-[0.65rem] border border-[#2a3344] bg-[#161d29] px-3 py-1.5">
+              <span>Show rows</span>
+              <span className="font-semibold text-white">20</span>
+            </div>
           </div>
         </div>
       </div>
@@ -407,6 +568,26 @@ export function TransactionsTable({ assetType, onDeleted }: { assetType?: string
           setDetailsLoading(false);
         }}
         transaction={detailsTransaction}
+      />
+
+      <MobileAssetActionPanel
+        asset={mobileAssetPanel}
+        onAddTransaction={openAssetAddForm}
+        onClose={() => setMobileAssetPanel(null)}
+        onDeleteTransaction={(transaction) => {
+          setMobileAssetPanel(null);
+          setDeleteError(null);
+          setTransactionToDelete(transaction);
+        }}
+        onEditTransaction={(transaction) => {
+          setMobileAssetPanel(null);
+          void handleEditTransaction(transaction);
+        }}
+        onRegisterTransfer={(asset) => openAssetTransactionForm(asset, "TRANSFER")}
+        onViewTransaction={(transaction) => {
+          setMobileAssetPanel(null);
+          void handleViewTransactionDetails(transaction);
+        }}
       />
     </div>
   );
@@ -468,8 +649,8 @@ function TransactionsEmptyState() {
   return (
     <div className="mt-0 bg-[#121214] px-0 pb-0 pt-0">
       <div className="rounded-[1rem] border border-zinc-800/60 bg-[#121214] px-6 py-14 text-center shadow-[0_20px_70px_rgba(0,0,0,0.18)]">
-        <p className="text-[0.9rem] font-semibold text-white">No tienes transacciones registradas aun</p>
-        <p className="mt-2 text-[0.82rem] text-[#8a94a6]">Agrega una transaccion para ver el historial de este portafolio aqui.</p>
+        <p className="text-[0.9rem] font-semibold text-white">No tienes transacciones registradas aún</p>
+        <p className="mt-2 text-[0.82rem] text-[#8a94a6]">Agrega una transacción para ver el historial de este portafolio aquí.</p>
       </div>
     </div>
   );
@@ -490,14 +671,14 @@ function FilterSelect({
     <label className="relative">
       <span className="sr-only">{label}</span>
       <select
-        className="appearance-none rounded-[0.75rem] border border-[#2a3344] bg-[#2b3042] py-2 pl-3.5 pr-10 text-[0.82rem] font-semibold text-white outline-none transition hover:bg-[#32384d]"
+        className="h-8 w-[8.25rem] appearance-none rounded-[0.55rem] border border-[#2a3344] bg-[#242a3a] py-0 pl-2.5 pr-8 text-[0.6875rem] font-semibold text-white outline-none transition hover:bg-[#2c3346] md:h-auto md:w-auto md:rounded-[0.75rem] md:bg-[#2b3042] md:py-2.5 md:pl-3.5 md:pr-10 md:text-[0.82rem]"
         onChange={onChange}
         value={value}
       >
         {children}
       </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#8a94a6]">
-        <ChevronDownIcon className="h-3.5 w-3.5" />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#8a94a6] md:right-3">
+        <ChevronDownIcon className="h-2.5 w-2.5 md:h-3.5 md:w-3.5" />
       </span>
     </label>
   );
@@ -527,34 +708,6 @@ function TransactionTypeBadge({ type }: { type: TransactionFilter }) {
   );
 }
 
-function AssetAvatar({ logoUrl, symbol }: { logoUrl: string | null; symbol: string }) {
-  const [failed, setFailed] = useState(false);
-  const initials = symbol.slice(0, 2).toUpperCase();
-  const palette = pickAssetPalette(symbol);
-
-  if (logoUrl && !failed) {
-    return (
-      <Image
-        alt={symbol}
-        className="h-8 w-8 shrink-0 rounded-full bg-[#0f131b] object-cover"
-        height={32}
-        onError={() => setFailed(true)}
-        src={logoUrl}
-        unoptimized
-        width={32}
-      />
-    );
-  }
-
-  return (
-    <span
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold"
-      style={{ background: `radial-gradient(circle at 30% 30%, ${palette.highlight}, ${palette.base})`, color: palette.text }}
-    >
-      {initials}
-    </span>
-  );
-}
 
 function IconButton({
   children,
@@ -586,40 +739,340 @@ function IconButton({
   );
 }
 
-function pickAssetPalette(symbol: string) {
-  const palettes = [
-    { base: "#3861fb", highlight: "#7b97ff", text: "#f8fbff" },
-    { base: "#16c784", highlight: "#6ce4b0", text: "#f7fff8" },
-    { base: "#8b5cf6", highlight: "#b898ff", text: "#fff7ff" },
-    { base: "#f59e0b", highlight: "#ffc45f", text: "#fff9f5" },
-    { base: "#ef4444", highlight: "#ff9a9a", text: "#fff7f7" },
-  ];
+function MobileAssetActionRow({
+  asset,
+  isMenuOpen,
+  onAddTransaction,
+  onMenuToggle,
+  onOpenPanel,
+}: {
+  asset: AssetActionSummary;
+  isMenuOpen: boolean;
+  onAddTransaction: (asset: AssetActionSummary) => void;
+  onMenuToggle: () => void;
+  onOpenPanel: () => void;
+}) {
+  return (
+    <div
+      className="relative px-3 py-1 transition-colors hover:bg-white/5"
+      data-mobile-asset-actions="true"
+    >
+      <div className="grid h-9 grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_auto] items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <AssetAvatar assetType={asset.assetType} logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
+          <div className="min-w-0">
+            <p className="truncate text-[0.8125rem] font-medium leading-none text-white">{asset.symbol}</p>
+            <p className="mt-0.5 truncate text-[10px] leading-none text-slate-400">{asset.name}</p>
+          </div>
+        </div>
 
-  const index = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % palettes.length;
-  return palettes[index];
+        <div className="min-w-0 text-right">
+          <div className="flex items-center justify-end gap-1.5">
+            <MiniSparkline positive={asset.netQuantity >= 0} />
+            <p className={`truncate text-[0.75rem] font-medium leading-none ${asset.netQuantity >= 0 ? "text-emerald-400/90" : "text-rose-400/80"}`}>{formatSignedQuantity(asset.netQuantity, asset.symbol)}</p>
+          </div>
+          <p className="mt-0.5 text-[10px] leading-none text-slate-400">{formatCurrency(asset.grossValue)}</p>
+        </div>
+
+        <button
+          aria-expanded={isMenuOpen}
+          aria-label={`Abrir acciones para ${asset.symbol}`}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-[0.55rem] bg-[#16213e] text-[#4f7bff] transition hover:bg-[#1b2a4e] hover:text-white"
+          onClick={(event) => {
+            event.stopPropagation();
+            onMenuToggle();
+          }}
+          type="button"
+        >
+          <MoreActionsIcon className="h-4 w-4" />
+        </button>
+      </div>
+
+      {isMenuOpen ? (
+        <div
+          className="mb-1 mt-1.5 overflow-hidden rounded-2xl border border-[#262d3a] bg-[#101317]"
+          data-mobile-asset-actions="true"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <MobileRowMenuAction
+            icon={<EyeIcon className="h-4 w-4" />}
+            label="Ver movimientos"
+            onClick={onOpenPanel}
+          />
+          <MobileRowMenuAction
+            icon={<PlusIcon className="h-4 w-4" />}
+            label="Agregar transacción"
+            onClick={() => onAddTransaction(asset)}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple",
-    MSFT: "Microsoft",
-    GOOGL: "Alphabet",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-  };
-
-  return names[key] ?? key;
+function MobileRowMenuAction({
+  destructive = false,
+  icon,
+  label,
+  onClick,
+}: {
+  destructive?: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`flex h-11 w-full items-center gap-3 px-3 text-left text-[0.875rem] font-medium transition ${
+        destructive
+          ? "text-[#ff7b8c] hover:bg-[#211219] hover:text-[#ff9aa7]"
+          : "text-[#dce4f2] hover:bg-[#171d26] hover:text-white"
+      }`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      type="button"
+    >
+      <span className="shrink-0 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 }
+
+function TransactionMetric({
+  label,
+  truncate = false,
+  value,
+}: {
+  label: string;
+  truncate?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-[#121720] px-2.5 py-2">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.05em] text-[#6f7a8f]">{label}</p>
+      <p className={`mt-1 text-[0.875rem] font-semibold text-white ${truncate ? "truncate" : ""}`}>{value}</p>
+    </div>
+  );
+}
+
+function MobileAssetActionPanel({
+  asset,
+  onAddTransaction,
+  onClose,
+  onDeleteTransaction,
+  onEditTransaction,
+  onRegisterTransfer,
+  onViewTransaction,
+}: {
+  asset: AssetActionSummary | null;
+  onAddTransaction: (asset: AssetActionSummary) => void;
+  onClose: () => void;
+  onDeleteTransaction: (transaction: TransactionResponse) => void;
+  onEditTransaction: (transaction: TransactionResponse) => void;
+  onRegisterTransfer: (asset: AssetActionSummary) => void;
+  onViewTransaction: (transaction: TransactionResponse) => void;
+}) {
+  const [activeTransactionActionId, setActiveTransactionActionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveTransactionActionId(null);
+  }, [asset?.key]);
+
+  useEffect(() => {
+    if (!activeTransactionActionId) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveTransactionActionId(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeTransactionActionId]);
+
+  if (!asset) return null;
+
+  return (
+    <Modal
+      hideDefaultCloseButton
+      onClose={onClose}
+      overlayClassName="bg-[#070a11]/76 backdrop-blur-[6px]"
+      panelClassName="max-w-[430px] rounded-2xl border border-[#1f2430] bg-[#111317] px-0 py-0 text-white shadow-none ring-0"
+    >
+      <div className="px-4 pb-4 pt-3">
+        <div className="flex max-h-14 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <AssetAvatar assetType={asset.assetType} logoUrl={asset.logoUrl} size="sm" symbol={asset.symbol} />
+            <div className="min-w-0">
+              <p className="truncate text-[1rem] font-semibold text-white">{asset.name}</p>
+              <p className="mt-0.5 text-[0.6875rem] uppercase tracking-[0.05em] text-[#7f8aa3]">{asset.symbol}</p>
+            </div>
+          </div>
+          <button
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8a94a6] transition hover:bg-[#1b2130] hover:text-white"
+            onClick={onClose}
+            type="button"
+          >
+            <span aria-hidden="true" className="text-[1.125rem] leading-none">&times;</span>
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <TransactionMetric label="Movimientos" value={`${asset.movementCount}`} />
+          <TransactionMetric label="Actividad USD" value={formatCurrency(asset.grossValue)} />
+          <TransactionMetric label="Balance neto" value={formatSignedQuantity(asset.netQuantity, asset.symbol)} />
+          <TransactionMetric
+            label="Ultimo registro"
+            value={new Date(asset.lastTransactionAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          />
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <ActionPanelButton accent="emerald" label="Agregar transacción" onClick={() => onAddTransaction(asset)} />
+          <ActionPanelButton accent="blue" label="Transferir" onClick={() => onRegisterTransfer(asset)} />
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.05em] text-[#6f7a8f]">Ultimos movimientos</p>
+          </div>
+
+          <div className="space-y-1.5">
+            {asset.transactions.slice(0, 4).map((transaction, index) => {
+              const type = normalizeTransactionType(transaction.transactionType);
+              const amountColor =
+                type === "BUY" ? "text-emerald-500" :
+                type === "SELL" ? "text-rose-400" :
+                "text-white";
+              const actionKey = transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`;
+
+              return (
+                <div
+                  className="relative rounded-xl bg-[#121720] px-3 py-2 transition hover:bg-slate-800/30"
+                  key={actionKey}
+                >
+                  <div className="flex min-h-11 items-center justify-between gap-2">
+                    <button
+                      className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                      onClick={() => onViewTransaction(transaction)}
+                      type="button"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[0.875rem] font-semibold text-white">
+                          {type === "BUY" ? "Compra" : type === "SELL" ? "Venta" : "Transferencia"}
+                        </p>
+                        <p className="mt-0.5 text-[0.6875rem] text-slate-400">
+                          {new Date(transaction.transactionDate).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <p className={`text-[0.875rem] font-semibold ${amountColor}`}>
+                          {formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
+                        </p>
+                        <p className="mt-0.5 text-[0.75rem] text-slate-400">{formatCurrency(transaction.totalValue)}</p>
+                      </div>
+                    </button>
+
+                    <button
+                      aria-expanded={activeTransactionActionId === actionKey}
+                      aria-label={`Abrir acciones del movimiento ${transaction.assetSymbol}`}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#182031] text-[#8ea1bb] transition hover:bg-[#20283b] hover:text-white"
+                      onClick={() => setActiveTransactionActionId((current) => current === actionKey ? null : actionKey)}
+                      type="button"
+                    >
+                      <MoreActionsIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {activeTransactionActionId === actionKey ? (
+                    <>
+                      <button
+                        aria-label="Cerrar menu de acciones"
+                        className="fixed inset-0 z-[999] bg-black/20"
+                        onClick={() => setActiveTransactionActionId(null)}
+                        type="button"
+                      />
+                      <div className="fixed bottom-[6.75rem] left-1/2 z-[1000] w-[calc(100%-32px)] max-w-[420px] -translate-x-1/2 overflow-hidden rounded-2xl border border-[#262d3a] bg-[#101317]">
+                        <MobileRowMenuAction
+                          icon={<EyeIcon className="h-4 w-4" />}
+                          label="Ver detalle"
+                          onClick={() => {
+                            setActiveTransactionActionId(null);
+                            onViewTransaction(transaction);
+                          }}
+                        />
+                        <MobileRowMenuAction
+                          icon={<EditIcon className="h-4 w-4" />}
+                          label="Editar"
+                          onClick={() => {
+                            setActiveTransactionActionId(null);
+                            onEditTransaction(transaction);
+                          }}
+                        />
+                        <MobileRowMenuAction
+                          destructive
+                          icon={<DeleteIcon className="h-4 w-4" />}
+                          label="Eliminar"
+                          onClick={() => {
+                            setActiveTransactionActionId(null);
+                            onDeleteTransaction(transaction);
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ActionPanelButton({
+  accent,
+  label,
+  onClick,
+}: {
+  accent: "emerald" | "rose" | "blue";
+  label: string;
+  onClick: () => void;
+}) {
+  const palette =
+    accent === "emerald"
+      ? "bg-[#173726] text-[#31dd97] hover:bg-[#1d4430]"
+      : accent === "rose"
+        ? "bg-[#371b22] text-[#ff7b8d] hover:bg-[#432129]"
+        : "bg-[#16213e] text-[#82a4ff] hover:bg-[#1b2a4e]";
+
+  return (
+    <button
+      className={`h-10 rounded-[0.875rem] px-3 text-[0.8125rem] font-semibold transition ${palette}`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 
 function resolveTransactionLogo(
   symbol: string,
@@ -663,11 +1116,6 @@ function normalizeTransferType(transferType?: string | null): InitialTransaction
   return undefined;
 }
 
-function resolveAmountLabel(type: TransactionFilter) {
-  if (type === "SELL") return "Total Received";
-  if (type === "TRANSFER") return "Transfer Quantity";
-  return "Total Spent";
-}
 
 function resolveSummaryValue(
   details: TransactionDetailsResponse | null,
@@ -691,6 +1139,11 @@ function resolveSummaryValue(
 
 function formatDetailsDate(value: string) {
   return new Date(value).toLocaleString("en-US");
+}
+
+function formatSignedQuantity(value: number, symbol: string) {
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${prefix}${formatQuantity(Math.abs(value))} ${symbol.toUpperCase()}`;
 }
 
 function ArrowIcon({ className, direction }: { className?: string; direction: "up" | "down" }) {
@@ -729,6 +1182,33 @@ function DeleteIcon({ className }: { className?: string }) {
   );
 }
 
+function MoreActionsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <circle cx="6.5" cy="12" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="17.5" cy="12" r="1.75" />
+    </svg>
+  );
+}
+
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="2.75" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path d="M12 5.5v13M5.5 12h13" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
 function DeleteTransactionDialog({
   error,
   isDeleting,
@@ -750,32 +1230,41 @@ function DeleteTransactionDialog({
     <Modal
       onClose={onClose}
       overlayClassName="bg-[#0b1020]/78 backdrop-blur-[6px]"
-      panelClassName="max-w-[430px] rounded-[1.35rem] border border-[#2a3344] bg-[#1b2230] px-6 py-6 text-white shadow-[0_40px_120px_rgba(0,0,0,0.52)] ring-0"
+      panelClassName="max-w-[360px] rounded-2xl border border-[#2a3344] bg-[#101317] px-4 py-4 text-white shadow-none ring-0 md:max-w-[430px] md:rounded-[1.35rem] md:px-6 md:py-6 md:shadow-[0_40px_120px_rgba(0,0,0,0.52)]"
     >
-      <div className="space-y-5 pt-4">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#ea3943]/16 text-[#ea3943]">
-          <WarningIcon className="h-7 w-7" />
+      <div className="space-y-4 md:space-y-5 md:pt-4">
+        <div className="flex items-start gap-3 pr-8">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#ea3943]/25 bg-[#2a1218] text-[#ff5c68] md:mx-auto md:h-12 md:w-12 md:rounded-full md:bg-[#ea3943]/16">
+            <WarningIcon className="h-4 w-4 md:h-7 md:w-7" />
+          </div>
+
+          <div className="min-w-0 md:hidden">
+            <h3 className="text-[1rem] font-semibold text-white">Eliminar transacción</h3>
+            <p className="mt-1 text-[0.8125rem] leading-5 text-[#9aa6bb]">
+              Esta acción quitará el movimiento de {transaction.assetSymbol.toUpperCase()}.
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-2 text-center">
-          <h3 className="text-[1.05rem] font-semibold tracking-[-0.02em] text-white">Remove Transaction</h3>
-          <p className="text-[0.88rem] leading-6 text-[#b3bdd1]">
+        <div className="space-y-2 text-left md:text-center">
+          <h3 className="hidden text-[1.05rem] font-semibold tracking-[-0.02em] text-white md:block">Remove Transaction</h3>
+          <p className="hidden text-[0.88rem] leading-6 text-[#b3bdd1] md:block">
             Are you sure you want to remove this {transaction.assetSymbol.toUpperCase()} transaction?
           </p>
-          <p className="text-[0.76rem] text-[#7f8aa3]">
+          <p className="rounded-xl border border-[#202838] bg-[#151a23] px-3 py-2 text-[0.75rem] text-[#8d99ad] md:border-0 md:bg-transparent md:px-0 md:py-0 md:text-[0.76rem]">
             {new Date(transaction.transactionDate).toLocaleString("en-US")}
           </p>
         </div>
 
         {error ? (
-          <div className="rounded-[0.95rem] border border-[#ea3943]/25 bg-[#ea3943]/10 px-4 py-3 text-[0.82rem] text-[#ffb0b4]">
+          <div className="rounded-xl border border-[#ea3943]/25 bg-[#ea3943]/10 px-3 py-2 text-[0.8125rem] text-[#ffb0b4] md:rounded-[0.95rem] md:px-4 md:py-3 md:text-[0.82rem]">
             {error}
           </div>
         ) : null}
 
-        <div className="space-y-3">
+        <div className="grid gap-2 md:space-y-3">
           <button
-            className="w-full rounded-[0.9rem] bg-[#3861fb] px-4 py-3 text-[0.95rem] font-semibold text-white transition hover:bg-[#4f74ff] disabled:cursor-not-allowed disabled:opacity-55"
+            className="h-10 w-full rounded-[0.875rem] bg-[#c73542] px-4 text-[0.875rem] font-semibold text-white transition hover:bg-[#df4552] disabled:cursor-not-allowed disabled:opacity-55 md:h-auto md:rounded-[0.9rem] md:py-3 md:text-[0.95rem]"
             disabled={isDeleting}
             onClick={onConfirm}
             type="button"
@@ -783,7 +1272,7 @@ function DeleteTransactionDialog({
             {isDeleting ? "Removing..." : "Remove"}
           </button>
           <button
-            className="w-full rounded-[0.9rem] bg-[#353b4d] px-4 py-3 text-[0.95rem] font-semibold text-white transition hover:bg-[#40485c] disabled:cursor-not-allowed disabled:opacity-55"
+            className="h-10 w-full rounded-[0.875rem] border border-[#273142] bg-[#171d28] px-4 text-[0.875rem] font-semibold text-[#dce4f2] transition hover:bg-[#20283a] disabled:cursor-not-allowed disabled:opacity-55 md:h-auto md:rounded-[0.9rem] md:border-0 md:bg-[#353b4d] md:py-3 md:text-[0.95rem] md:text-white md:hover:bg-[#40485c]"
             disabled={isDeleting}
             onClick={onClose}
             type="button"
@@ -824,8 +1313,9 @@ function TransactionDetailsDialog({
   const pricePerUnit = details?.pricePerUnit ?? transaction.pricePerUnit;
   const fee = details?.fee ?? transaction.fee;
   const notes = details?.notes?.trim() ? details.notes : transaction.notes?.trim() ? transaction.notes : "--";
-  const amountLabel = details?.amountLabel ?? resolveAmountLabel(normalizedType);
   const summaryValue = resolveSummaryValue(details, transaction, normalizedType);
+  // Cost Basis = price × qty without fees (grossAmount from details, totalValue as fallback)
+  const costBasis = details?.grossAmount ?? transaction.totalValue;
 
   return (
     <Modal
@@ -862,17 +1352,36 @@ function TransactionDetailsDialog({
               label="Quantity"
               value={(
                 <span className="inline-flex items-center gap-2 font-semibold text-white">
-                  <AssetAvatar logoUrl={logoUrl} symbol={assetSymbol} />
+                  <AssetAvatar assetType={assetType} logoUrl={logoUrl} symbol={assetSymbol} />
                   <span>{formatQuantity(quantity)} {assetSymbol}</span>
                 </span>
               )}
             />
-            <DetailRow label="Fees" value={fee > 0 ? formatCurrency(fee) : "--"} />
-            <DetailRow
-              label={amountLabel}
-              value={normalizedType === "TRANSFER" ? `${formatQuantity(quantity)} ${assetSymbol}` : formatCurrency(summaryValue)}
-            />
+            <DetailRow label="Fees" value={fee > 0 ? formatFeeCurrency(fee, details?.feeCurrency ?? "USD") : "--"} />
+            {normalizedType === "TRANSFER" ? (
+              <DetailRow label="Transfer Quantity" value={`${formatQuantity(quantity)} ${assetSymbol}`} />
+            ) : (
+              <>
+                <DetailRow
+                  label={normalizedType === "SELL" ? "Gross Received" : "Cost Basis"}
+                  value={formatCurrency(costBasis)}
+                />
+                <DetailRow
+                  label={normalizedType === "SELL" ? "Net Received" : "Total Spent"}
+                  value={formatCurrency(summaryValue)}
+                  highlight
+                />
+              </>
+            )}
             <DetailRow label="Notes" multiline value={notes} />
+
+            {details?.frictionBreakdown ? (
+              <FrictionBreakdownCard
+                breakdown={details.frictionBreakdown}
+                feeCurrency={details.feeCurrency}
+                transactionType={transactionType}
+              />
+            ) : null}
 
             {error ? (
               <div className="mt-4 rounded-[0.95rem] border border-[#ea3943]/30 bg-[#ea3943]/10 px-4 py-3 text-[0.82rem] text-[#ffb0b4]">
@@ -889,17 +1398,49 @@ function TransactionDetailsDialog({
 function DetailRow({
   label,
   multiline = false,
+  highlight = false,
   value,
 }: {
   label: string;
   multiline?: boolean;
+  highlight?: boolean;
   value: React.ReactNode;
 }) {
   return (
     <div className={`border-b border-[#1a1f29] py-4 last:border-b-0 ${multiline ? "space-y-2" : "flex items-center justify-between gap-4"}`}>
-      <span className="text-[0.82rem] font-semibold text-[#8a94a6]">{label}</span>
-      <div className={`${multiline ? "" : "text-right"} text-[0.95rem] font-semibold text-white`}>{value}</div>
+      <span className={`text-[0.82rem] font-semibold ${highlight ? "text-[#c4cede]" : "text-[#8a94a6]"}`}>{label}</span>
+      <div className={`${multiline ? "" : "text-right"} text-[0.95rem] font-semibold ${highlight ? "text-white" : "text-[#b8c0ce]"}`}>{value}</div>
     </div>
+  );
+}
+
+function MiniSparkline({ positive }: { positive: boolean }) {
+  const color = positive ? "#10b981" : "#fb7185";
+  const gradId = positive ? "ms-up" : "ms-dn";
+  const linePoints = positive
+    ? "0,13 8,9 16,7 24,4 32,1"
+    : "0,1 8,4 16,7 24,9 32,13";
+  const fillPoints = positive
+    ? "0,13 8,9 16,7 24,4 32,1 32,14 0,14"
+    : "0,1 8,4 16,7 24,9 32,13 32,14 0,14";
+
+  return (
+    <svg className="h-[14px] w-8 shrink-0" viewBox="0 0 32 14" fill="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={fillPoints} fill={`url(#${gradId})`} />
+      <polyline
+        points={linePoints}
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

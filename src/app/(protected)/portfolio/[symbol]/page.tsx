@@ -3,14 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { CetesMarkToMarketCard } from "@/components/cetes/CetesMarkToMarketCard";
 import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-modal";
 import { PortfolioDetailCard } from "@/components/portfolio/portfolio-widgets";
-import { PortfolioSidebar, buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar";
+import { PortfolioSidebar } from "@/components/portfolio/portfolio-sidebar";
+import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-data";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import type { AssetOption } from "@/features/assets/types/asset.types";
+import { AssetChartContainer } from "@/components/portfolio/asset-chart-container";
+import { AssetPriceChartContainer } from "@/components/portfolio/asset-price-chart-container";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
+import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import {
   clearHoldingDetailPerformance,
   clearHoldingDetailTrace,
@@ -23,9 +28,11 @@ import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types"
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
+import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
+import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
 
-const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF"]);
+const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND"]);
 const HOLDING_DETAIL_MEASURE_TYPES = {
   pageMounted: "page-mounted",
   entryRequestStart: "entry-request-start",
@@ -40,6 +47,7 @@ export default function PortfolioSymbolPage() {
   const symbol = String(params.symbol ?? "").toUpperCase();
   const [entry, setEntry] = useState<PortfolioEntry | null>(null);
   const [portfolioEntries, setPortfolioEntries] = useState<PortfolioEntry[]>([]);
+  const [usdMxnRate, setUsdMxnRate] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<PortfolioPreference[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,8 +78,14 @@ export default function PortfolioSymbolPage() {
     const sidebarFetchStartedAt = typeof window !== "undefined" ? window.performance.now() : 0;
 
     try {
-      const data = await getPortfolio();
+      const [data, fxRate] = await Promise.all([
+        getPortfolio(),
+        getUsdMxnRateCached()
+          .then((fx) => fx.rate)
+          .catch(() => null),
+      ]);
       setPortfolioEntries(data);
+      setUsdMxnRate(fxRate);
     } catch {
       setPortfolioEntries([]);
     } finally {
@@ -249,12 +263,17 @@ export default function PortfolioSymbolPage() {
     () => buildSidebarGroups(portfolioEntries, preferences),
     [portfolioEntries, preferences],
   );
-  const totalValue = useMemo(
-    () => portfolioEntries.reduce((acc, current) => acc + Number(current.currentValue), 0),
-    [portfolioEntries],
+  const totalValueLabel = useMemo(
+    () => formatPortfolioTotal(computePortfolioTotals(portfolioEntries, usdMxnRate)),
+    [portfolioEntries, usdMxnRate],
   );
-  const createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
+  const _createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;
   const transactionsEnabled = entry ? SUPPORTED_TRANSACTION_TYPES.has(entry.assetType) : false;
+  const isCetesHolding = entry ? normalizeAssetType(entry.assetType, entry.assetSymbol) === "GOVERNMENT_BOND" : false;
+  const cetesBuyTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.transactionType === "BUY"),
+    [transactions],
+  );
   const initialAsset = useMemo<AssetOption | null>(() => {
     if (!entry) return null;
 
@@ -274,10 +293,13 @@ export default function PortfolioSymbolPage() {
       <main className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
         <PortfolioSidebar
           activeType={entry?.assetType ?? "CRYPTO"}
-          createdCount={createdCount}
+          defaultType={null}
           groups={sidebarGroups}
           onCreatePortfolio={() => setCreateModalOpen(true)}
-          totalValue={totalValue}
+          onEditPortfolio={() => {}}
+          onRemovePortfolio={() => {}}
+          onSetDefault={() => {}}
+          totalValueLabel={totalValueLabel}
         />
 
         <section className="space-y-5">
@@ -306,6 +328,17 @@ export default function PortfolioSymbolPage() {
 
           {loading ? <HoldingDetailSkeleton /> : null}
           {!loading && entry ? <PortfolioDetailCard entry={entry} /> : null}
+          {!loading && entry && isCetesHolding && !transactionsLoading
+            ? cetesBuyTransactions.map((transaction) => (
+                <CetesMarkToMarketCard
+                  assetName={getAssetDisplayName(entry.assetSymbol)}
+                  key={transaction.transactionId}
+                  transactionId={transaction.transactionId}
+                />
+              ))
+            : null}
+          {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
+          {!loading && entry ? <AssetPriceChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && error ? (
             <section className="glass rounded-[1.6rem] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
               <h1 className="text-[1.35rem] font-bold text-slate-950">Holding unavailable</h1>
@@ -439,7 +472,7 @@ function AssetTransactionsSection({
                     </p>
                   </div>
                   <div className="text-[0.82rem] font-medium text-[#c7cedb]">
-                    {Number(transaction.fee) > 0 ? formatCurrency(transaction.fee) : "--"}
+                    {Number(transaction.fee) > 0 ? formatFeeCurrency(transaction.fee) : "--"}
                   </div>
                 </div>
               );
@@ -509,30 +542,6 @@ function formatTransactionType(value: string) {
   }
 }
 
-function getAssetDisplayName(symbol: string) {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft Corp.",
-    GOOGL: "Alphabet Inc.",
-    NVDA: "NVIDIA Corp",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-    META: "Meta Platforms",
-    HYPE: "Hyperliquid",
-  };
-
-  return names[key] ?? key;
-}
 
 function getHoldingDetailMarkName(symbol: string, markType: (typeof HOLDING_DETAIL_MEASURE_TYPES)[keyof typeof HOLDING_DETAIL_MEASURE_TYPES]) {
   return `holding-detail:${symbol}:${markType}`;

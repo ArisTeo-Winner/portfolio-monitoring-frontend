@@ -1,0 +1,171 @@
+name: Deploy Preview — Smoke Tests
+
+# Triggered manually with a preview URL, or via GitHub deployment status events
+# (compatible with Render.com deploy hooks + Vercel GitHub integration).
+#
+# Manual trigger (Render preview or any environment):
+#   gh workflow run deploy-preview-smoke.yml \
+#     -f preview_url=https://cpm-frontend-pr-42.onrender.com
+#
+# Docs: docs/deploy/frontend-deploy.md
+
+on:
+  # ── Manual trigger ──────────────────────────────────────────────────────
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "Full URL of the deployed preview (e.g. https://cpm-frontend.onrender.com)"
+        required: true
+        type: string
+      environment:
+        description: "Target environment label (for reporting)"
+        required: false
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - staging
+          - production
+
+  # ── GitHub deployment status (Vercel / GitHub Pages / render-action) ────
+  # Fires when any deployment transitions to "success" state.
+  deployment_status:
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  resolve-url:
+    name: Resolve target URL
+    runs-on: ubuntu-latest
+    outputs:
+      target_url: ${{ steps.resolve.outputs.url }}
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - name: Resolve preview URL from trigger
+        id: resolve
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "url=${{ inputs.preview_url }}" >> "$GITHUB_OUTPUT"
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+
+          elif [[ "${{ github.event_name }}" == "deployment_status" ]]; then
+            STATE="${{ github.event.deployment_status.state }}"
+            URL="${{ github.event.deployment_status.environment_url }}"
+
+            if [[ "$STATE" != "success" ]]; then
+              echo "Deployment state is '${STATE}' — skipping smoke tests."
+              echo "url=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [[ -z "$URL" ]]; then
+              echo "No environment_url on deployment_status event — cannot run smoke tests."
+              echo "url=" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            echo "url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "environment=${{ github.event.deployment_status.environment }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate URL is not empty
+        if: steps.resolve.outputs.url == ''
+        run: |
+          echo "No valid preview URL found. Exiting."
+          exit 1
+
+  smoke:
+    name: Smoke — ${{ needs.resolve-url.outputs.environment }} (${{ needs.resolve-url.outputs.target_url }})
+    runs-on: ubuntu-latest
+    needs: resolve-url
+    if: needs.resolve-url.outputs.target_url != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Smoke tests only use Chromium (two projects: smoke-mobile + smoke-desktop).
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Wait for the deployment to be truly ready before running tests.
+      # Render free-tier services may take up to 60 s after the deploy event.
+      - name: Wait for deployment to be ready
+        shell: bash
+        run: |
+          TARGET_URL="${{ needs.resolve-url.outputs.target_url }}"
+          BYPASS="${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+          # Vercel Deployment Protection blocks all routes with 401.
+          # Pass the bypass secret as a header so the readiness check works on protected previews.
+          # Without the secret the header is omitted and public deployments work unchanged.
+          BYPASS_HEADER=""
+          [[ -n "$BYPASS" ]] && BYPASS_HEADER="-H x-vercel-protection-bypass:${BYPASS}"
+          echo "Waiting for ${TARGET_URL}/login ..."
+          for i in {1..20}; do
+            HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 $BYPASS_HEADER "${TARGET_URL}/login" || echo "000")
+            if [[ "$HTTP_STATUS" == "200" ]]; then
+              echo "Service ready (HTTP ${HTTP_STATUS}) after $((i * 3))s"
+              exit 0
+            fi
+            echo "Attempt ${i}/20 — HTTP ${HTTP_STATUS} — retrying in 3s..."
+            sleep 3
+          done
+          echo "Service did not become ready within 60s."
+          exit 1
+
+      - name: Run smoke tests
+        run: npm run test:e2e:smoke
+        env:
+          CI: "true"
+          PLAYWRIGHT_BASE_URL: ${{ needs.resolve-url.outputs.target_url }}
+          # Playwright 1.41+ sends x-vercel-protection-bypass header automatically when set.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      # Report is always uploaded so failures are reviewable.
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ needs.resolve-url.outputs.environment }}-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 14
+
+      # Traces + evidence only on failure.
+      - name: Upload smoke traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-traces-${{ needs.resolve-url.outputs.environment }}-${{ github.run_id }}
+          path: test-results/
+          retention-days: 7
+
+      # Post a summary to the job so the URL under test is visible in the GH UI.
+      - name: Post smoke summary
+        if: always()
+        shell: bash
+        run: |
+          STATUS="${{ job.status }}"
+          URL="${{ needs.resolve-url.outputs.target_url }}"
+          ENV="${{ needs.resolve-url.outputs.environment }}"
+          echo "## Smoke Test Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Key | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | \`${ENV}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Target URL | ${URL} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Result | ${STATUS} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$STATUS" == "failure" ]]; then
+            echo "> Smoke tests failed. Download the **smoke-traces** artifact for screenshots and traces." >> "$GITHUB_STEP_SUMMARY"
+          fi

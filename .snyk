@@ -1,0 +1,6 @@
+# Snyk policy file — https://docs.snyk.io/snyk-cli/test-for-vulnerabilities/the-.snyk-file
+# Populated automatically when you run: snyk ignore --id=<CVE> --reason="<justification>" --expiry=<date>
+# No active ignores: all high/critical findings must be resolved.
+version: v1.25.0
+ignore: {}
+patch: {}

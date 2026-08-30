@@ -13,8 +13,12 @@ build/
 # Test and coverage output
 coverage/
 .nyc_output/
+
+# Playwright — generated outputs (never commit)
 playwright-report/
 test-results/
+blob-report/
+playwright/.auth/
 
 # TypeScript and tool caches
 *.tsbuildinfo
@@ -55,3 +59,16 @@ tmp/
 temp/
 *.tmp
 tmp_*.txt
+/temp_old_*.txt
+
+# Debug captures (screenshots and DOM analysis exports from AI-assisted debugging sessions)
+/debug-captures/
+
+# Claude Code — machine-specific files (never commit)
+/skills-lock.json
+.claude/settings.local.json
+.claude/worktrees/
+
+# Software Bill of Materials — regenerate on demand, do not version
+/bom.json
+.gitignore

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
+import { ExploreAssetsSection } from "@/components/market/explore-assets-section";
 import { Modal } from "@/components/ui/modal";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import {
@@ -29,8 +30,10 @@ import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
+import { normalizeAssetType } from "@/lib/utils/asset";
+import { formatMarketPrice } from "@/lib/utils/format";
 
-type MarketTab = "CRYPTO" | "STOCK" | "ETF" | "WATCHLIST";
+type MarketTab = "CRYPTO" | "STOCK" | "ETF" | "WATCHLIST" | "EXPLORE";
 
 type RecentAsset = {
   id: string;
@@ -292,7 +295,7 @@ export function MarketsPage() {
               />
             ))
           ) : (
-            <EmptyCardMessage message="Sin datos de variacion 24h disponibles." />
+            <EmptyCardMessage message="Sin datos de variación 24h disponibles." />
           )}
         </MarketInfoCard>
 
@@ -304,7 +307,7 @@ export function MarketsPage() {
                 leading={`${index + 1}`}
                 subtitle={asset.symbol}
                 title={asset.name}
-                trailing={<span className="font-mono text-[#f3f6fb]">{formatMarketPrice(asset.price)}</span>}
+                trailing={<span className="tabular-nums text-[#f3f6fb]">{formatMarketPrice(asset.price)}</span>}
               />
             ))
           ) : (
@@ -328,24 +331,25 @@ export function MarketsPage() {
               />
             ))
           ) : (
-            <EmptyCardMessage message="Tus activos recientes apareceran aqui." />
+            <EmptyCardMessage message="Tus activos recientes aparecerán aquí." />
           )}
         </MarketInfoCard>
       </section>
 
-      <section className={`${MARKET_CARD_CLASS} overflow-hidden`}>
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#181b21] bg-[#0f1217]/85 px-5 py-4">
-          <div className="flex items-center gap-2 rounded-[0.95rem] bg-[#0d1015] p-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-            <MarketTabButton active={activeTab === "CRYPTO"} label="Criptomonedas" onClick={() => setActiveTab("CRYPTO")} />
-            <MarketTabButton active={activeTab === "STOCK"} label="Acciones" onClick={() => setActiveTab("STOCK")} />
-            <MarketTabButton active={activeTab === "ETF"} label="ETFs" onClick={() => setActiveTab("ETF")} />
-            <MarketTabButton
-              active={activeTab === "WATCHLIST"}
-              label={`Watchlist${watchlist.length ? ` (${watchlist.length})` : ""}`}
-              onClick={() => setActiveTab("WATCHLIST")}
-            />
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2 rounded-[0.95rem] bg-[#0d1015] p-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+          <MarketTabButton active={activeTab === "CRYPTO"} label="Criptomonedas" onClick={() => setActiveTab("CRYPTO")} />
+          <MarketTabButton active={activeTab === "STOCK"} label="Acciones" onClick={() => setActiveTab("STOCK")} />
+          <MarketTabButton active={activeTab === "ETF"} label="ETFs" onClick={() => setActiveTab("ETF")} />
+          <MarketTabButton
+            active={activeTab === "WATCHLIST"}
+            label={`Watchlist${watchlist.length ? ` (${watchlist.length})` : ""}`}
+            onClick={() => setActiveTab("WATCHLIST")}
+          />
+          <MarketTabButton active={activeTab === "EXPLORE"} label="Explorar" onClick={() => setActiveTab("EXPLORE")} />
+        </div>
 
+        {activeTab !== "EXPLORE" ? (
           <div className="flex items-center gap-3">
             <button
               className="inline-flex items-center gap-2 rounded-[0.8rem] bg-[#11151b] px-3.5 py-2 text-[0.8rem] font-semibold text-[#d8e0ec] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] transition hover:bg-[#161b23]"
@@ -362,55 +366,61 @@ export function MarketsPage() {
               <ChevronDownMiniIcon className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
+        ) : null}
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-[#181b21] text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-[#6f7a8f]">
-                <th className="w-14 px-5 py-4 text-center">#</th>
-                <th className="px-5 py-4">Nombre</th>
-                <th className="px-5 py-4 text-right">Precio</th>
-                <th className="px-5 py-4 text-right">1h %</th>
-                <th className="px-5 py-4 text-right">24h %</th>
-                <th className="px-5 py-4 text-right">7d %</th>
-                <th className="px-5 py-4 text-right">Market Cap</th>
-                <th className="px-5 py-4 text-right">Volumen (24h)</th>
-                <th className="px-5 py-4 text-center">Ultimos 7 dias</th>
-                <th className="w-28 px-5 py-4 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#181b21]">
-              {renderTableBody({
-                rows: visibleRows,
-                isTableLoading,
-                tableError,
-                watchlist,
-                logoRegistry,
-                cryptoLogoMap,
-                onToggleWatchlist: handleToggleWatchlist,
-                onOpenChart: setSelectedChartAsset,
-                onAddAsset: (row) => setAddAsset(toAssetOption(row)),
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#181b21] px-5 py-4 text-xs text-[#7c8799]">
-          <span>
-            Mostrando 1 - {visibleRows.length} de {visibleRows.length} activos
-          </span>
-          <div className="flex items-center gap-2">
-            <button className="px-2 py-1 transition hover:text-white" type="button">
-              Ant
-            </button>
-            <span className="rounded-[0.45rem] bg-[#171b22] px-2.5 py-1 text-white">1</span>
-            <button className="px-2 py-1 transition hover:text-white" type="button">
-              Sig
-            </button>
+      {activeTab === "EXPLORE" ? (
+        <ExploreAssetsSection onSelectAsset={setAddAsset} />
+      ) : (
+        <section className={`${MARKET_CARD_CLASS} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="min-w-[1180px] w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#181b21] text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-[#6f7a8f]">
+                  <th className="w-14 px-5 py-4 text-center">#</th>
+                  <th className="px-5 py-4">Nombre</th>
+                  <th className="px-5 py-4 text-right">Precio</th>
+                  <th className="px-5 py-4 text-right">1h %</th>
+                  <th className="px-5 py-4 text-right">24h %</th>
+                  <th className="px-5 py-4 text-right">7d %</th>
+                  <th className="px-5 py-4 text-right">Market Cap</th>
+                  <th className="px-5 py-4 text-right">Volumen (24h)</th>
+                  <th className="px-5 py-4 text-center">Últimos 7 días</th>
+                  <th className="w-28 px-5 py-4 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#181b21]">
+                {renderTableBody({
+                  rows: visibleRows,
+                  isTableLoading,
+                  tableError,
+                  watchlist,
+                  logoRegistry,
+                  cryptoLogoMap,
+                  onToggleWatchlist: handleToggleWatchlist,
+                  onOpenChart: setSelectedChartAsset,
+                  onAddAsset: (row) => setAddAsset(toAssetOption(row)),
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </section>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#181b21] px-5 py-4 text-xs text-[#7c8799]">
+            <span>
+              Mostrando 1 - {visibleRows.length} de {visibleRows.length} activos
+            </span>
+            <div className="flex items-center gap-2">
+              <button className="px-2 py-1 transition hover:text-white" type="button">
+                Ant
+              </button>
+              <span className="rounded-[0.45rem] bg-[#171b22] px-2.5 py-1 text-white">1</span>
+              <button className="px-2 py-1 transition hover:text-white" type="button">
+                Sig
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <AddTransactionModal
         initialAsset={addAsset}
@@ -496,16 +506,16 @@ function renderTableBody({
         <td className="px-5 py-5 align-middle">
           <AssetBadge cryptoLogoMap={cryptoLogoMap} logoRegistry={logoRegistry} row={row} />
         </td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[1.02rem] font-semibold text-[#f4f7fb]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[1.02rem] font-semibold text-[#f4f7fb]">
           {formatMarketPrice(row.price)}
         </td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change1h)}</td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change24h)}</td>
         <td className="px-5 py-5 text-right align-middle">{renderChange(row.change7d)}</td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[#cfd6e3]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[#cfd6e3]">
           {formatCompactUsd(row.marketCap)}
         </td>
-        <td className="px-5 py-5 text-right align-middle font-mono text-[#cfd6e3]">
+        <td className="px-5 py-5 text-right align-middle tabular-nums text-[#cfd6e3]">
           {formatCompactUsd(row.volume24h)}
         </td>
         <td className="px-5 py-5 align-middle">
@@ -938,12 +948,6 @@ function toggleWatchlist(current: string[], rowId: string) {
   return current.includes(rowId) ? current.filter((value) => value !== rowId) : [...current, rowId];
 }
 
-function normalizeAssetType(assetType: string) {
-  const normalized = assetType.trim().toUpperCase();
-  if (normalized === "STOCKS") return "STOCK";
-  if (normalized === "ETFS") return "ETF";
-  return normalized;
-}
 
 function renderChange(value: number | null, variant: "default" | "compact" = "default") {
   if (value === null || !Number.isFinite(value)) {
@@ -975,26 +979,6 @@ function formatCompactUsd(value: number | null | undefined) {
   }).format(value);
 }
 
-function formatMarketPrice(value: number | null) {
-  if (value === null || !Number.isFinite(value)) {
-    return "--";
-  }
-
-  if (Math.abs(value) >= 1) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 8,
-  }).format(value);
-}
 
 function formatPercentValue(value: number | null | undefined, digits = 2) {
   if (value === null || value === undefined || !Number.isFinite(value)) {

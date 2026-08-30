@@ -2,20 +2,13 @@
 
 import { useState } from "react";
 import { AssetChart } from "@/components/portfolio/asset-chart";
+import { HISTORY_RANGES } from "@/features/portfolio/lib/range-utils";
 import type { ChartRange } from "@/types/portfolio-chart";
 
-const RANGES: { label: string; value: ChartRange }[] = [
-  { label: "24h", value: "24h" },
-  { label: "7d", value: "7d" },
-  { label: "30d", value: "30d" },
-  { label: "90d", value: "90d" },
-  { label: "180d", value: "180d" },
-  { label: "1y", value: "1y" },
-  { label: "All", value: "ALL" },
-];
+const RANGES = HISTORY_RANGES;
 
 export function AssetChartContainer({ symbol }: { symbol: string }) {
-  const [range, setRange] = useState<ChartRange>("90d");
+  const [range, setRange] = useState<ChartRange>("3M");
   const [scaleMode, setScaleMode] = useState<"linear" | "log">("linear");
 
   return (

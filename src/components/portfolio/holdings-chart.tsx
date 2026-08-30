@@ -7,11 +7,14 @@ import { ChevronDown } from "lucide-react";
 import { usePortfolioHistory } from "@/features/portfolio/hooks/usePortfolioHistory";
 import type { PortfolioHistoryPoint } from "@/features/portfolio/types/portfolio-history.types";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
-import { filterSeriesByRange } from "@/features/portfolio/lib/range-utils";
+import {
+  filterSeriesByRange,
+  getNextRange,
+  HISTORY_RANGES,
+  type HistoryRange,
+} from "@/features/portfolio/lib/range-utils";
 import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatSignedCurrency } from "@/lib/utils/format";
-
-type HistoryRange = "24h" | "7d" | "30d" | "90d" | "ALL";
 
 type TooltipState = {
   visible: boolean;
@@ -20,21 +23,6 @@ type TooltipState = {
   point: PortfolioHistoryPoint | null;
   value: number;
 };
-
-const RANGE_ORDER: HistoryRange[] = ["24h", "7d", "30d", "90d", "ALL"];
-
-function getNextRange(current: HistoryRange): HistoryRange | null {
-  const idx = RANGE_ORDER.indexOf(current);
-  return idx < RANGE_ORDER.length - 1 ? RANGE_ORDER[idx + 1] : null;
-}
-
-const HISTORY_RANGES: Array<{ key: HistoryRange; label: string }> = [
-  { key: "24h", label: "24h" },
-  { key: "7d", label: "7d" },
-  { key: "30d", label: "30d" },
-  { key: "90d", label: "90d" },
-  { key: "ALL", label: "All" },
-];
 
 const POSITIVE_COLOR = tokens.positive;
 const NEGATIVE_COLOR = tokens.negative;
@@ -59,7 +47,16 @@ export function HoldingsChart({
   const [range, setRange] = useState<HistoryRange>("ALL");
   const [scaleMode, setScaleMode] = useState<"linear" | "log">("linear");
   const [isChartExpanded, setIsChartExpanded] = useState(true);
-  const { data, error, isLoading } = usePortfolioHistory(range, portfolioId);
+  const { data, error, isLoading, fetchStatus } = usePortfolioHistory(range, portfolioId);
+  // A query can retry into fetchStatus "paused" (e.g. offline, or the tab is
+  // backgrounded mid-retry) without ever settling into `error` — treat that
+  // as its own failure state so it never silently falls through to the
+  // "no history yet" empty state below.
+  const isPaused = fetchStatus === "paused";
+  // `data` stays undefined until a fetch has actually succeeded at least
+  // once, so an empty series here is ambiguous between "never loaded" and
+  // "genuinely zero points" unless we require a confirmed successful fetch.
+  const hasLoadedData = data !== undefined;
   const [tooltip, setTooltip] = useState<TooltipState>(INITIAL_TOOLTIP_STATE);
   const chartShellRef = useRef<HTMLDivElement | null>(null);
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +101,21 @@ export function HoldingsChart({
     const losing = entries.filter((entry) => Number(entry.totalProfitLoss) < 0).length;
     const flat = entries.length - profitable - losing;
     return { profitable, losing, flat, total: entries.length };
+  }, [entries]);
+
+  const { bestPerformer, worstPerformer } = useMemo(() => {
+    const ranked = entries
+      .filter((entry) => Number(entry.totalInvested) > 0)
+      .map((entry) => ({
+        entry,
+        percent: (Number(entry.totalProfitLoss) / Number(entry.totalInvested)) * 100,
+      }))
+      .sort((left, right) => right.percent - left.percent);
+
+    return {
+      bestPerformer: ranked[0] ?? null,
+      worstPerformer: ranked.length > 1 ? ranked[ranked.length - 1] : null,
+    };
   }, [entries]);
 
   const toggleChart = () => {
@@ -340,7 +352,7 @@ export function HoldingsChart({
             ) : null}
             <div className="mt-3 flex flex-col gap-1 text-[0.9rem] text-[#8fa0b8] max-sm:hidden sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
               <span>
-                Ganancia historica:{" "}
+                Ganancia histórica:{" "}
                 <strong className={allTimeProfit >= 0 ? "text-fintech-positive" : "text-fintech-negative"}>
                   {formatSignedCurrency(allTimeProfit)}{" "}
                   <span className="font-medium">
@@ -352,13 +364,18 @@ export function HoldingsChart({
               <span>
                 Costo base: <strong className="text-white">{formatCurrency(costBasis)}</strong>
               </span>
+              {data?.meta.partial ? (
+                <span className="text-[0.82rem] font-medium text-[#e9b872]">
+                  Datos parciales — sin precio: {(data.meta.unavailableSymbols ?? []).join(", ")}
+                </span>
+              ) : null}
             </div>
           </div>
 
           <div className="flex items-center gap-2 max-sm:hidden">
             <div className="flex items-center">
               {HISTORY_RANGES.map((item) => {
-                const active = item.key === range;
+                const active = item.value === range;
                 return (
                   <button
                     className={`rounded-[0.9rem] px-3.5 py-2 text-[0.82rem] font-semibold transition ${
@@ -366,8 +383,8 @@ export function HoldingsChart({
                         ? "bg-[#1a1e24] text-white shadow-[0_14px_28px_rgba(0,0,0,0.18)]"
                         : "text-fintech-muted hover:bg-white/[0.04] hover:text-white"
                     }`}
-                    key={item.key}
-                    onClick={() => setRange(item.key)}
+                    key={item.value}
+                    onClick={() => setRange(item.value)}
                     type="button"
                   >
                     {item.label}
@@ -410,7 +427,27 @@ export function HoldingsChart({
                     </div>
                     <h3 className="mt-5 text-[1.2rem] font-semibold text-white">No fue posible cargar la serie</h3>
                     <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
-                      {error instanceof Error ? error.message : "Ocurrio un error al obtener el historial de holdings."}
+                      {error instanceof Error ? error.message : "Ocurrió un error al obtener el historial de holdings."}
+                    </p>
+                  </div>
+                ) : isPaused ? (
+                  <div className="flex min-h-[16rem] md:min-h-[22rem] flex-col items-center justify-center px-6 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#15181e] shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
+                      <ChartLineIcon className="h-8 w-8 text-fintech-negative" />
+                    </div>
+                    <h3 className="mt-5 text-[1.2rem] font-semibold text-white">Sin conexión</h3>
+                    <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
+                      No fue posible actualizar el historial. Verifica tu conexión e intenta de nuevo.
+                    </p>
+                  </div>
+                ) : !hasLoadedData ? (
+                  <div className="flex min-h-[16rem] md:min-h-[22rem] flex-col items-center justify-center px-6 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#15181e] shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
+                      <ChartLineIcon className="h-8 w-8 text-fintech-negative" />
+                    </div>
+                    <h3 className="mt-5 text-[1.2rem] font-semibold text-white">No fue posible cargar la serie</h3>
+                    <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
+                      No pudimos confirmar el historial para este rango. Intenta de nuevo en unos segundos.
                     </p>
                   </div>
                 ) : series.length === 0 ? (
@@ -418,9 +455,9 @@ export function HoldingsChart({
                     <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#15181e] shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
                       <ChartLineIcon className="h-8 w-8 text-fintech-muted" />
                     </div>
-                    <h3 className="mt-5 text-[1.2rem] font-semibold text-white">Aun no hay historial suficiente</h3>
+                    <h3 className="mt-5 text-[1.2rem] font-semibold text-white">Aún no hay historial suficiente</h3>
                     <p className="mt-2 max-w-[34rem] text-[0.9rem] leading-7 text-fintech-muted">
-                      Registra transacciones para construir la evolucion real del valor de tu portafolio.
+                      Registra transacciones para construir la evolución real del valor de tu portafolio.
                     </p>
                   </div>
                 ) : (
@@ -507,7 +544,7 @@ export function HoldingsChart({
 
               <div className="mt-2 flex items-center justify-between px-2 sm:hidden">
                 {HISTORY_RANGES.map((item) => {
-                  const active = item.key === range;
+                  const active = item.value === range;
                   return (
                     <button
                       className={`rounded-lg px-3 py-1.5 text-[0.75rem] font-medium leading-[1.35] transition ${
@@ -515,8 +552,8 @@ export function HoldingsChart({
                           ? "bg-[#262D3D] text-white"
                           : "text-[#7D8596] hover:text-white"
                       }`}
-                      key={item.key}
-                      onClick={() => setRange(item.key)}
+                      key={item.value}
+                      onClick={() => setRange(item.value)}
                       type="button"
                     >
                       {item.label}
@@ -569,8 +606,68 @@ export function HoldingsChart({
             {profitBreakdown.flat > 0 ? ` · ${profitBreakdown.flat} sin cambio` : ""}.
           </p>
         </article>
+
+        {bestPerformer || worstPerformer ? (
+          <div className="grid grid-cols-2 gap-4">
+            {bestPerformer ? (
+              <PerformerCard label="Best Performer" performer={bestPerformer} />
+            ) : null}
+            {worstPerformer ? (
+              <PerformerCard label="Worst Performer" performer={worstPerformer} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function PerformerCard({
+  label,
+  performer,
+}: {
+  label: string;
+  performer: { entry: PortfolioEntry; percent: number };
+}) {
+  return (
+    <article className="rounded-[1.3rem] bg-[#111317] p-4 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
+      <p className="truncate text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[#71819b]">{label}</p>
+      <p className="mt-2 truncate text-[0.98rem] font-semibold text-white">{performer.entry.assetSymbol}</p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="truncate text-[0.78rem] text-fintech-muted">
+          {formatSignedCurrency(performer.entry.totalProfitLoss)}
+        </span>
+        <TrendBadge value={performer.percent} />
+      </div>
+    </article>
+  );
+}
+
+function TrendBadge({ value }: { value: number }) {
+  const positive = value >= 0;
+  const color = positive ? "#17c784" : "#ff4d67";
+
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-[0.78rem] font-semibold" style={{ color }}>
+      {positive ? <TrendArrowUpIcon className="h-3 w-3" /> : <TrendArrowDownIcon className="h-3 w-3" />}
+      {Math.abs(value).toFixed(2)}%
+    </span>
+  );
+}
+
+function TrendArrowUpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 12 12">
+      <path d="M6 2 10.5 8.5H1.5L6 2Z" />
+    </svg>
+  );
+}
+
+function TrendArrowDownIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 12 12">
+      <path d="M6 10 1.5 3.5h9L6 10Z" />
+    </svg>
   );
 }
 

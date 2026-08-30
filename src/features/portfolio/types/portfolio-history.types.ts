@@ -10,6 +10,9 @@ export type PortfolioHistoryMeta = {
   to: number;
   currency: string;
   points: number;
+  // Presentes cuando algún activo no se pudo cotizar en ningún proveedor: la serie es parcial.
+  partial?: boolean;
+  unavailableSymbols?: string[];
 };
 
 export type PortfolioHistoryResponse = {

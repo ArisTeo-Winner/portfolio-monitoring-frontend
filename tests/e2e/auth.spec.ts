@@ -3,7 +3,9 @@ import { openLoginDialog, mockBackendAPIs } from "./helpers";
 import { skipUnlessXsMobile, skipUnlessMobile } from "./project-guards";
 
 test.describe("Login flow", () => {
-  test.setTimeout(60_000);
+  // 90s to cover a cold Next.js dev compile of BOTH /login (beforeEach) and
+  // /portfolio (post-login redirect) on the first run against a fresh server.
+  test.setTimeout(90_000);
 
   test.beforeEach(async ({ page }, testInfo) => {
     skipUnlessMobile(testInfo);
@@ -34,7 +36,7 @@ test.describe("Login flow", () => {
   });
 
   test("muestra error de credenciales inválidas (BFF /api/auth/login)", async ({ page }) => {
-    await page.route(/\/api\/v1\/auth\/login/, (route) =>
+    await page.route(/\/api\/auth\/login/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -52,7 +54,7 @@ test.describe("Login flow", () => {
 
   test("redirige a /portfolio tras login exitoso", async ({ page }) => {
     await mockBackendAPIs(page);
-    await page.route(/\/api\/v1\/auth\/login/, (route) =>
+    await page.route(/\/api\/auth\/login/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -64,7 +66,9 @@ test.describe("Login flow", () => {
     await page.getByTestId("password-input").locator("input").fill("Password1!");
     await page.getByTestId("submit-login").click();
 
-    await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
+    // 60s (not 15s) to absorb the on-demand dev compile of /portfolio on the
+    // first navigation of a fresh run — matches the loginAs helper's budget.
+    await expect(page).toHaveURL(/\/portfolio/, { timeout: 60_000 });
   });
 
   test("screenshot visual regression – login dialog", async ({ page }, testInfo) => {

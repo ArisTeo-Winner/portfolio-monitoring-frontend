@@ -33,7 +33,6 @@ import { AddTransactionModal } from "@/components/transactions/add-transaction-m
 import { AddTransactionModalProvider, type OpenAddTransactionModalOptions } from "@/components/layout/add-transaction-modal-context";
 import { logout } from "@/features/auth/api/logout";
 import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
-import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
@@ -117,11 +116,12 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
       // No token in memory (e.g. after a page reload).
       // Attempt silent session recovery via the HttpOnly refresh-token cookie.
       try {
-        const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
+        const response = await fetch(endpoints.bff.refresh, {
           method: "POST",
           cache: "no-store",
-          // The HttpOnly refresh-token cookie must be sent to the backend.
-          credentials: "include",
+          // Same-origin BFF call: sends the HttpOnly `cpm.rt` cookie for silent
+          // session recovery; the BFF replays it to the backend.
+          credentials: "same-origin",
           // Bound the wait so a cold-starting/slow backend can't strand the
           // user on the loading skeleton — fall through to the login redirect.
           signal: AbortSignal.timeout(8_000),

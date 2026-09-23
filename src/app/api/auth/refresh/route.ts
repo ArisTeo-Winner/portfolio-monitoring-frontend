@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
-
-const REFRESH_TOKEN_COOKIE = "cpm.rt";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+import {
+  REFRESH_TOKEN_COOKIE,
+  refreshCookieOptions,
+  extractBackendRefreshToken,
+  backendRefreshCookieHeader,
+} from "@/lib/api/bff-cookies";
 
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
@@ -16,7 +19,13 @@ export async function POST(request: NextRequest) {
   try {
     backendResponse = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
       method: "POST",
-      headers: { "X-Refresh-Token": refreshToken },
+      // The backend reads the refresh token from its `refresh_token` cookie
+      // (that's how it set it on login). Replay it as a Cookie; keep the header
+      // too in case the backend also accepts it.
+      headers: {
+        "X-Refresh-Token": refreshToken,
+        Cookie: backendRefreshCookieHeader(refreshToken),
+      },
       cache: "no-store",
     });
   } catch {
@@ -32,30 +41,27 @@ export async function POST(request: NextRequest) {
   const raw = await backendResponse.text();
   const payload = tryParseJson(raw);
 
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as Record<string, unknown>).accessToken !== "string" ||
-    typeof (payload as Record<string, unknown>).refreshToken !== "string"
-  ) {
+  // Backend contract: `{ accessToken }` in the body; a rotated refresh token (if
+  // any) arrives as an HttpOnly Set-Cookie, never in the body.
+  const accessToken = readAccessToken(payload);
+  if (!accessToken) {
     return NextResponse.json({ detail: "Invalid token response from server" }, { status: 502 });
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = payload as {
-    accessToken: string;
-    refreshToken: string;
-  };
-
   const response = NextResponse.json({ accessToken });
-  response.cookies.set(REFRESH_TOKEN_COOKIE, newRefreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: COOKIE_MAX_AGE,
-    path: "/",
-  });
+
+  // If the backend rotated the refresh token, persist the new value; otherwise
+  // keep the existing cookie (re-set to refresh its max-age).
+  const rotatedRefreshToken = extractBackendRefreshToken(backendResponse) ?? refreshToken;
+  response.cookies.set(REFRESH_TOKEN_COOKIE, rotatedRefreshToken, refreshCookieOptions);
 
   return response;
+}
+
+function readAccessToken(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const value = (payload as Record<string, unknown>).accessToken;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function tryParseJson(raw: string): unknown {

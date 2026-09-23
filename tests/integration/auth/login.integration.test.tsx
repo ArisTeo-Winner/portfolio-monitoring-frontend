@@ -111,7 +111,7 @@ describe("LoginForm – invalid credentials (MSW)", () => {
 describe("LoginForm – server error (MSW)", () => {
   it("displays a controlled error message on 500", async () => {
     server.use(
-      http.post("http://localhost:8080/api/v1/auth/login", () =>
+      http.post("http://localhost/api/auth/login", () =>
         HttpResponse.json(
           { detail: "Servicio no disponible. Intente mas tarde." },
           { status: 500 },
@@ -132,7 +132,7 @@ describe("LoginForm – server error (MSW)", () => {
 
   it("displays the HTTP status text when the server response body is empty", async () => {
     server.use(
-      http.post("http://localhost:8080/api/v1/auth/login", () =>
+      http.post("http://localhost/api/auth/login", () =>
         HttpResponse.json({}, { status: 502 }),
       ),
     );

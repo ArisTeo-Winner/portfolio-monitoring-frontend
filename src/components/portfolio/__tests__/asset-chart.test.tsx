@@ -189,6 +189,25 @@ describe("AssetChart", () => {
     });
   });
 
+  it("clips the leading $0 (pre-purchase) segment before feeding the series", async () => {
+    // Holdings-value series: $0 before the buy, then the real position value.
+    const withLeadingZeros: AssetHistoryPoint[] = [
+      { time: 1771455644, value: 0 },
+      { time: 1771459305, value: 0 },
+      { time: 1779224441, value: 356.7 },
+      { time: 1779310841, value: 330.5 },
+    ];
+    mockSuccess(withLeadingZeros, []);
+    render(<AssetChart symbol="GOOG" range="6M" />);
+
+    await waitFor(() => {
+      expect(chartMock.setData).toHaveBeenCalledWith([
+        { time: 1779224441, value: 356.7 },
+        { time: 1779310841, value: 330.5 },
+      ]);
+    });
+  });
+
   it("updates chart data when range prop changes", async () => {
     const history90: AssetHistoryPoint[] = [{ time: 1775000000, value: 45.0 }];
     const history7: AssetHistoryPoint[] = [{ time: 1779000000, value: 48.5 }];

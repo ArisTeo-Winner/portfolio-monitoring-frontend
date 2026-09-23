@@ -79,11 +79,11 @@ describe("FrictionBreakdownCard", () => {
     expect(screen.queryByTestId("friction-adjusted-unit-price")).not.toBeInTheDocument();
   });
 
-  it("labels the net line as cost for BUY and as proceeds for SELL", () => {
+  it("labels the net line as cost basis for BUY and as proceeds for SELL", () => {
     const { rerender } = render(
       <FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="BUY" feeCurrency="USD" />,
     );
-    expect(screen.getByTestId("friction-net")).toHaveTextContent("Costo neto real");
+    expect(screen.getByTestId("friction-net")).toHaveTextContent("Costo base (neto real)");
 
     rerender(<FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="SELL" feeCurrency="USD" />);
     expect(screen.getByTestId("friction-net")).toHaveTextContent("Neto recibido real");
@@ -93,5 +93,106 @@ describe("FrictionBreakdownCard", () => {
     render(<FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="BUY" feeCurrency="MXN" />);
     // es-MX MXN formatting uses the "$" symbol; assert the grouped integer part is present.
     expect(screen.getByTestId("friction-net")).toHaveTextContent("1,010.11");
+  });
+
+  it("labels the adjusted unit price as break-even for BUY and net for SELL", () => {
+    const { rerender } = render(
+      <FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="BUY" feeCurrency="USD" />,
+    );
+    expect(screen.getByTestId("friction-adjusted-unit-price")).toHaveTextContent("Precio de equilibrio/u");
+
+    rerender(<FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="SELL" feeCurrency="USD" />);
+    expect(screen.getByTestId("friction-adjusted-unit-price")).toHaveTextContent("Precio neto/u");
+  });
+
+  it("shows the execution unit price row only when executionUnitPrice is provided", () => {
+    const { rerender } = render(
+      <FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="BUY" feeCurrency="USD" />,
+    );
+    expect(screen.queryByTestId("friction-execution-unit-price")).not.toBeInTheDocument();
+
+    rerender(
+      <FrictionBreakdownCard
+        breakdown={BROKER_BREAKDOWN}
+        transactionType="BUY"
+        feeCurrency="USD"
+        executionUnitPrice={108.7988}
+      />,
+    );
+    const executionRow = screen.getByTestId("friction-execution-unit-price");
+    expect(executionRow).toHaveTextContent("Precio de ejecución/u");
+    expect(executionRow).toHaveTextContent("108.80");
+  });
+
+  it("renders the per-unit friction bridge only when perUnitFriction and execution are both present", () => {
+    // No perUnitFriction → no bridge, even with execution price.
+    const { rerender } = render(
+      <FrictionBreakdownCard
+        breakdown={BROKER_BREAKDOWN}
+        transactionType="BUY"
+        feeCurrency="USD"
+        executionUnitPrice={108.7988}
+      />,
+    );
+    expect(screen.queryByTestId("friction-per-unit")).not.toBeInTheDocument();
+
+    // With perUnitFriction + execution → bridge shows the value.
+    rerender(
+      <FrictionBreakdownCard
+        breakdown={{ ...BROKER_BREAKDOWN, perUnitFriction: 0.26214052 }}
+        transactionType="BUY"
+        feeCurrency="USD"
+        executionUnitPrice={108.7988}
+      />,
+    );
+    const bridge = screen.getByTestId("friction-per-unit");
+    expect(bridge).toHaveTextContent("fricción/u");
+    expect(bridge).toHaveTextContent("0.26");
+  });
+
+  it("renders the CRCL golden ladder end-to-end: $108.80 + $0.26 = $109.06", () => {
+    // Exact backend golden values (ADR-0004 / DriveWealth CRCL confirmation).
+    const CRCL: FrictionBreakdown = {
+      grossAmount: 103.759999,
+      brokerCommission: 0.25,
+      brokerIva: 0,
+      otherFees: 0,
+      totalFrictionCost: 0.25,
+      finalNetCost: 104.009999,
+      adjustedUnitPrice: 109.06094157,
+      perUnitFriction: 0.26214052,
+      reviewStatus: "OK",
+    };
+    render(
+      <FrictionBreakdownCard
+        breakdown={CRCL}
+        transactionType="BUY"
+        feeCurrency="USD"
+        executionUnitPrice={108.79880105}
+      />,
+    );
+
+    expect(screen.getByTestId("friction-execution-unit-price")).toHaveTextContent("$108.80");
+    expect(screen.getByTestId("friction-per-unit")).toHaveTextContent("$0.26");
+    expect(screen.getByTestId("friction-adjusted-unit-price")).toHaveTextContent("$109.06");
+  });
+
+  it("hides the bridge when perUnitFriction is set but there is no execution price to bridge from", () => {
+    render(
+      <FrictionBreakdownCard
+        breakdown={{ ...BROKER_BREAKDOWN, perUnitFriction: 0.26214052 }}
+        transactionType="BUY"
+        feeCurrency="USD"
+      />,
+    );
+    expect(screen.queryByTestId("friction-per-unit")).not.toBeInTheDocument();
+  });
+
+  it("omits the execution row but keeps the break-even price when adjustedUnitPrice is set and execution is null", () => {
+    render(
+      <FrictionBreakdownCard breakdown={BROKER_BREAKDOWN} transactionType="BUY" feeCurrency="USD" executionUnitPrice={null} />,
+    );
+    expect(screen.queryByTestId("friction-execution-unit-price")).not.toBeInTheDocument();
+    expect(screen.getByTestId("friction-adjusted-unit-price")).toBeInTheDocument();
   });
 });

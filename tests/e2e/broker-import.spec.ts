@@ -51,34 +51,20 @@ test.describe("Broker import (GBM) — dual-channel async job flow", () => {
     await loginAs(page);
   });
 
-  test("MXN channel: statement upload → polling → shows N transacciones importadas", async ({ page }) => {
-    let pollCount = 0;
-
-    // Channel 1 returns a *single* job object, not an array.
-    await page.route(/\/api\/v1\/me\/broker\/gbm\/statements$/, (route) =>
-      json(route, baseJob({ status: "QUEUED" }), 202),
-    );
-    await routeJobEndpoints(page, () => {
-      pollCount += 1;
-      if (pollCount === 1) return baseJob({ status: "PROCESSING" });
-      return baseJob({
-        status: "COMPLETED",
-        completedAt: "2026-08-22T10:01:00Z",
-        result: { fileName: "sample-statement.pdf", accepted: 2, duplicate: 1, skipped: 0, rejected: 0, messages: [] },
-      });
-    });
-
+  test("MXN channel (Mercado nacional): canal deshabilitado, visible pero inerte", async ({ page }) => {
     await page.goto("/settings/connections");
     await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
 
-    await page.getByTestId("gbm-channel-statement-input").setInputFiles(SAMPLE_PDF);
+    // The national-market statement channel is intentionally disabled (kept, not
+    // removed): the card is visible and badged, but has no file input.
+    const statement = page.getByTestId("gbm-channel-statement");
+    await expect(statement).toBeVisible();
+    await expect(statement).toHaveAttribute("data-disabled", "true");
+    await expect(page.getByTestId("gbm-channel-statement-disabled-badge")).toBeVisible();
+    await expect(page.getByTestId("gbm-channel-statement-input")).toHaveCount(0);
 
-    const card = page.getByTestId("import-job-card");
-    await expect(card).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("import-job-accepted")).toHaveText(/2 transacciones importadas/, {
-      timeout: 15_000,
-    });
-    await expect(card).toHaveAttribute("data-status", "COMPLETED");
+    // The DriveWealth (USD) channel remains fully functional.
+    await expect(page.getByTestId("gbm-channel-drivewealth-input")).toHaveCount(1);
   });
 
   test("USD channel: DriveWealth DEAD_LETTER muestra el error y permite reintentar hasta completar", async ({ page }) => {

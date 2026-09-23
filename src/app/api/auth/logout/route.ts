@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
-
-const REFRESH_TOKEN_COOKIE = "cpm.rt";
+import { REFRESH_TOKEN_COOKIE, backendRefreshCookieHeader } from "@/lib/api/bff-cookies";
 
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
@@ -11,7 +10,10 @@ export async function POST(request: NextRequest) {
     try {
       await fetch(`${env.apiBaseUrl}${endpoints.auth.logout}`, {
         method: "POST",
-        headers: { "X-Refresh-Token": refreshToken },
+        headers: {
+          "X-Refresh-Token": refreshToken,
+          Cookie: backendRefreshCookieHeader(refreshToken),
+        },
         cache: "no-store",
       });
     } catch {

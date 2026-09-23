@@ -72,7 +72,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
         }
         return HttpResponse.json(portfolioFixtures.entries);
       }),
-      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
+      http.post("http://localhost/api/auth/refresh", () =>
         HttpResponse.json({ accessToken: refreshedToken }),
       ),
     );
@@ -86,7 +86,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
       http.get("http://localhost:8080/api/v1/me/portfolio", () =>
         HttpResponse.json({ status: 401, title: "Unauthorized" }, { status: 401 }),
       ),
-      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
+      http.post("http://localhost/api/auth/refresh", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
     );
@@ -116,7 +116,7 @@ describe("HTTP client – 401 auto-refresh (MSW)", () => {
       http.get("http://localhost:8080/api/v1/me/portfolio", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
-      http.post("http://localhost:8080/api/v1/tokens/refresh", () =>
+      http.post("http://localhost/api/auth/refresh", () =>
         HttpResponse.json({ status: 401 }, { status: 401 }),
       ),
     );

@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
-import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
+import { readAssetLogoRegistry, resolveAssetName, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
+import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 import { startHoldingDetailTrace } from "@/features/portfolio/lib/holding-detail-performance";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
 import { getAssetCurrency, formatCurrencyByCode } from "@/lib/utils/currency";
-import { getAssetDisplayName } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 type WorkspaceTab = "assets" | "history";
@@ -57,6 +57,15 @@ export function PortfolioTable({
     ).then((updated) => setLogoRegistry(updated));
   }, [entries]);
 
+  // Shared self-healing logo resolver: registry + live CoinGecko fallback, so
+  // assets the backend catalog does not know still render an icon (no manual
+  // catalog edits required).
+  const assetRefs = useMemo(
+    () => entries.map((e) => ({ symbol: e.assetSymbol, assetType: e.assetType })),
+    [entries],
+  );
+  const resolveLogo = useAssetLogos(assetRefs);
+
   useEffect(() => {
     const handleRefresh = () => {
       void onHistoryChanged?.();
@@ -71,7 +80,7 @@ export function PortfolioTable({
   const visibleEntries = useMemo(() => {
     return [...entries]
       .filter((entry) => {
-        const haystack = `${entry.assetSymbol} ${getAssetDisplayName(entry.assetSymbol)} ${entry.assetType}`.toLowerCase();
+        const haystack = `${entry.assetSymbol} ${resolveAssetName(entry.assetSymbol, entry.assetType, logoRegistry)} ${entry.assetType}`.toLowerCase();
         return haystack.includes(search.toLowerCase());
       })
       .sort((left, right) => Number(right.currentValue) - Number(left.currentValue));
@@ -147,10 +156,10 @@ export function PortfolioTable({
                   type="button"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+                    <AssetAvatar assetType={entry.assetType} logoUrl={resolveLogo(entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                     <div className="min-w-0">
                       <p className="max-w-[7.5rem] truncate text-[0.875rem] font-medium leading-[1.35] text-white">{entry.assetSymbol}</p>
-                      <p className="mt-0.5 max-w-[7.5rem] truncate text-[0.75rem] font-normal leading-[1.4] text-[#7D8596]">{getAssetDisplayName(entry.assetSymbol)}</p>
+                      <p className="mt-0.5 max-w-[7.5rem] truncate text-[0.75rem] font-normal leading-[1.4] text-[#7D8596]">{resolveAssetName(entry.assetSymbol, entry.assetType, logoRegistry)}</p>
                     </div>
                   </div>
                   <div className="min-w-[7.5rem] text-right">
@@ -189,10 +198,10 @@ export function PortfolioTable({
                     <tr className="group transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#13161c]" key={entry.portfolioEntryId}>
                       <td className="py-3.5 pr-4">
                         <button className="flex w-full items-center gap-4 text-left" onClick={() => openHoldingDetail(entry.assetSymbol)} type="button">
-                          <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+                          <AssetAvatar assetType={entry.assetType} logoUrl={resolveLogo(entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="truncate text-[1rem] font-semibold text-white">{getAssetDisplayName(entry.assetSymbol)}</p>
+                              <p className="truncate text-[1rem] font-semibold text-white">{resolveAssetName(entry.assetSymbol, entry.assetType, logoRegistry)}</p>
                               {entry.assetType !== "CRYPTO" ? (
                                 <span className="rounded-full bg-[#15181e] px-2 py-0.5 text-[0.64rem] font-semibold uppercase tracking-[0.16em] text-[#8ea1bb] shadow-[0_10px_24px_rgba(0,0,0,0.16)]">
                                   {entry.assetType}
@@ -267,15 +276,21 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
     setLogoRegistry(readAssetLogoRegistry());
   }, []);
 
+  const assetRefs = useMemo(
+    () => [{ symbol: entry.assetSymbol, assetType: entry.assetType }],
+    [entry.assetSymbol, entry.assetType],
+  );
+  const resolveLogo = useAssetLogos(assetRefs);
+
   return (
     <section className="overflow-hidden rounded-[1.65rem] bg-[#111317] p-6 shadow-[0_30px_84px_rgba(0,0,0,0.32)]">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-[#17c784]">Holding detail</p>
           <div className="mt-4 flex items-center gap-4">
-            <AssetAvatar assetType={entry.assetType} logoUrl={getAssetLogoFromRegistry(logoRegistry, entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
+            <AssetAvatar assetType={entry.assetType} logoUrl={resolveLogo(entry.assetSymbol, entry.assetType)} symbol={entry.assetSymbol} size="lg" />
             <div>
-              <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{getAssetDisplayName(entry.assetSymbol)}</h1>
+              <h1 className="text-[2rem] font-semibold tracking-[-0.05em] text-white">{resolveAssetName(entry.assetSymbol, entry.assetType, logoRegistry)}</h1>
               <p className="mt-1 text-[0.88rem] uppercase tracking-[0.18em] text-[#7f8aa3]">
                 {entry.assetSymbol} / {entry.assetType}
               </p>

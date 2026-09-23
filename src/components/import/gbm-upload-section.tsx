@@ -60,6 +60,9 @@ export function GbmUploadSection({ onImported }: Props) {
           error={uploadError.statement}
           onFiles={(files) => void uploadStatement(files[0])}
           testid="gbm-channel-statement"
+          // Canal deshabilitado a propósito: se mantiene visible pero inerte
+          // (no elimina la sección). Reactivar quitando `disabled`.
+          disabled
         />
 
         <GbmChannelCard

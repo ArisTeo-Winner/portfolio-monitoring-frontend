@@ -1,11 +1,24 @@
 import { encodeBmvSymbol } from "@/lib/utils/currency";
 
 export const endpoints = {
+  // Spring Boot backend endpoints (called server-side by the BFF route handlers,
+  // and directly by the API client for authorized data requests).
   auth: {
     login: "/api/v1/auth/login",
     register: "/api/v1/users/register",
     logout: "/api/v1/auth/logout",
     refresh: "/api/v1/tokens/refresh",
+  },
+  // First-party BFF route handlers (src/app/api/auth/*), same-origin. These own
+  // the `cpm.rt` HttpOnly cookie; the browser talks to these, never to the
+  // backend origin, for the token lifecycle.
+  bff: {
+    login: "/api/auth/login",
+    refresh: "/api/auth/refresh",
+    logout: "/api/auth/logout",
+    // Same-origin proxy for the transactions list — forwards to the backend and
+    // enriches crypto logoUrl server-side (src/app/api/me/transactions/route.ts).
+    transactions: "/api/me/transactions",
   },
   users: {
     me: "/api/v1/users/me",

@@ -61,16 +61,20 @@ describe("GbmUploadSection", () => {
     expect(screen.getByTestId("import-jobs-empty")).toBeInTheDocument();
   });
 
-  it("forwards a chosen statement PDF to uploadStatement()", async () => {
+  it("renders the national-market (statement) channel as disabled but not removed", () => {
     const uploadStatement = vi.fn();
     mockedUseGbmImport.mockReturnValue(hookState({ uploadStatement }));
 
     render(<GbmUploadSection />);
-    const file = new File(["%PDF-1.4"], "estado-cuenta.pdf", { type: "application/pdf" });
-    await userEvent.upload(screen.getByTestId("gbm-channel-statement-input"), file);
 
-    expect(uploadStatement).toHaveBeenCalledTimes(1);
-    expect(uploadStatement.mock.calls[0][0]).toBeInstanceOf(File);
+    // The section is intentionally kept in the DOM (visible, discoverable)…
+    const card = screen.getByTestId("gbm-channel-statement");
+    expect(card).toBeInTheDocument();
+    // …but marked disabled, badged, and stripped of its file input so it is inert.
+    expect(card).toHaveAttribute("data-disabled", "true");
+    expect(screen.getByTestId("gbm-channel-statement-disabled-badge")).toBeInTheDocument();
+    expect(screen.queryByTestId("gbm-channel-statement-input")).not.toBeInTheDocument();
+    expect(uploadStatement).not.toHaveBeenCalled();
   });
 
   it("forwards chosen confirmation PDFs to uploadConfirmations()", async () => {

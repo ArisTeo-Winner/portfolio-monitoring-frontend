@@ -88,3 +88,27 @@ export function filterSeriesByRange<T extends { time: number }>(
   if (cutoff === null) return series;
   return series.filter((point) => point.time >= cutoff);
 }
+
+/**
+ * Recorta el tramo inicial "sin posición" de una serie de valor de tenencia.
+ *
+ * Las series de valor de posición valen 0 antes de la fecha de compra, lo que
+ * produce una línea plana en $0 y un salto casi vertical en la entrada, además
+ * de estirar el eje Y desde $0. Google Finance evita esto arrancando la vista en
+ * la fecha de compra: prioriza la historia de la inversión, no la del activo.
+ *
+ * Esta función descarta el tramo inicial de puntos con valor 0 para que el primer
+ * punto dibujado sea la entrada real. Es idempotente y segura de aplicar siempre:
+ *
+ * - Si la serie ya arranca con valor distinto de 0 (p. ej. precio puro), se
+ *   devuelve intacta.
+ * - Si todos los puntos son 0 (sin posición en el rango), se devuelve intacta y
+ *   el estado vacío/normal la gestiona.
+ * - Solo recorta el tramo INICIAL; los ceros intermedios (venta total y recompra
+ *   dentro del rango) se conservan.
+ */
+export function clipToPositionStart<T extends { value: number }>(series: T[]): T[] {
+  const firstActive = series.findIndex((point) => point.value !== 0);
+  if (firstActive <= 0) return series;
+  return series.slice(firstActive);
+}

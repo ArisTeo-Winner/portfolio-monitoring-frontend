@@ -35,9 +35,10 @@ export async function openLoginDialog(page: Page) {
 }
 
 export async function loginAs(page: Page) {
-  // Mock the backend login endpoint (called directly by login.ts — no BFF proxy).
-  // Pattern matches http://localhost:8080/api/v1/auth/login
-  await page.route(/\/api\/v1\/auth\/login/, (route) =>
+  // Mock the first-party BFF login route (login.ts now posts to /api/auth/login).
+  // The BFF response the browser sees is `{ accessToken }` (refresh is an
+  // HttpOnly cookie set by the BFF).
+  await page.route(/\/api\/auth\/login/, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -47,7 +48,7 @@ export async function loginAs(page: Page) {
 
   // Also mock the refresh endpoint so the protected-shell bootstrap
   // (triggered on /portfolio load) resolves immediately without a real backend.
-  await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+  await page.route(/\/api\/auth\/refresh/, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -142,7 +143,7 @@ export async function mockBackendAPIs(page: Page) {
   // Silent refresh endpoint — called directly by protected-shell bootstrap and
   // client.ts retry logic. Return 401 to simulate an unauthenticated state in
   // tests that don't call loginAs first, or override per-test as needed.
-  await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+  await page.route(/\/api\/auth\/refresh/, (route) =>
     route.fulfill({
       status: 401,
       contentType: "application/json",

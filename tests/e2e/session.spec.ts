@@ -11,7 +11,7 @@ test.describe("Session Management", () => {
     skipUnlessMobile(testInfo);
     await mockBackendAPIs(page);
 
-    await page.route(/\/api\/v1\/auth\/logout/, (route) =>
+    await page.route(/\/api\/auth\/logout/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -84,7 +84,7 @@ test.describe("Session Management", () => {
     // Simulate an expired/missing HttpOnly refresh cookie: override the mock
     // so the next silent refresh returns 401. The in-memory token is lost on
     // a new full navigation (page.goto), triggering the redirect to /login.
-    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+    await page.route(/\/api\/auth\/refresh/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -109,7 +109,7 @@ test.describe("Session Management", () => {
     // Simulate the backend having revoked the refresh cookie on logout:
     // override the mock so any subsequent silent refresh returns 401.
     // This mirrors real behaviour — the backend clears the HttpOnly cookie.
-    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+    await page.route(/\/api\/auth\/refresh/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",

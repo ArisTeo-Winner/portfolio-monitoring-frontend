@@ -1,16 +1,33 @@
 ﻿export type TransactionMode = "BUY" | "SELL" | "TRANSFER" | "DIVIDEND";
 export type TransferDirection = "TRANSFER_IN" | "TRANSFER_OUT";
 export type DividendType = "CASH" | "STOCK";
+// Settlement currency of the operation. The backend persists this verbatim
+// (it is a first-class column, never inferred), so the frontend MUST send it —
+// otherwise a MXN (BMV/GBM) trade is stored with no currency and later valued
+// as if it were USD. Native amounts are stored as-entered; FX conversion happens
+// at valuation, never at write.
+export type TransactionCurrency = "MXN" | "USD";
 
 export type BuyOrSellTransactionPayload = {
   assetSymbol: string;
   assetType: string;
   quantity: number;
   pricePerUnit: number;
+  // Single-fee path (classic). Send this OR the split fields below, never both:
+  // if any split field is present the backend derives fee = commission+iva+other
+  // and ignores `fee` (ADR-0005).
   fee?: number;
+  // Manual commission/IVA split (BUY/SELL). All optional, each ≥ 0. When any is
+  // sent the backend derives `fee` from their sum and populates the fine-grained
+  // FrictionBreakdown. IVA is an ABSOLUTE amount (the UI computes 16% for MXN),
+  // not a rate — the backend never recomputes it.
+  brokerCommission?: number;
+  brokerIva?: number;
+  otherFees?: number;
   transactionDate: string;
   notes?: string;
   broker?: string;
+  currency?: TransactionCurrency;
   // GOVERNMENT_BOND-only fields, only sent on BUY when assetType is a bond.
   faceValue?: number;
   maturityDate?: string;
@@ -27,6 +44,7 @@ export type RegisterDividendPayload = {
   exDividendDate?: string;
   taxWithheld?: number;
   broker?: string;
+  currency?: TransactionCurrency;
 };
 
 export type TransferTransactionPayload = {
@@ -37,6 +55,7 @@ export type TransferTransactionPayload = {
   fee?: number;
   transactionDate: string;
   notes?: string;
+  currency?: TransactionCurrency;
 };
 
 export type UpdateTransactionPayload = {
@@ -48,12 +67,15 @@ export type UpdateTransactionPayload = {
   fee?: number;
   notes?: string;
   transferType?: TransferDirection;
+  currency?: TransactionCurrency;
 };
 
 export type TransactionResponse = {
   transactionId: string;
   assetSymbol: string;
   assetType: string;
+  assetName?: string | null;
+  logoUrl?: string | null;
   transactionType: string;
   quantity: number;
   pricePerUnit: number;
@@ -63,9 +85,6 @@ export type TransactionResponse = {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
-  // Present on broker-linked transactions (both imported and manual). The
-  // backend returns these on the list response; used to attribute an imported
-  // transaction back to the channel that created it. See the import-review flow.
   broker?: string | null;
   currency?: string | null;
 };
@@ -96,6 +115,13 @@ export type FrictionBreakdown = {
   totalFrictionCost: number;
   finalNetCost: number;
   adjustedUnitPrice: number | null;
+  /**
+   * Friction per unit = totalFrictionCost / quantity (backend-computed, scale 8).
+   * Backend guarantees perUnitFriction === adjustedUnitPrice − pricePerUnit, so
+   * the UI can render the ejecución→equilibrio "bridge" without doing money math
+   * (ADR-0001). Optional: absent on responses predating the backend field.
+   */
+  perUnitFriction?: number | null;
   reviewStatus: FrictionReviewStatus | null;
 };
 

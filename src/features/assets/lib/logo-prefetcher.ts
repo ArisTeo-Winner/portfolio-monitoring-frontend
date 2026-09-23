@@ -3,6 +3,7 @@
 import { searchAssets } from "@/features/assets/api/search-assets";
 import {
   getAssetLogoFromRegistry,
+  getAssetNameFromRegistry,
   readAssetLogoRegistry,
   rememberAssetLogo,
   type AssetLogoRegistry,
@@ -26,7 +27,9 @@ export async function prefetchAssetLogos(
   const missing = deduplicateBySymbol(
     assets.filter(
       ({ symbol, assetType }) =>
-        symbol && !getAssetLogoFromRegistry(registry, symbol, assetType),
+        symbol &&
+        (!getAssetLogoFromRegistry(registry, symbol, assetType) ||
+          !getAssetNameFromRegistry(registry, symbol, assetType)),
     ),
   );
 

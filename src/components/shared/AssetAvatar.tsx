@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getAssetPalette } from "@/lib/utils/asset";
 
 type AssetAvatarProps = {
@@ -30,6 +30,14 @@ const TYPE_FALLBACK_ICON: Record<string, string> = {
 
 export function AssetAvatar({ symbol, logoUrl, size = "md", dark = false, assetType }: AssetAvatarProps) {
   const [failed, setFailed] = useState(false);
+
+  // Give a changed URL a fresh attempt: the first paint may carry a stale/broken
+  // logo (e.g. a catalog guess that 404s) that is later replaced by a resolved
+  // one; without this reset the error latch would keep showing initials.
+  useEffect(() => {
+    setFailed(false);
+  }, [logoUrl]);
+
   const palette = getAssetPalette(symbol);
   const initials = symbol.slice(0, 2).toUpperCase();
   const { px, cls } = SIZE_MAP[size];

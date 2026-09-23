@@ -14,9 +14,9 @@ import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import { getBanxicoCetesCurveCached, type BanxicoCetesCurve } from "@/features/marketdata/api/get-banxico-cetes-curve";
 import { createBuyTransaction, createSellTransaction, createTransferTransaction, registerDividend, updateTransaction } from "@/features/transactions/api/create-transaction";
 import type { DividendType, TransactionMode, TransferDirection } from "@/features/transactions/types/transaction.types";
-import { calculateBuyTotal, calculateSellTotal } from "@/features/transactions/utils/totals";
+import { buildFeePayload, calculateBuyTotal, calculateSellTotal, resolveEffectiveFee } from "@/features/transactions/utils/totals";
 import { formatFeeCurrency } from "@/lib/utils/format";
-import { getAssetCurrency, formatCurrencyByCode } from "@/lib/utils/currency";
+import { getAssetCurrency, formatCurrencyByCode, type CurrencyCode } from "@/lib/utils/currency";
 import { normalizeAssetType, supportsDividend } from "@/lib/utils/asset";
 import { ApiError } from "@/lib/api/problem-details";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
@@ -79,7 +79,17 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const [selectedAsset, setSelectedAsset] = useState<AssetOption | null>(initialAsset);
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
+  // Settlement currency the user picks (USD/MXN). Null = derive from the symbol
+  // default; a non-null value is an explicit override sent to the backend so a
+  // BMV/GBM peso trade (e.g. "MELI N") is stored as MXN instead of null→USD.
+  const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
   const [fee, setFee] = useState("");
+  // Manual commission/IVA split (BUY/SELL only). When either is set the submit
+  // sends brokerCommission/brokerIva instead of the single `fee`.
+  const [brokerCommission, setBrokerCommission] = useState("");
+  const [brokerIva, setBrokerIva] = useState("");
+  // Once the user edits IVA by hand, stop auto-deriving it from the commission.
+  const [ivaTouched, setIvaTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const [broker, setBroker] = useState("");
   const [transactionDate, setTransactionDate] = useState(createDefaultDateTime());
@@ -157,6 +167,12 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setQuantity(initialDraft?.quantity !== undefined ? formatEditableNumber(initialDraft.quantity) : "");
     setPricePerUnit(initialDraft?.pricePerUnit !== undefined ? formatEditableNumber(initialDraft.pricePerUnit) : !shouldSelectAssetTypeFirst && defaultAsset?.suggestedPrice ? formatEditableNumber(defaultAsset.suggestedPrice) : "");
     setFee(initialDraft?.fee !== undefined && initialDraft.fee > 0 ? formatEditableNumber(initialDraft.fee) : "");
+    // A pre-filled draft fee seeds the commission field (split mode hides the
+    // single-fee input); IVA starts empty and auto-derives from the commission.
+    setBrokerCommission(initialDraft?.fee !== undefined && initialDraft.fee > 0 ? formatEditableNumber(initialDraft.fee) : "");
+    setBrokerIva("");
+    setIvaTouched(false);
+    setCurrencyOverride(null);
     setNotes(initialDraft?.notes ?? "");
     setBroker("");
     setDividendAmount("");
@@ -282,11 +298,17 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const quantityValue = isBondBuy ? bondTitulos : parseDecimal(quantity);
   const priceValue = isBondBuy ? (bondUnitPrice ?? 0) : parseDecimal(pricePerUnit);
   const feeValue = parseDecimal(fee);
+  const commissionValue = parseDecimal(brokerCommission);
+  const ivaValue = parseDecimal(brokerIva);
+  // Commission/IVA split applies only to manual BUY/SELL of non-bond assets.
+  // Bonds (cetesdirecto), transfers, dividends and edits keep the single fee.
+  const usesSplit = !isEditing && (mode === "BUY" || mode === "SELL") && assetFieldType !== "GOVERNMENT_BOND";
+  const effectiveFeeValue = resolveEffectiveFee(usesSplit, commissionValue, ivaValue, feeValue);
   const dividendAmountValue = parseDecimal(dividendAmount);
   const taxWithheldValue = parseDecimal(taxWithheld);
   const faceValueValue = isBondBuy ? bondTitulos * CETES_FACE_VALUE_PER_TITLE : 0;
   const couponRateValue = parseDecimal(couponRate);
-  const totalValue = mode === "SELL" ? calculateSellTotal(quantityValue, priceValue, feeValue) : calculateBuyTotal(quantityValue, priceValue, feeValue);
+  const totalValue = mode === "SELL" ? calculateSellTotal(quantityValue, priceValue, effectiveFeeValue) : calculateBuyTotal(quantityValue, priceValue, effectiveFeeValue);
   const totalLabel = mode === "SELL" ? "Total Received" : mode === "TRANSFER" ? "Transfer Quantity" : "Total Spent";
   const submitLabel = isEditing ? "Edit Transaction" : mode === "BUY" ? "Add Transaction" : mode === "SELL" ? "Record Sale" : mode === "DIVIDEND" ? "Register Dividend" : "Record Transfer";
   const selectorFilters = lockedAssetType
@@ -297,7 +319,14 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const typeSelectionFilters = lockedAssetType ? [lockedAssetType as SelectorFilter] : SELECTOR_FILTERS.filter((filter) => filter !== "ALL");
   const portfolioLabel = portfolioName ?? getPortfolioLabel(((initialAsset?.assetType ? normalizeAssetType(initialAsset.assetType) : undefined) as SelectorFilter | undefined) ?? (lockedAssetType as SelectorFilter | undefined) ?? selectedAsset?.assetType ?? selectedFilter);
   const activeSelectorFilter = (lockedAssetType as SelectorFilter | undefined) ?? selectedFilter;
-  const currency = getAssetCurrency(selectedAsset?.symbol ?? "");
+  // Default currency: CETES/bonds settle in MXN; everything else follows the
+  // symbol convention (trailing "*" = MXN, else USD). The user can override it
+  // via the currency selector below (shown for stocks/ETFs), which is what lets
+  // a GBM/BMV peso trade be registered as MXN.
+  const defaultCurrency: CurrencyCode =
+    assetFieldType === "GOVERNMENT_BOND" ? "MXN" : getAssetCurrency(selectedAsset?.symbol ?? "");
+  const currency = currencyOverride ?? defaultCurrency;
+  const showCurrencyToggle = (mode === "BUY" || mode === "SELL" || mode === "DIVIDEND") && (assetFieldType === "STOCK" || assetFieldType === "ETF");
 
   useEffect(() => {
     if (!isOpen || !isBondBuy || maturityDate) return;
@@ -307,6 +336,18 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     target.setDate(target.getDate() + days);
     setMaturityDate(toDateInputValue(target));
   }, [isOpen, isBondBuy, maturityDate, selectedAsset]);
+
+  // Auto-derive IVA as 16% of the commission for MXN assets (0 for USD), until
+  // the user edits IVA by hand. The 16% lives entirely in the UI — the backend
+  // receives IVA as an absolute amount and never recomputes it (ADR-0005).
+  useEffect(() => {
+    if (!isOpen || !usesSplit || ivaTouched) return;
+    const commission = parseDecimal(brokerCommission);
+    const rate = currency === "MXN" ? 0.16 : 0;
+    const iva = commission > 0 ? Math.round(commission * rate * 100) / 100 : 0;
+    const next = iva > 0 ? formatEditableNumber(iva) : "";
+    setBrokerIva((prev) => (prev === next ? prev : next));
+  }, [isOpen, usesSplit, ivaTouched, brokerCommission, currency]);
 
   const dividendAllowed = selectedAsset ? supportsDividend(selectedAsset.assetType) : false;
   const estimatedBondGain = faceValueValue - totalValue;
@@ -355,6 +396,10 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
           notes: notes.trim() || undefined,
           transactionDate,
           transferType: mode === "TRANSFER" ? transferType : undefined,
+          // Only send currency on edit when the user explicitly changed it, so an
+          // edit doesn't overwrite the stored currency with a symbol-derived guess
+          // (the edit form does not seed the original currency).
+          currency: currencyOverride ?? undefined,
         });
       } else if (mode === "DIVIDEND") {
         await registerDividend(
@@ -363,6 +408,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             assetType: selectedAsset.assetType,
             amount: dividendAmountValue,
             dividendType,
+            currency,
             transactionDate,
             exDividendDate: exDividendDate || undefined,
             taxWithheld: taxWithheldValue > 0 ? taxWithheldValue : undefined,
@@ -377,7 +423,10 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             assetType: selectedAsset.assetType,
             quantity: quantityValue,
             pricePerUnit: priceValue,
-            fee: feeValue || undefined,
+            // Split path: send commission/IVA and let the backend derive `fee`.
+            // Classic path: send the single `fee`. Never both (ADR-0005).
+            ...buildFeePayload(usesSplit, commissionValue, ivaValue, feeValue),
+            currency,
             transactionDate,
             notes: notes.trim() || undefined,
             broker: broker.trim() || undefined,
@@ -399,7 +448,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             assetType: selectedAsset.assetType,
             quantity: quantityValue,
             pricePerUnit: priceValue,
-            fee: feeValue || undefined,
+            ...buildFeePayload(usesSplit, commissionValue, ivaValue, feeValue),
+            currency,
             transactionDate,
             notes: notes.trim() || undefined,
             broker: broker.trim() || undefined,
@@ -414,6 +464,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             transferType,
             quantity: quantityValue,
             fee: feeValue || undefined,
+            currency,
             transactionDate,
             notes: notes.trim() || undefined,
           },
@@ -443,6 +494,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setLogoRegistry(readAssetLogoRegistry());
     setRecentAssets(getRecentAssets());
     setSelectedAsset(asset);
+    setCurrencyOverride(null);
     setPricePerUnit(asset.suggestedPrice ? formatEditableNumber(asset.suggestedPrice) : "");
     setInvestAmount("");
     setMaturityDate("");
@@ -457,6 +509,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setSelectorQuery("");
     setSelectorResults(filterAssetsByType(mergedSuggestions, filter));
     setSelectedAsset(null);
+    setCurrencyOverride(null);
     setPricePerUnit("");
     setError(null);
     setView("asset");
@@ -485,7 +538,23 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
           stepLabel={shouldSelectAssetTypeFirst ? "Paso 2 de 3" : "Paso 1 de 2"}
         />
       ) : null}
-      {view === "fee" ? <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor> : null}
+      {view === "fee" ? (
+        usesSplit ? (
+          <SimpleEditor title="Comisión e IVA" cta="Aplicar costos" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}>
+            <div className="space-y-2">
+              <Field label="Comisión del broker">
+                <div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.15rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setBrokerCommission(event.target.value)} placeholder="0.00" step="any" type="number" value={brokerCommission} /></div>
+              </Field>
+              <Field label={currency === "MXN" ? "IVA (16% auto · editable)" : "IVA"}>
+                <div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.15rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => { setIvaTouched(true); setBrokerIva(event.target.value); }} placeholder="0.00" step="any" type="number" value={brokerIva} /></div>
+              </Field>
+              <p className="px-1 text-[0.72rem] font-medium text-[#7f8aa3]">Total costos: <span className="font-semibold text-white">{formatFeeCurrency(commissionValue + ivaValue, currency)}</span></p>
+            </div>
+          </SimpleEditor>
+        ) : (
+          <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor>
+        )
+      ) : null}
       {view === "notes" ? <SimpleEditor title="Add Notes" cta="Save Notes" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Notes"><textarea className="min-h-24 w-full resize-none bg-transparent text-[0.875rem] leading-5 text-white outline-none placeholder:text-[#6f7a8f] md:min-h-32 md:text-[0.95rem] md:leading-7" maxLength={255} onChange={(event) => setNotes(event.target.value)} placeholder="Exchange, source wallet, memo, reasoning..." value={notes} /></Field></SimpleEditor> : null}
       {view === "form" ? (
         <div className="space-y-2">
@@ -561,6 +630,32 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                 {!isEditing ? <span className="text-[1rem] leading-none text-[#7f8aa3] md:text-[1.1rem]">&rsaquo;</span> : null}
               </button>
             );
+
+            const currencyToggle = showCurrencyToggle ? (
+              <div className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-2 md:rounded-[0.95rem]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Moneda / Mercado</p>
+                    <p className="mt-0.5 text-[0.7rem] text-[#7f8aa3]">Moneda en que se ejecutó (GBM MX = MXN)</p>
+                  </div>
+                  <div className="grid shrink-0 grid-cols-2 gap-0.5 rounded-[0.7rem] border border-[#1b2028] bg-[#101418] p-0.5">
+                    {(["USD", "MXN"] as CurrencyCode[]).map((code) => {
+                      const active = currency === code;
+                      return (
+                        <button
+                          className={active ? "rounded-[0.55rem] border border-[#2a313b] bg-[#1a2028] px-3 py-1 text-[0.75rem] font-semibold text-white" : "rounded-[0.55rem] px-3 py-1 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:text-white"}
+                          key={code}
+                          onClick={() => setCurrencyOverride(code)}
+                          type="button"
+                        >
+                          {code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null;
 
             const quantityOrAmountFields =
               mode === "DIVIDEND" ? (
@@ -659,8 +754,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                 ) : (
                   <>
                     <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem]" onClick={() => setView("fee")} type="button">
-                      <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Fee</span>
-                      <p className="mt-1 text-[0.875rem] font-medium text-white md:text-[0.84rem]">{feeValue > 0 ? formatFeeCurrency(feeValue, currency) : "Add fee"}</p>
+                      <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">{usesSplit ? "Costos" : "Fee"}</span>
+                      <p className="mt-1 text-[0.875rem] font-medium text-white md:text-[0.84rem]">{effectiveFeeValue > 0 ? formatFeeCurrency(effectiveFeeValue, currency) : usesSplit ? "Comisión / IVA" : "Add fee"}</p>
                     </button>
                     <button className="rounded-[0.875rem] border border-[#232931] bg-[#14191f] px-3 py-1.5 text-left transition hover:border-[#2f3742] hover:bg-[#181d24] md:rounded-[0.95rem]" onClick={() => setView("notes")} type="button">
                       <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.68rem]">Notes</span>
@@ -712,6 +807,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             return (
               <>
                 {assetRow}
+                {currencyToggle}
                 {quantityOrAmountFields}
                 {bondDetails}
                 {brokerField}

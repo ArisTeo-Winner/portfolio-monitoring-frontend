@@ -48,6 +48,14 @@ type Props = {
   error: string | null;
   onFiles: (files: File[]) => void;
   testid: string;
+  /**
+   * Renders the channel as visible-but-inert: the dropzone/file input are
+   * removed and a "No disponible" state is shown. The card is intentionally
+   * kept in the layout (not unmounted) so the channel remains discoverable.
+   */
+  disabled?: boolean;
+  /** Copy shown inside the disabled dropzone. */
+  disabledNote?: string;
 };
 
 export function GbmChannelCard({
@@ -64,6 +72,8 @@ export function GbmChannelCard({
   error,
   onFiles,
   testid,
+  disabled = false,
+  disabledNote = "Este canal está temporalmente deshabilitado.",
 }: Props) {
   const styles = ACCENT[accent];
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -90,10 +100,13 @@ export function GbmChannelCard({
 
   return (
     <section
-      className={`relative flex flex-col overflow-hidden rounded-2xl border ${styles.ring} bg-[#0b0d10] pl-4 pr-4 py-4 sm:pl-5`}
+      className={`relative flex flex-col overflow-hidden rounded-2xl border ${styles.ring} bg-[#0b0d10] pl-4 pr-4 py-4 sm:pl-5 ${
+        disabled ? "opacity-60" : ""
+      }`}
       data-testid={testid}
+      data-disabled={disabled || undefined}
     >
-      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${styles.spine}`} />
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${disabled ? "bg-neutral-700" : styles.spine}`} />
       <span
         aria-hidden
         className={`pointer-events-none absolute -right-3 -top-6 select-none font-mono text-[7rem] font-bold leading-none tracking-tighter ${styles.watermark}`}
@@ -108,6 +121,14 @@ export function GbmChannelCard({
           {currency}
         </span>
         <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-500">{custodian}</span>
+        {disabled ? (
+          <span
+            className="ml-auto rounded-full border border-neutral-700 bg-neutral-800/70 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-wide text-neutral-400"
+            data-testid={`${testid}-disabled-badge`}
+          >
+            No disponible
+          </span>
+        ) : null}
       </div>
 
       <h4 className="relative mt-3 text-[0.95rem] font-semibold text-[#e6eaf1]">{title}</h4>
@@ -129,51 +150,66 @@ export function GbmChannelCard({
         <span>{loadRule}</span>
       </p>
 
-      <button
-        type="button"
-        aria-busy={uploading}
-        className={`relative mt-3 flex min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-4 text-center transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0d10] disabled:cursor-not-allowed disabled:opacity-70 ${
-          dragging ? styles.dropActive : styles.dropIdle
-        }`}
-        data-testid={`${testid}-drop`}
-        data-dragging={dragging}
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => {
-          event.preventDefault();
-          if (!uploading) setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-      >
-        {uploading ? (
-          <>
-            <span
-              aria-hidden
-              className={`h-5 w-5 animate-spin rounded-full border-2 ${styles.spinner}`}
-            />
-            <span className="text-xs font-medium text-[#e6eaf1]">Subiendo…</span>
-          </>
-        ) : (
-          <>
-            <UploadIcon className={styles.accentText} />
-            <span className="text-xs font-medium text-[#e6eaf1]">{dropHint}</span>
-            <span className="text-[0.68rem] text-neutral-500">
-              Arrastra {multiple ? "o suéltalos aquí" : "o suéltalo aquí"} · solo .pdf
-            </span>
-          </>
-        )}
-      </button>
+      {disabled ? (
+        <div
+          aria-disabled="true"
+          className="relative mt-3 flex min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-neutral-700/70 bg-neutral-900/40 px-3 py-4 text-center"
+          data-testid={`${testid}-drop`}
+          data-disabled="true"
+        >
+          <LockIcon className="text-neutral-500" />
+          <span className="text-xs font-medium text-neutral-400">No disponible por ahora</span>
+          <span className="text-[0.68rem] text-neutral-600">{disabledNote}</span>
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            aria-busy={uploading}
+            className={`relative mt-3 flex min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-4 text-center transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0d10] disabled:cursor-not-allowed disabled:opacity-70 ${
+              dragging ? styles.dropActive : styles.dropIdle
+            }`}
+            data-testid={`${testid}-drop`}
+            data-dragging={dragging}
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!uploading) setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            {uploading ? (
+              <>
+                <span
+                  aria-hidden
+                  className={`h-5 w-5 animate-spin rounded-full border-2 ${styles.spinner}`}
+                />
+                <span className="text-xs font-medium text-[#e6eaf1]">Subiendo…</span>
+              </>
+            ) : (
+              <>
+                <UploadIcon className={styles.accentText} />
+                <span className="text-xs font-medium text-[#e6eaf1]">{dropHint}</span>
+                <span className="text-[0.68rem] text-neutral-500">
+                  Arrastra {multiple ? "o suéltalos aquí" : "o suéltalo aquí"} · solo .pdf
+                </span>
+              </>
+            )}
+          </button>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,application/pdf"
-        className="hidden"
-        data-testid={`${testid}-input`}
-        multiple={multiple}
-        onChange={handleInput}
-      />
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            className="hidden"
+            data-testid={`${testid}-input`}
+            multiple={multiple}
+            onChange={handleInput}
+          />
+        </>
+      )}
 
       {error ? <ProblemAlert className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400" message={error} /> : null}
     </section>
@@ -185,6 +221,15 @@ function UploadIcon({ className }: { className?: string }) {
     <svg aria-hidden className={className} fill="none" height="20" viewBox="0 0 24 24" width="20">
       <path d="M12 15V4m0 0 4 4m-4-4L8 8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" />
       <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden className={className} fill="none" height="20" viewBox="0 0 24 24" width="20">
+      <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M8 10V8a4 4 0 0 1 8 0v2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
     </svg>
   );
 }

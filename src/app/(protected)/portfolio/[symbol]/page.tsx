@@ -12,7 +12,6 @@ import { AddTransactionModal } from "@/components/transactions/add-transaction-m
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { AssetChartContainer } from "@/components/portfolio/asset-chart-container";
-import { AssetPriceChartContainer } from "@/components/portfolio/asset-price-chart-container";
 import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
 import { getPortfolioEntry } from "@/features/portfolio/api/get-portfolio-entry";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
@@ -338,7 +337,6 @@ export default function PortfolioSymbolPage() {
               ))
             : null}
           {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
-          {!loading && entry ? <AssetPriceChartContainer symbol={entry.assetSymbol} /> : null}
           {!loading && error ? (
             <section className="glass rounded-[1.6rem] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
               <h1 className="text-[1.35rem] font-bold text-slate-950">Holding unavailable</h1>

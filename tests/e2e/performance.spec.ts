@@ -83,7 +83,7 @@ test.describe("Performance básica — loading states", () => {
     // Simulate missing HttpOnly refresh cookie: protected-shell calls the
     // refresh endpoint on bootstrap; returning 401 immediately makes the
     // redirect deterministic and fast regardless of whether a backend is running.
-    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+    await page.route(/\/api\/auth\/refresh/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -151,7 +151,7 @@ test.describe("Performance básica — loading states", () => {
     // Simulate missing HttpOnly refresh cookie: protected-shell calls the
     // refresh endpoint on bootstrap; returning 401 immediately makes the
     // redirect deterministic and fast regardless of whether a backend is running.
-    await page.route(/\/api\/v1\/tokens\/refresh/, (route) =>
+    await page.route(/\/api\/auth\/refresh/, (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",

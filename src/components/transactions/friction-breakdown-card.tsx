@@ -9,6 +9,12 @@ type Props = {
   transactionType: string;
   /** Settlement currency for every amount in the breakdown (e.g. "USD", "MXN"). */
   feeCurrency: string;
+  /**
+   * Executed price per unit at the broker (backend `pricePerUnit`), shown next
+   * to the friction-adjusted price so the user can compare the raw fill against
+   * the all-in break-even. Null/undefined → the execution row is hidden.
+   */
+  executionUnitPrice?: number | null;
 };
 
 function toCurrencyCode(feeCurrency: string): CurrencyCode {
@@ -20,14 +26,20 @@ function toCurrencyCode(feeCurrency: string): CurrencyCode {
  *
  * Renders the server-computed cost ledger of a transaction:
  *   Monto bruto → (+/−) Comisión → (+/−) IVA → (+/−) Otros cargos →
- *   Costo neto real → Precio efectivo/u
+ *   Costo neto real → [Precio de ejecución/u] + Precio de equilibrio/u (BUY) /
+ *   Precio neto/u (SELL)
  *
  * The four fine-grained fields are null on manual entries; per the contract we
  * show them ONLY when brokerCommission != null. The derived fields (gross,
  * total, net, adjusted) are always shown. Nothing is recomputed client-side —
  * every figure comes straight from `breakdown`.
  */
-export function FrictionBreakdownCard({ breakdown, transactionType, feeCurrency }: Props) {
+export function FrictionBreakdownCard({
+  breakdown,
+  transactionType,
+  feeCurrency,
+  executionUnitPrice,
+}: Props) {
   const currency = toCurrencyCode(feeCurrency);
   const money = (value: number) => formatCurrencyByCode(value, currency);
 
@@ -40,7 +52,21 @@ export function FrictionBreakdownCard({ breakdown, transactionType, feeCurrency 
   const showFine = breakdown.brokerCommission != null;
   const needsReview = breakdown.reviewStatus === "REQUIERE_REVISION";
 
-  const netLabel = isSell ? "Neto recibido real" : "Costo neto real";
+  // On a BUY this net line IS the true cost basis (principal + friction), so we
+  // name it accordingly — the standard definition includes fees. On a SELL it is
+  // the net proceeds actually received.
+  const netLabel = isSell ? "Neto recibido real" : "Costo base (neto real)";
+  // Direction-aware label for the friction-adjusted unit price. On a BUY this is
+  // the all-in break-even (what each unit must reach to recover cost + friction);
+  // on a SELL it is the net price actually received per unit. Keep the "/u"
+  // suffix — this card renders for stocks, ETFs and crypto alike, so "por acción"
+  // would be wrong for crypto units.
+  const adjustedLabel = isSell ? "Precio neto/u" : "Precio de equilibrio/u";
+  const showExecution = executionUnitPrice != null;
+  // Backend-provided friction per unit (totalFrictionCost / quantity). Renders
+  // the "+ fricción/u" bridge between execution and adjusted price. Guarded so
+  // it stays hidden until the backend ships the field. No client-side math.
+  const showBridge = showExecution && breakdown.perUnitFriction != null;
 
   return (
     <section
@@ -105,16 +131,47 @@ export function FrictionBreakdownCard({ breakdown, transactionType, feeCurrency 
       </dl>
 
       {breakdown.adjustedUnitPrice != null ? (
-        <div
-          className="mt-3 flex items-center justify-between gap-3 rounded-[0.85rem] bg-[#111621] px-3 py-2.5"
-          data-testid="friction-adjusted-unit-price"
-        >
-          <span className="text-[0.72rem] font-medium uppercase tracking-[0.14em] text-[#71819b]">
-            Precio efectivo/u
-          </span>
-          <span className="text-[0.95rem] font-semibold text-[#17c784]">
-            {money(breakdown.adjustedUnitPrice)}
-          </span>
+        <div className="mt-3 rounded-[0.85rem] bg-[#111621] px-3 py-2.5">
+          {showExecution ? (
+            <div
+              className={`flex items-center justify-between gap-3 ${showBridge ? "pb-1" : "pb-2"}`}
+              data-testid="friction-execution-unit-price"
+            >
+              <span className="text-[0.72rem] font-medium uppercase tracking-[0.14em] text-[#71819b]">
+                Precio de ejecución/u
+              </span>
+              <span className="text-[0.85rem] font-semibold text-[#9aa5b8]">
+                {money(executionUnitPrice as number)}
+              </span>
+            </div>
+          ) : null}
+          {showBridge ? (
+            <div
+              className="flex items-center justify-between gap-3 pb-2 pl-3"
+              data-testid="friction-per-unit"
+            >
+              <span className="text-[0.72rem] font-medium text-[#7f8aa3]">
+                <span className="mr-1 text-[#71819b]">{sign}</span>
+                fricción/u
+              </span>
+              <span className="text-[0.82rem] font-semibold text-[#9aa5b8]">
+                {money(breakdown.perUnitFriction as number)}
+              </span>
+            </div>
+          ) : null}
+          <div
+            className={`flex items-center justify-between gap-3 ${
+              showExecution ? "border-t border-dashed border-[#1f2632] pt-2" : ""
+            }`}
+            data-testid="friction-adjusted-unit-price"
+          >
+            <span className="text-[0.72rem] font-medium uppercase tracking-[0.14em] text-[#71819b]">
+              {adjustedLabel}
+            </span>
+            <span className="text-[0.95rem] font-semibold text-[#17c784]">
+              {money(breakdown.adjustedUnitPrice)}
+            </span>
+          </div>
         </div>
       ) : null}
     </section>

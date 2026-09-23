@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const REFRESH_TOKEN_COOKIE = "cpm.rt";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+import { REFRESH_TOKEN_COOKIE, refreshCookieOptions } from "@/lib/api/bff-cookies";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -23,13 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: COOKIE_MAX_AGE,
-    path: "/",
-  });
+  response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 
   return response;
 }

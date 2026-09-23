@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/config/env";
 import { endpoints } from "@/lib/api/endpoints";
-
-const REFRESH_TOKEN_COOKIE = "cpm.rt";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+import {
+  REFRESH_TOKEN_COOKIE,
+  refreshCookieOptions,
+  extractBackendRefreshToken,
+} from "@/lib/api/bff-cookies";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -29,32 +31,40 @@ export async function POST(request: NextRequest) {
   const payload = tryParseJson(raw);
 
   if (!backendResponse.ok) {
-    return NextResponse.json(payload ?? { detail: backendResponse.statusText }, {
+    const forwarded = NextResponse.json(payload ?? { detail: backendResponse.statusText }, {
       status: backendResponse.status,
     });
+    // Preserve rate-limit UX: surface the backend's Retry-After to the client.
+    const retryAfter = backendResponse.headers.get("Retry-After");
+    if (retryAfter) {
+      forwarded.headers.set("Retry-After", retryAfter);
+    }
+    return forwarded;
   }
 
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as Record<string, unknown>).accessToken !== "string" ||
-    typeof (payload as Record<string, unknown>).refreshToken !== "string"
-  ) {
+  // Backend contract: `{ accessToken }` in the body; the refresh token is
+  // delivered ONLY as an HttpOnly Set-Cookie header, never in the body.
+  const accessToken = readAccessToken(payload);
+  if (!accessToken) {
     return NextResponse.json({ detail: "Invalid token response from server" }, { status: 502 });
   }
 
-  const { accessToken, refreshToken } = payload as { accessToken: string; refreshToken: string };
+  const refreshToken = extractBackendRefreshToken(backendResponse);
+  if (!refreshToken) {
+    return NextResponse.json({ detail: "Invalid token response from server" }, { status: 502 });
+  }
 
+  // Re-issue the backend's refresh token as our own first-party HttpOnly cookie
+  // on the app origin. The browser only ever receives `{ accessToken }`.
   const response = NextResponse.json({ accessToken });
-  response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: COOKIE_MAX_AGE,
-    path: "/",
-  });
-
+  response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
   return response;
+}
+
+function readAccessToken(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const value = (payload as Record<string, unknown>).accessToken;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function tryParseJson(raw: string): unknown {

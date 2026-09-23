@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clipToPositionStart,
   filterSeriesByRange,
   getNextRange,
   HISTORY_RANGES,
@@ -94,5 +95,54 @@ describe("filterSeriesByRange", () => {
     (HISTORY_RANGE_ORDER as HistoryRange[]).forEach((range) => {
       expect(filterSeriesByRange([], range, NOW)).toStrictEqual([]);
     });
+  });
+});
+
+describe("clipToPositionStart — recorte estilo Google Finance", () => {
+  it("descarta el tramo inicial en $0 antes de la compra", () => {
+    const series = [
+      { time: 100, value: 0 },
+      { time: 200, value: 0 },
+      { time: 300, value: 356.7 },
+      { time: 400, value: 330.5 },
+    ];
+    expect(clipToPositionStart(series)).toStrictEqual([
+      { time: 300, value: 356.7 },
+      { time: 400, value: 330.5 },
+    ]);
+  });
+
+  it("devuelve la serie intacta si ya arranca con valor > 0 (precio puro)", () => {
+    const series = [
+      { time: 100, value: 192.35 },
+      { time: 200, value: 194.1 },
+    ];
+    expect(clipToPositionStart(series)).toStrictEqual(series);
+  });
+
+  it("devuelve la serie intacta si todos los puntos son 0", () => {
+    const series = [
+      { time: 100, value: 0 },
+      { time: 200, value: 0 },
+    ];
+    expect(clipToPositionStart(series)).toStrictEqual(series);
+  });
+
+  it("solo recorta el tramo inicial: conserva ceros intermedios (venta y recompra)", () => {
+    const series = [
+      { time: 100, value: 0 },
+      { time: 200, value: 50 },
+      { time: 300, value: 0 },
+      { time: 400, value: 70 },
+    ];
+    expect(clipToPositionStart(series)).toStrictEqual([
+      { time: 200, value: 50 },
+      { time: 300, value: 0 },
+      { time: 400, value: 70 },
+    ]);
+  });
+
+  it("serie vacía se mantiene vacía", () => {
+    expect(clipToPositionStart([])).toStrictEqual([]);
   });
 });

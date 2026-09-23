@@ -1,19 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddTransactionModal, type InitialTransactionDraft } from "@/components/transactions/add-transaction-modal";
 import { Modal } from "@/components/ui/modal";
+import { ProblemAlert } from "@/components/ui/problem-alert";
 import type { AssetOption } from "@/features/assets/types/asset.types";
-import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
-import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
-import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
-import { deleteTransaction } from "@/features/transactions/api/create-transaction";
+import { deleteTransaction, updateTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
-import type { TransactionDetailsResponse, TransactionResponse } from "@/features/transactions/types/transaction.types";
-import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
+import type { TransactionDetailsResponse, TransactionResponse, TransferDirection } from "@/features/transactions/types/transaction.types";
+import { formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
+import { type CurrencyCode } from "@/lib/utils/currency";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 import { FrictionBreakdownCard } from "@/components/transactions/friction-breakdown-card";
+import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
 
@@ -23,6 +23,7 @@ type AssetActionSummary = {
   name: string;
   assetType: string;
   logoUrl: string | null;
+  currency: CurrencyCode | null;
   movementCount: number;
   netQuantity: number;
   grossValue: number;
@@ -39,8 +40,6 @@ export function TransactionsTable({
   onDeleted?: () => void | Promise<void>;
 }) {
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
-  const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
-  const [cryptoLogoMap, setCryptoLogoMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [draftAsset, setDraftAsset] = useState<AssetOption | null>(null);
@@ -51,25 +50,26 @@ export function TransactionsTable({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<TransactionResponse | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [detailsTransaction, setDetailsTransaction] = useState<TransactionResponse | null>(null);
-  const [detailsData, setDetailsData] = useState<TransactionDetailsResponse | null>(null);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
+  // Inline transaction detail (View, Finviz-style S0→S1): clicking a row expands
+  // its detail in place. Accordion — only one row open at a time.
+  const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<TransactionDetailsResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailReqRef = useRef<string | null>(null);
   const [mobileAssetPanel, setMobileAssetPanel] = useState<AssetActionSummary | null>(null);
   const [activeMobileMenuKey, setActiveMobileMenuKey] = useState<string | null>(null);
+  // Desktop inline-edit flow (Finviz-style): a per-row kebab menu (S3) opens an
+  // inline editor row (S4) that commits via updateTransaction and collapses (S5).
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineTransferType, setInlineTransferType] = useState<TransferDirection | undefined>(undefined);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getUserTransactions({ assetType });
       setTransactions(data);
-      setLogoRegistry(readAssetLogoRegistry());
-
-      if (data.length) {
-        void prefetchAssetLogos(
-          data.map((t) => ({ symbol: t.assetSymbol, assetType: t.assetType })),
-        ).then((updated) => setLogoRegistry(updated));
-      }
     } catch (error) {
       console.error("Failed to fetch transactions", error);
       setTransactions([]);
@@ -91,27 +91,6 @@ export function TransactionsTable({
     };
   }, [fetchTransactions]);
 
-  useEffect(() => {
-    let active = true;
-    const cached = readCoinGeckoCryptoLogoMap();
-    if (Object.keys(cached).length) {
-      setCryptoLogoMap(cached);
-    }
-
-    fetchCoinGeckoCryptoLogoMap()
-      .then((nextMap) => {
-        if (active && Object.keys(nextMap).length) {
-          setCryptoLogoMap(nextMap);
-        }
-      })
-      .catch(() => {
-        // Keep the table functional with registry/fallback avatars.
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!activeMobileMenuKey) return;
@@ -130,11 +109,45 @@ export function TransactionsTable({
     };
   }, [activeMobileMenuKey]);
 
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-row-actions='true']")) {
+        return;
+      }
+      setOpenMenuId(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenuId(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
+
   const assetOptions = useMemo(() => {
     const unique = new Set<string>();
     transactions.forEach((transaction) => unique.add(transaction.assetSymbol.toUpperCase()));
     return Array.from(unique).sort((left, right) => left.localeCompare(right));
   }, [transactions]);
+
+  // Distinct assets in this list, fed to the shared self-healing logo resolver.
+  const assetRefs = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          transactions.map((t) => [t.assetSymbol.toUpperCase(), { symbol: t.assetSymbol, assetType: t.assetType }]),
+        ).values(),
+      ),
+    [transactions],
+  );
+  const resolveLogo = useAssetLogos(assetRefs);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
@@ -161,9 +174,10 @@ export function TransactionsTable({
         grouped.set(key, {
           key,
           symbol,
-          name: getAssetDisplayName(symbol),
+          name: resolveTransactionName(symbol, transaction.assetName),
           assetType,
-          logoUrl: resolveTransactionLogo(symbol, transaction.assetType, logoRegistry, cryptoLogoMap),
+          logoUrl: resolveLogo(symbol, assetType, transaction.logoUrl),
+          currency: resolveTransactionCurrency(transaction.currency),
           movementCount: 0,
           netQuantity: 0,
           grossValue: 0,
@@ -192,7 +206,7 @@ export function TransactionsTable({
         ),
       }))
       .sort((left, right) => new Date(right.lastTransactionAt).getTime() - new Date(left.lastTransactionAt).getTime());
-  }, [cryptoLogoMap, filteredTransactions, logoRegistry]);
+  }, [filteredTransactions, resolveLogo]);
 
   function openTransactionEditor(
     transaction: TransactionResponse,
@@ -201,9 +215,9 @@ export function TransactionsTable({
     setDraftAsset({
       assetId: transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}`,
       symbol: transaction.assetSymbol,
-      name: getAssetDisplayName(transaction.assetSymbol),
+      name: resolveTransactionName(transaction.assetSymbol, transaction.assetName),
       assetType: normalizeTransactionAssetType(transaction.assetType),
-      logoUrl: resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap),
+      logoUrl: resolveLogo(transaction.assetSymbol, transaction.assetType, transaction.logoUrl),
       supportedForTransactions: true,
       suggestedPrice: transaction.pricePerUnit,
     });
@@ -274,6 +288,31 @@ export function TransactionsTable({
     }
   }
 
+  function startInlineEdit(transaction: TransactionResponse) {
+    setOpenMenuId(null);
+    setInlineTransferType(undefined);
+    setInlineEditId(transaction.transactionId);
+
+    // Transfers need their direction (TRANSFER_IN/OUT) to update correctly; it
+    // isn't on the list row, so fetch it lazily (same as the modal path did).
+    if (transaction.transactionId && normalizeTransactionMode(transaction.transactionType) === "TRANSFER") {
+      getTransactionDetails(transaction.transactionId)
+        .then((details) => setInlineTransferType(normalizeTransferType(details.transferType)))
+        .catch((error) => {
+          console.error("Failed to load transfer direction", error);
+        });
+    }
+  }
+
+  async function handleInlineSaved() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("portfolio:refresh"));
+    }
+    await fetchTransactions();
+    await onDeleted?.();
+    setInlineEditId(null);
+  }
+
   async function handleDeleteTransaction() {
     if (!transactionToDelete?.transactionId) {
       setDeleteError("This transaction does not expose transactionId yet, so it cannot be removed from the frontend.");
@@ -298,25 +337,35 @@ export function TransactionsTable({
     }
   }
 
-  async function handleViewTransactionDetails(transaction: TransactionResponse) {
-    setDetailsTransaction(transaction);
-    setDetailsData(null);
-    setDetailsError(null);
-
-    if (!transaction.transactionId) {
+  function toggleDetail(transaction: TransactionResponse) {
+    const id = transaction.transactionId;
+    if (expandedDetailId === id) {
+      setExpandedDetailId(null);
       return;
     }
-
-    setDetailsLoading(true);
-    try {
-      const details = await getTransactionDetails(transaction.transactionId);
-      setDetailsData(details);
-    } catch (error) {
-      console.error("Failed to load transaction details", error);
-      setDetailsError("No fue posible cargar el detalle completo de la transacción.");
-    } finally {
-      setDetailsLoading(false);
+    // Accordion: opening a detail closes any inline editor and kebab menu.
+    setInlineEditId(null);
+    setOpenMenuId(null);
+    setExpandedDetailId(id);
+    setDetailData(null);
+    setDetailError(null);
+    detailReqRef.current = id;
+    if (!id) {
+      setDetailLoading(false);
+      return;
     }
+    setDetailLoading(true);
+    getTransactionDetails(id)
+      .then((details) => {
+        if (detailReqRef.current === id) setDetailData(details);
+      })
+      .catch((error) => {
+        console.error("Failed to load transaction details", error);
+        if (detailReqRef.current === id) setDetailError("No fue posible cargar el detalle completo de la transacción.");
+      })
+      .finally(() => {
+        if (detailReqRef.current === id) setDetailLoading(false);
+      });
   }
 
   if (loading) {
@@ -417,16 +466,26 @@ export function TransactionsTable({
               const timeLabel = dateValue.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
               const amountPrefix = isBuy ? "+" : isSell ? "-" : "";
               const noteLabel = transaction.notes?.trim() ? transaction.notes : "--";
+              const txCurrency = resolveTransactionCurrency(transaction.currency);
+              const rowKey = transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`;
+              const isRowEditing = inlineEditId === transaction.transactionId;
+              const isRowDetailOpen = expandedDetailId === transaction.transactionId;
+              const isLastRow = index === filteredTransactions.length - 1;
 
               return (
+                <Fragment key={rowKey}>
                 <tr
-                  className="cursor-pointer transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#1a1f29]"
-                  key={transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`}
-                  onClick={() => void handleViewTransactionDetails(transaction)}
+                  aria-expanded={isRowDetailOpen}
+                  className={`transition [box-shadow:inset_0_-1px_0_#1a1f29] ${isRowEditing || isRowDetailOpen ? "bg-[#0f1319]" : "hover:bg-white/[0.02]"} ${isRowEditing ? "" : "cursor-pointer"}`}
+                  onClick={() => {
+                    if (isRowEditing) return;
+                    toggleDetail(transaction);
+                  }}
                   onKeyDown={(event) => {
+                    if (isRowEditing) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      void handleViewTransactionDetails(transaction);
+                      toggleDetail(transaction);
                     }
                   }}
                   role="button"
@@ -434,6 +493,12 @@ export function TransactionsTable({
                 >
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
+                      <span
+                        aria-hidden="true"
+                        className={`inline-flex transition-transform ${isRowDetailOpen ? "text-[#4f74ff]" : "-rotate-90 text-[#6f7a8f]"}`}
+                      >
+                        <ChevronDownIcon className="h-3.5 w-3.5" />
+                      </span>
                       <TransactionTypeBadge type={normalizedType} />
                       <span className="text-[0.84rem] font-semibold text-white">
                         {normalizedType === "BUY" ? "Buy" : normalizedType === "SELL" ? "Sell" : "Transfer"}
@@ -449,9 +514,9 @@ export function TransactionsTable({
 
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <AssetAvatar assetType={transaction.assetType} symbol={transaction.assetSymbol} logoUrl={resolveTransactionLogo(transaction.assetSymbol, transaction.assetType, logoRegistry, cryptoLogoMap)} />
+                      <AssetAvatar assetType={transaction.assetType} symbol={transaction.assetSymbol} logoUrl={resolveLogo(transaction.assetSymbol, transaction.assetType, transaction.logoUrl)} />
                       <div className="min-w-0">
-                        <p className="text-[0.86rem] font-medium text-white">{getAssetDisplayName(transaction.assetSymbol)}</p>
+                        <p className="text-[0.86rem] font-medium text-white">{resolveTransactionName(transaction.assetSymbol, transaction.assetName)}</p>
                         <p className="mt-0.5 text-[0.74rem] font-medium text-slate-400">{transaction.assetSymbol.toUpperCase()}</p>
                       </div>
                     </div>
@@ -459,7 +524,7 @@ export function TransactionsTable({
 
                   <td className="px-5 py-4 text-right">
                     <span className="block text-[0.86rem] font-semibold text-white">
-                      {formatCurrency(transaction.pricePerUnit)}
+                      {formatMoneyByCurrency(transaction.pricePerUnit, txCurrency)}
                     </span>
                   </td>
 
@@ -468,13 +533,13 @@ export function TransactionsTable({
                       {amountPrefix}{formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
                     </span>
                     <span className="mt-1 block text-[0.74rem] font-medium text-slate-400">
-                      {formatCurrency(transaction.totalValue)}
+                      {formatMoneyByCurrency(transaction.totalValue, txCurrency)}
                     </span>
                   </td>
 
                   <td className="px-5 py-4 text-right">
                     <span className="block text-[0.84rem] font-semibold text-white">
-                      {transaction.fee > 0 ? formatFeeCurrency(transaction.fee) : "--"}
+                      {transaction.fee > 0 ? formatMoneyByCurrency(transaction.fee, txCurrency) : "--"}
                     </span>
                   </td>
 
@@ -485,27 +550,79 @@ export function TransactionsTable({
                   </td>
 
                   <td className="px-5 py-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <IconButton
-                        disabled={editingId === transaction.transactionId}
-                        label="Edit transaction"
-                        onClick={() => handleEditTransaction(transaction)}
-                      >
-                        <EditIcon className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton
-                        disabled={deletingId === transaction.transactionId}
-                        label="Delete transaction"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setTransactionToDelete(transaction);
+                    <div className="relative flex items-center justify-center" data-row-actions="true">
+                      <button
+                        aria-expanded={openMenuId === transaction.transactionId}
+                        aria-haspopup="menu"
+                        aria-label="Transaction actions"
+                        className={`rounded-full p-1.5 transition hover:bg-[#1c2533] hover:text-white ${openMenuId === transaction.transactionId ? "bg-[#1c2533] text-white" : "text-[#8a94a6]"}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId((current) => (current === transaction.transactionId ? null : transaction.transactionId));
                         }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        type="button"
                       >
-                        <DeleteIcon className="h-4 w-4" />
-                      </IconButton>
+                        <MoreActionsIcon className="h-4 w-4" />
+                      </button>
+                      {openMenuId === transaction.transactionId ? (
+                        <div
+                          className={`absolute right-0 z-40 min-w-[150px] overflow-hidden rounded-xl border border-[#262d3a] bg-[#0f1319] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.55)] ${isLastRow ? "bottom-full mb-1" : "top-full mt-1"}`}
+                          role="menu"
+                        >
+                          <button
+                            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#dce4f2] transition hover:bg-[#171d26] hover:text-white"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startInlineEdit(transaction);
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <EditIcon className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button
+                            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold text-[#ff7b8c] transition hover:bg-[#211219] hover:text-[#ff9aa7]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              setDeleteError(null);
+                              setTransactionToDelete(transaction);
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <DeleteIcon className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
+                {isRowDetailOpen && !isRowEditing ? (
+                  <tr className="bg-[#0f1319] [box-shadow:inset_0_-1px_0_#1a1f29]">
+                    <td className="px-5 py-4" colSpan={8}>
+                      <InlineTransactionDetail
+                        details={detailData}
+                        error={detailError}
+                        loading={detailLoading}
+                        logoUrl={resolveLogo(transaction.assetSymbol, transaction.assetType, transaction.logoUrl)}
+                        transaction={transaction}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+                {isRowEditing ? (
+                  <InlineTransactionEditor
+                    onCancel={() => setInlineEditId(null)}
+                    onSaved={handleInlineSaved}
+                    transaction={transaction}
+                    transferType={inlineTransferType}
+                  />
+                ) : null}
+                </Fragment>
               );
             })}
           </tbody>
@@ -555,21 +672,6 @@ export function TransactionsTable({
         transaction={transactionToDelete}
       />
 
-      <TransactionDetailsDialog
-        details={detailsData}
-        error={detailsError}
-        isLoading={detailsLoading}
-        isOpen={Boolean(detailsTransaction)}
-        logoUrl={detailsTransaction ? resolveTransactionLogo(detailsTransaction.assetSymbol, detailsTransaction.assetType, logoRegistry, cryptoLogoMap) : null}
-        onClose={() => {
-          setDetailsTransaction(null);
-          setDetailsData(null);
-          setDetailsError(null);
-          setDetailsLoading(false);
-        }}
-        transaction={detailsTransaction}
-      />
-
       <MobileAssetActionPanel
         asset={mobileAssetPanel}
         onAddTransaction={openAssetAddForm}
@@ -584,10 +686,6 @@ export function TransactionsTable({
           void handleEditTransaction(transaction);
         }}
         onRegisterTransfer={(asset) => openAssetTransactionForm(asset, "TRANSFER")}
-        onViewTransaction={(transaction) => {
-          setMobileAssetPanel(null);
-          void handleViewTransactionDetails(transaction);
-        }}
       />
     </div>
   );
@@ -709,33 +807,191 @@ function TransactionTypeBadge({ type }: { type: TransactionFilter }) {
 }
 
 
-function IconButton({
-  children,
-  disabled = false,
-  label,
-  onClick,
-}: {
-  children: React.ReactNode;
-  disabled?: boolean;
-  label: string;
-  onClick: () => void;
-}) {
+// Local datetime-local input value ("YYYY-MM-DDTHH:mm") in the viewer's zone.
+// updateTransaction re-appends the offset via toOffsetDateTime on submit, so we
+// feed it the same local shape the modal's DateTimePicker produced.
+function toLocalDateTimeInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function EditorField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <button
-      aria-label={label}
-      className="rounded-full p-1.5 text-[#8a94a6] transition hover:bg-[#1c2533] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-      disabled={disabled}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-      }}
-      type="button"
-    >
-      {children}
-    </button>
+    <div className="rounded-[0.7rem] border border-[#232931] bg-[#14191f] px-2.5 py-1.5">
+      <span className="text-[0.5625rem] font-bold uppercase tracking-[0.14em] text-[#6f7a8f]">{label}</span>
+      <div className="mt-1 flex items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+// S4/S5: in-situ editor rendered as a full-width row beneath the transaction.
+// Save commits through updateTransaction with a submit guard so one click is
+// exactly one PUT, then onSaved refreshes and collapses the row back to S2.
+function InlineTransactionEditor({
+  onCancel,
+  onSaved,
+  transaction,
+  transferType,
+}: {
+  onCancel: () => void;
+  onSaved: () => void | Promise<void>;
+  transaction: TransactionResponse;
+  transferType?: TransferDirection;
+}) {
+  const isTransfer = normalizeTransactionType(transaction.transactionType) === "TRANSFER";
+  const [quantity, setQuantity] = useState(String(transaction.quantity ?? ""));
+  const [price, setPrice] = useState(transaction.pricePerUnit ? String(transaction.pricePerUnit) : "");
+  const [fee, setFee] = useState(transaction.fee > 0 ? String(transaction.fee) : "");
+  const [notes, setNotes] = useState(transaction.notes ?? "");
+  const [date, setDate] = useState(() => toLocalDateTimeInput(transaction.transactionDate));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstFieldRef.current?.focus();
+  }, []);
+
+  const quantityValue = Number.parseFloat(quantity) || 0;
+  const priceValue = Number.parseFloat(price) || 0;
+  const feeValue = Number.parseFloat(fee) || 0;
+  const totalValue = priceValue * quantityValue;
+
+  async function handleSave() {
+    if (submitting) return;
+    if (!(quantityValue > 0)) {
+      setError("La cantidad debe ser mayor que cero.");
+      return;
+    }
+    if (!isTransfer && !(priceValue > 0)) {
+      setError("El precio no es válido.");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateTransaction(transaction.transactionId, {
+        assetSymbol: transaction.assetSymbol,
+        assetType: transaction.assetType,
+        quantity: quantityValue,
+        pricePerUnit: isTransfer ? undefined : priceValue,
+        fee: feeValue > 0 ? feeValue : undefined,
+        notes: notes.trim() || undefined,
+        transactionDate: date,
+        transferType: isTransfer ? transferType : undefined,
+      });
+      await onSaved();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "No fue posible actualizar la transacción.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <tr className="bg-[#0f1319] [box-shadow:inset_0_-1px_0_#1a1f29]">
+      <td className="px-5 py-4" colSpan={8}>
+        <div
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              onCancel();
+            }
+          }}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded-full border border-[#3861fb]/35 bg-[#3861fb]/[0.12] px-2.5 py-1 text-[0.625rem] font-bold uppercase tracking-[0.12em] text-[#4f74ff]">
+              Editar transacción
+            </span>
+            <span className="text-[0.84rem] font-semibold text-white">{resolveTransactionName(transaction.assetSymbol, transaction.assetName)}</span>
+            <span className="text-[0.74rem] text-[#7f8aa3]">{transaction.assetSymbol.toUpperCase()}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <EditorField label="Date">
+              <input
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none"
+                onChange={(event) => setDate(event.target.value)}
+                ref={firstFieldRef}
+                type="datetime-local"
+                value={date}
+              />
+            </EditorField>
+            {!isTransfer ? (
+              <EditorField label="Price / unit">
+                <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
+                <input
+                  className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                  inputMode="decimal"
+                  onChange={(event) => setPrice(event.target.value)}
+                  placeholder="0.00"
+                  step="any"
+                  type="number"
+                  value={price}
+                />
+              </EditorField>
+            ) : null}
+            <EditorField label="Amount (qty)">
+              <input
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                inputMode="decimal"
+                onChange={(event) => setQuantity(event.target.value)}
+                placeholder="0.00"
+                step="any"
+                type="number"
+                value={quantity}
+              />
+            </EditorField>
+            <EditorField label="Fees">
+              <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
+              <input
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                inputMode="decimal"
+                onChange={(event) => setFee(event.target.value)}
+                placeholder="0.00"
+                step="any"
+                type="number"
+                value={fee}
+              />
+            </EditorField>
+            <EditorField label="Notes">
+              <input
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Exchange, memo..."
+                type="text"
+                value={notes}
+              />
+            </EditorField>
+          </div>
+
+          <ProblemAlert message={error} />
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="mr-auto">
+              <p className="text-[0.625rem] font-bold uppercase tracking-[0.14em] text-[#6f7a8f]">Total spent</p>
+              <p className="mt-0.5 text-[0.95rem] font-semibold text-white">{formatMoneyByCurrency(totalValue, resolveTransactionCurrency(transaction.currency))}</p>
+            </div>
+            <button
+              className="rounded-[0.7rem] border border-[#232931] bg-[#171d28] px-4 py-2 text-[0.82rem] font-semibold text-[#dce4f2] transition hover:bg-[#20283a] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={submitting}
+              onClick={onCancel}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded-[0.7rem] bg-[#3861fb] px-5 py-2 text-[0.82rem] font-semibold text-white transition hover:bg-[#4f74ff] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={submitting}
+              onClick={handleSave}
+              type="button"
+            >
+              {submitting ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -771,7 +1027,7 @@ function MobileAssetActionRow({
             <MiniSparkline positive={asset.netQuantity >= 0} />
             <p className={`truncate text-[0.75rem] font-medium leading-none ${asset.netQuantity >= 0 ? "text-emerald-400/90" : "text-rose-400/80"}`}>{formatSignedQuantity(asset.netQuantity, asset.symbol)}</p>
           </div>
-          <p className="mt-0.5 text-[10px] leading-none text-slate-400">{formatCurrency(asset.grossValue)}</p>
+          <p className="mt-0.5 text-[10px] leading-none text-slate-400">{formatMoneyByCurrency(asset.grossValue, asset.currency)}</p>
         </div>
 
         <button
@@ -868,7 +1124,6 @@ function MobileAssetActionPanel({
   onDeleteTransaction,
   onEditTransaction,
   onRegisterTransfer,
-  onViewTransaction,
 }: {
   asset: AssetActionSummary | null;
   onAddTransaction: (asset: AssetActionSummary) => void;
@@ -876,12 +1131,47 @@ function MobileAssetActionPanel({
   onDeleteTransaction: (transaction: TransactionResponse) => void;
   onEditTransaction: (transaction: TransactionResponse) => void;
   onRegisterTransfer: (asset: AssetActionSummary) => void;
-  onViewTransaction: (transaction: TransactionResponse) => void;
 }) {
   const [activeTransactionActionId, setActiveTransactionActionId] = useState<string | null>(null);
+  // Inline movement detail (View) inside the panel — replaces the removed
+  // TransactionDetailsDialog. Accordion: one movement expanded at a time.
+  const [viewTxKey, setViewTxKey] = useState<string | null>(null);
+  const [viewDetail, setViewDetail] = useState<TransactionDetailsResponse | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const viewReqRef = useRef<string | null>(null);
+
+  function toggleView(transaction: TransactionResponse, key: string) {
+    setActiveTransactionActionId(null);
+    if (viewTxKey === key) {
+      setViewTxKey(null);
+      return;
+    }
+    setViewTxKey(key);
+    setViewDetail(null);
+    setViewError(null);
+    viewReqRef.current = key;
+    if (!transaction.transactionId) {
+      setViewLoading(false);
+      return;
+    }
+    setViewLoading(true);
+    getTransactionDetails(transaction.transactionId)
+      .then((details) => {
+        if (viewReqRef.current === key) setViewDetail(details);
+      })
+      .catch((error) => {
+        console.error("Failed to load transaction details", error);
+        if (viewReqRef.current === key) setViewError("No fue posible cargar el detalle completo de la transacción.");
+      })
+      .finally(() => {
+        if (viewReqRef.current === key) setViewLoading(false);
+      });
+  }
 
   useEffect(() => {
     setActiveTransactionActionId(null);
+    setViewTxKey(null);
   }, [asset?.key]);
 
   useEffect(() => {
@@ -928,7 +1218,7 @@ function MobileAssetActionPanel({
 
         <div className="mt-3 grid grid-cols-2 gap-2">
           <TransactionMetric label="Movimientos" value={`${asset.movementCount}`} />
-          <TransactionMetric label="Actividad USD" value={formatCurrency(asset.grossValue)} />
+          <TransactionMetric label={asset.currency ? `Actividad ${asset.currency}` : "Actividad"} value={formatMoneyByCurrency(asset.grossValue, asset.currency)} />
           <TransactionMetric label="Balance neto" value={formatSignedQuantity(asset.netQuantity, asset.symbol)} />
           <TransactionMetric
             label="Ultimo registro"
@@ -962,8 +1252,9 @@ function MobileAssetActionPanel({
                 >
                   <div className="flex min-h-11 items-center justify-between gap-2">
                     <button
+                      aria-expanded={viewTxKey === actionKey}
                       className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
-                      onClick={() => onViewTransaction(transaction)}
+                      onClick={() => toggleView(transaction, actionKey)}
                       type="button"
                     >
                       <div className="min-w-0">
@@ -984,7 +1275,7 @@ function MobileAssetActionPanel({
                         <p className={`text-[0.875rem] font-semibold ${amountColor}`}>
                           {formatQuantity(transaction.quantity)} {transaction.assetSymbol.toUpperCase()}
                         </p>
-                        <p className="mt-0.5 text-[0.75rem] text-slate-400">{formatCurrency(transaction.totalValue)}</p>
+                        <p className="mt-0.5 text-[0.75rem] text-slate-400">{formatMoneyByCurrency(transaction.totalValue, asset.currency)}</p>
                       </div>
                     </button>
 
@@ -1011,10 +1302,7 @@ function MobileAssetActionPanel({
                         <MobileRowMenuAction
                           icon={<EyeIcon className="h-4 w-4" />}
                           label="Ver detalle"
-                          onClick={() => {
-                            setActiveTransactionActionId(null);
-                            onViewTransaction(transaction);
-                          }}
+                          onClick={() => toggleView(transaction, actionKey)}
                         />
                         <MobileRowMenuAction
                           icon={<EditIcon className="h-4 w-4" />}
@@ -1035,6 +1323,18 @@ function MobileAssetActionPanel({
                         />
                       </div>
                     </>
+                  ) : null}
+
+                  {viewTxKey === actionKey ? (
+                    <div className="mt-2 border-t border-[#222b39] pt-3">
+                      <InlineTransactionDetail
+                        details={viewDetail}
+                        error={viewError}
+                        loading={viewLoading}
+                        logoUrl={asset.logoUrl}
+                        transaction={transaction}
+                      />
+                    </div>
                   ) : null}
                 </div>
               );
@@ -1074,18 +1374,31 @@ function ActionPanelButton({
 }
 
 
-function resolveTransactionLogo(
-  symbol: string,
-  assetType: string,
-  registry: AssetLogoRegistry,
-  cryptoLogoMap: Record<string, string>,
-) {
-  const storedLogo = getAssetLogoFromRegistry(registry, symbol, assetType);
-  if (storedLogo) return storedLogo;
+function resolveTransactionName(symbol: string, apiName?: string | null): string {
+  if (apiName) return apiName;
+  return getAssetDisplayName(symbol);
+}
 
-  return normalizeTransactionAssetType(assetType) === "CRYPTO"
-    ? cryptoLogoMap[symbol.toUpperCase()] ?? null
-    : null;
+// Currency the row was executed in — taken STRICTLY from the backend's stored
+// `currency`. Returns null when the transaction has no currency recorded: we do
+// NOT guess one from the symbol, so the label always reflects real data.
+function resolveTransactionCurrency(currency: string | null | undefined): CurrencyCode | null {
+  const normalized = currency?.trim().toUpperCase();
+  if (normalized === "MXN" || normalized === "USD") return normalized;
+  return null;
+}
+
+// Money formatter that appends the currency code next to the amount, mirroring
+// the broker receipt ("$41.56 USD", "$1,554.49 MXN"). The code is shown only
+// when the row actually has a stored currency; with none, the amount renders
+// without a fabricated label.
+function formatMoneyByCurrency(value: string | number, currency: CurrencyCode | null): string {
+  const amount = typeof value === "string" ? Number(value) : value;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
+  return currency ? `$${formatted} ${currency}` : `$${formatted}`;
 }
 
 function normalizeTransactionMode(transactionType: string): InitialTransactionDraft["mode"] {
@@ -1138,7 +1451,7 @@ function resolveSummaryValue(
 }
 
 function formatDetailsDate(value: string) {
-  return new Date(value).toLocaleString("en-US");
+  return new Date(value).toLocaleString("es-MX");
 }
 
 function formatSignedQuantity(value: number, symbol: string) {
@@ -1285,26 +1598,24 @@ function DeleteTransactionDialog({
   );
 }
 
-function TransactionDetailsDialog({
+// S1 detail (View): rendered inline beneath a transaction row (desktop) or a
+// movement (mobile panel). Two columns — key facts on the left, friction /
+// summary on the right. Read-only; replaces the old TransactionDetailsDialog.
+function InlineTransactionDetail({
   details,
   error,
-  isLoading,
-  isOpen,
+  loading,
   logoUrl,
-  onClose,
   transaction,
 }: {
   details: TransactionDetailsResponse | null;
   error: string | null;
-  isLoading: boolean;
-  isOpen: boolean;
+  loading: boolean;
   logoUrl: string | null;
-  onClose: () => void;
-  transaction: TransactionResponse | null;
+  transaction: TransactionResponse;
 }) {
-  if (!isOpen || !transaction) return null;
-
   const assetSymbol = (details?.assetSymbol ?? transaction.assetSymbol).toUpperCase();
+  const detailCurrency = resolveTransactionCurrency(transaction.currency);
   const assetType = details?.assetType ?? transaction.assetType;
   const transactionType = details?.transactionType ?? transaction.transactionType;
   const normalizedType = normalizeTransactionType(transactionType);
@@ -1314,42 +1625,37 @@ function TransactionDetailsDialog({
   const fee = details?.fee ?? transaction.fee;
   const notes = details?.notes?.trim() ? details.notes : transaction.notes?.trim() ? transaction.notes : "--";
   const summaryValue = resolveSummaryValue(details, transaction, normalizedType);
-  // Cost Basis = price × qty without fees (grossAmount from details, totalValue as fallback)
-  const costBasis = details?.grossAmount ?? transaction.totalValue;
+  // Gross amount = price × qty WITHOUT fees (the principal, not the cost basis).
+  const grossAmount = details?.grossAmount ?? transaction.totalValue;
+  // With a friction breakdown the card already itemizes gross + fees, so the
+  // summary keeps only the "Total invertido" headline; manual entries show all.
+  const hasBreakdown = Boolean(details?.frictionBreakdown);
 
   return (
-    <Modal
-      hideDefaultCloseButton
-      onClose={onClose}
-      overlayClassName="bg-[#070a11]/76 backdrop-blur-[6px]"
-      panelClassName="max-w-[440px] rounded-[1.35rem] border border-[#1f2430] bg-[#111317] px-0 py-0 text-white shadow-[0_38px_100px_rgba(0,0,0,0.52)] ring-0"
-    >
-      <div className="px-7 pb-7 pt-7">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[1.05rem] font-semibold tracking-[-0.03em] text-white">Transaction Details</h3>
-          <button
-            className="rounded-full p-1.5 text-[#8a94a6] transition hover:bg-[#1b2130] hover:text-white"
-            onClick={onClose}
-            type="button"
-          >
-            <span aria-hidden="true" className="text-[1.75rem] leading-none">&times;</span>
-          </button>
-        </div>
+    <div>
+      <div className="mb-4 flex items-center gap-2">
+        <span className="rounded-full border border-[#3861fb]/35 bg-[#3861fb]/[0.12] px-2.5 py-1 text-[0.625rem] font-bold uppercase tracking-[0.12em] text-[#4f74ff]">
+          Detalle de la transacción
+        </span>
+        <span className="text-[0.84rem] font-semibold text-white">{resolveTransactionName(transaction.assetSymbol, transaction.assetName)}</span>
+        <span className="text-[0.74rem] text-[#7f8aa3]">{assetSymbol}</span>
+      </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#3861fb] border-t-transparent" />
-          </div>
-        ) : (
-          <div className="mt-6 space-y-0">
-            <DetailRow label="Type" value={normalizedType === "BUY" ? "Buy" : normalizedType === "SELL" ? "Sell" : "Transfer"} />
-            <DetailRow label="Date" value={formatDetailsDate(transactionDate)} />
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#3861fb] border-t-transparent" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+          <div>
+            <DetailRow label="Tipo" value={normalizedType === "BUY" ? "Compra" : normalizedType === "SELL" ? "Venta" : "Transferencia"} />
+            <DetailRow label="Fecha" value={formatDetailsDate(transactionDate)} />
             <DetailRow
-              label={normalizeTransactionAssetType(assetType) === "STOCK" ? "Price Per Share" : "Price Per Coin"}
-              value={pricePerUnit > 0 ? formatCurrency(pricePerUnit) : "--"}
+              label={normalizeTransactionAssetType(assetType) === "STOCK" ? "Precio por acción" : "Precio por unidad"}
+              value={pricePerUnit > 0 ? formatMoneyByCurrency(pricePerUnit, detailCurrency) : "--"}
             />
             <DetailRow
-              label="Quantity"
+              label="Cantidad"
               value={(
                 <span className="inline-flex items-center gap-2 font-semibold text-white">
                   <AssetAvatar assetType={assetType} logoUrl={logoUrl} symbol={assetSymbol} />
@@ -1357,41 +1663,49 @@ function TransactionDetailsDialog({
                 </span>
               )}
             />
-            <DetailRow label="Fees" value={fee > 0 ? formatFeeCurrency(fee, details?.feeCurrency ?? "USD") : "--"} />
+            <DetailRow label="Notas" multiline value={notes} />
+          </div>
+
+          <div>
             {normalizedType === "TRANSFER" ? (
-              <DetailRow label="Transfer Quantity" value={`${formatQuantity(quantity)} ${assetSymbol}`} />
+              <DetailRow label="Cantidad transferida" value={`${formatQuantity(quantity)} ${assetSymbol}`} />
             ) : (
               <>
+                {!hasBreakdown ? (
+                  <>
+                    <DetailRow label="Comisiones" value={fee > 0 ? formatFeeCurrency(fee, details?.feeCurrency ?? "USD") : "--"} />
+                    <DetailRow
+                      label={normalizedType === "SELL" ? "Monto bruto recibido" : "Monto bruto"}
+                      value={formatMoneyByCurrency(grossAmount, detailCurrency)}
+                    />
+                  </>
+                ) : null}
                 <DetailRow
-                  label={normalizedType === "SELL" ? "Gross Received" : "Cost Basis"}
-                  value={formatCurrency(costBasis)}
-                />
-                <DetailRow
-                  label={normalizedType === "SELL" ? "Net Received" : "Total Spent"}
-                  value={formatCurrency(summaryValue)}
+                  label={normalizedType === "SELL" ? "Neto recibido" : "Total invertido"}
+                  value={formatMoneyByCurrency(summaryValue, detailCurrency)}
                   highlight
                 />
               </>
             )}
-            <DetailRow label="Notes" multiline value={notes} />
 
             {details?.frictionBreakdown ? (
               <FrictionBreakdownCard
                 breakdown={details.frictionBreakdown}
                 feeCurrency={details.feeCurrency}
                 transactionType={transactionType}
+                executionUnitPrice={details.pricePerUnit}
               />
             ) : null}
-
-            {error ? (
-              <div className="mt-4 rounded-[0.95rem] border border-[#ea3943]/30 bg-[#ea3943]/10 px-4 py-3 text-[0.82rem] text-[#ffb0b4]">
-                {error}
-              </div>
-            ) : null}
           </div>
-        )}
-      </div>
-    </Modal>
+        </div>
+      )}
+
+      {error ? (
+        <div className="mt-4 rounded-[0.95rem] border border-[#ea3943]/30 bg-[#ea3943]/10 px-4 py-3 text-[0.82rem] text-[#ffb0b4]">
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -8,6 +8,10 @@ import { expireSession, persistSession, readSession } from "@/features/auth/lib/
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
   auth?: boolean;
+  // When true, `path` is a same-origin BFF route (e.g. /api/me/transactions) and
+  // must NOT be prefixed with the backend origin. The bearer token is still
+  // attached and 401 → refresh handling still applies.
+  sameOrigin?: boolean;
 };
 
 // ── Concurrent-refresh queue ──────────────────────────────────────────────────
@@ -67,7 +71,8 @@ async function doApiRequest<T>(
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(`${env.apiBaseUrl}${path}`, {
+  const requestUrl = options.sameOrigin ? path : `${env.apiBaseUrl}${path}`;
+  const response = await fetch(requestUrl, {
     ...options,
     headers,
     body:
@@ -136,11 +141,12 @@ async function tryRefreshSession(): Promise<boolean> {
 
   _isRefreshing = true;
   try {
-    const response = await fetch(`${env.apiBaseUrl}${endpoints.auth.refresh}`, {
+    const response = await fetch(endpoints.bff.refresh, {
       method: "POST",
       cache: "no-store",
-      // Critical: the HttpOnly refresh-token cookie must travel to the backend.
-      credentials: "include",
+      // Same-origin BFF call: the browser sends the HttpOnly `cpm.rt` cookie,
+      // and the BFF replays it to the backend via X-Refresh-Token.
+      credentials: "same-origin",
     });
 
     if (!response.ok) {

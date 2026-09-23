@@ -1,31 +1,33 @@
 const KNOWN_STOCKS = ["MSFT", "AAPL", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "CRCL"];
 const KNOWN_INDICES = ["SPY", "QQQ", "DIA"];
 
+const FALLBACK_NAMES: Record<string, string> = {
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  SOL: "Solana",
+  BNB: "BNB",
+  XRP: "XRP",
+  USDT: "Tether",
+  USDC: "USD Coin",
+  ADA: "Cardano",
+  DOGE: "Dogecoin",
+  PEPE: "Pepe",
+  AAPL: "Apple Inc.",
+  MSFT: "Microsoft Corp.",
+  GOOGL: "Alphabet Inc.",
+  GOOG: "Alphabet Inc. (C)",
+  NVDA: "NVIDIA Corp",
+  AMZN: "Amazon",
+  TSLA: "Tesla",
+  SPY: "SPDR S&P 500 ETF",
+  QQQ: "Invesco QQQ Trust",
+  META: "Meta Platforms",
+  HYPE: "Hyperliquid",
+  CRCL: "Circle Internet Group",
+};
+
 export function getAssetDisplayName(symbol: string): string {
-  const key = symbol.toUpperCase();
-  const names: Record<string, string> = {
-    BTC: "Bitcoin",
-    ETH: "Ethereum",
-    SOL: "Solana",
-    BNB: "BNB",
-    XRP: "XRP",
-    USDT: "Tether",
-    USDC: "USD Coin",
-    ADA: "Cardano",
-    DOGE: "Dogecoin",
-    PEPE: "Pepe",
-    AAPL: "Apple Inc.",
-    MSFT: "Microsoft Corp.",
-    GOOGL: "Alphabet Inc.",
-    NVDA: "NVIDIA Corp",
-    AMZN: "Amazon",
-    TSLA: "Tesla",
-    SPY: "SPDR S&P 500 ETF",
-    QQQ: "Invesco QQQ Trust",
-    META: "Meta Platforms",
-    HYPE: "Hyperliquid",
-  };
-  return names[key] ?? key;
+  return FALLBACK_NAMES[symbol.toUpperCase()] ?? symbol.toUpperCase();
 }
 
 export function getAssetPalette(symbol: string): { base: string; highlight: string; text: string } {

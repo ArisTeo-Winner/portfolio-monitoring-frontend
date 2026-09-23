@@ -9,9 +9,10 @@ import type {
   Time,
   UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { areaSeriesOptions, baseChartOptions, CHART_THEME } from "@/lib/chart/lightweight-config";
 import { useAssetChart } from "@/features/portfolio/hooks/use-asset-chart";
+import { clipToPositionStart } from "@/features/portfolio/lib/range-utils";
 import type { ChartRange } from "@/types/portfolio-chart";
 import { formatCurrency } from "@/lib/utils/format";
 
@@ -52,6 +53,15 @@ type Props = {
 export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
   const { history, markers, loading, error } = useAssetChart(symbol, range);
 
+  // Recorta el tramo "sin posición" (valor 0 antes de la compra) para que la
+  // línea arranque en la entrada real, igual que Google Finance. Así se elimina
+  // la línea plana en $0, el salto vertical en la compra y el eje Y arranca en
+  // la banda de precio real en lugar de en $0.
+  const displayHistory = useMemo(
+    () => clipToPositionStart((history as DataPoint[] | null) ?? []),
+    [history],
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -62,10 +72,10 @@ export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
 
   const [tooltip, setTooltip] = useState<TooltipState>(INITIAL_TOOLTIP);
 
-  // Keep historyRef in sync with latest data
+  // Keep historyRef in sync with latest (clipped) data
   useEffect(() => {
-    historyRef.current = (history as DataPoint[] | null) ?? [];
-  }, [history]);
+    historyRef.current = displayHistory;
+  }, [displayHistory]);
 
   // Initialize chart once on mount — never recreate
   useEffect(() => {
@@ -128,20 +138,20 @@ export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
     const chart = chartRef.current;
     if (!series || !chart) return;
 
-    if (!history?.length) {
+    if (!displayHistory.length) {
       series.setData([]);
       return;
     }
 
     series.setData(
-      (history as DataPoint[]).map((p) => ({
+      displayHistory.map((p) => ({
         time: p.time as UTCTimestamp,
         value: p.value,
       })),
     );
 
     chart.timeScale().fitContent();
-  }, [history]);
+  }, [displayHistory]);
 
   // Update markers when markers response changes
   useEffect(() => {
@@ -160,8 +170,8 @@ export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
 
   const showLoading = loading;
   const showError = !loading && !!error;
-  const showEmpty = !loading && !error && !history?.length;
-  const showChart = !loading && !error && !!history?.length;
+  const showEmpty = !loading && !error && !displayHistory.length;
+  const showChart = !loading && !error && !!displayHistory.length;
 
   return (
     <>

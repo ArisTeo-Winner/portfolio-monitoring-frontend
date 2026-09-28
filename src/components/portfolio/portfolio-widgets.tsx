@@ -9,8 +9,8 @@ import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
 import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 import { startHoldingDetailTrace } from "@/features/portfolio/lib/holding-detail-performance";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
-import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
-import { getAssetCurrency, formatCurrencyByCode } from "@/lib/utils/currency";
+import { formatQuantity } from "@/lib/utils/format";
+import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
 type WorkspaceTab = "assets" | "history";
@@ -77,6 +77,9 @@ export function PortfolioTable({
     };
   }, [onHistoryChanged]);
 
+  // ADR-0010: entries arrive already converted into the backend display currency.
+  const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
+
   const visibleEntries = useMemo(() => {
     return [...entries]
       .filter((entry) => {
@@ -119,7 +122,7 @@ export function PortfolioTable({
             <div className="flex items-center gap-3 rounded-[0.95rem] bg-[#0f1217] px-4 py-3 text-[0.84rem] shadow-[0_16px_34px_rgba(0,0,0,0.16)] max-sm:hidden">
               <span className="text-[#7f8aa3]">{activeTab === "assets" ? "Activos" : "Pnl"}</span>
               <span className="font-semibold text-white">
-                {activeTab === "assets" ? visibleEntries.length : formatSignedCurrency(totalProfitLoss)}
+                {activeTab === "assets" ? visibleEntries.length : formatSignedDisplayMoney(totalProfitLoss, displayCurrency)}
               </span>
             </div>
           </div>
@@ -128,10 +131,10 @@ export function PortfolioTable({
         {activeTab === "assets" ? (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-[0.82rem] text-[#7f8aa3] max-sm:hidden">
             <span className="rounded-full bg-[#0f1217] px-3 py-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
-              Invertido: <strong className="ml-1 text-white">{formatCurrency(totalInvested)}</strong>
+              Invertido: <strong className="ml-1 text-white">{formatDisplayMoney(totalInvested, displayCurrency)}</strong>
             </span>
             <span className="rounded-full bg-[#0f1217] px-3 py-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
-              Rendimiento: <strong className={totalProfitLoss >= 0 ? "ml-1 text-[#17c784]" : "ml-1 text-[#ff6b6b]"}>{formatSignedCurrency(totalProfitLoss)}</strong>
+              Rendimiento: <strong className={totalProfitLoss >= 0 ? "ml-1 text-[#17c784]" : "ml-1 text-[#ff6b6b]"}>{formatSignedDisplayMoney(totalProfitLoss, displayCurrency)}</strong>
             </span>
           </div>
         ) : null}
@@ -163,7 +166,7 @@ export function PortfolioTable({
                     </div>
                   </div>
                   <div className="min-w-[7.5rem] text-right">
-                    <p className="truncate text-[0.9375rem] font-semibold leading-[1.25] text-white">{formatCurrencyByCode(entry.currentValue, getAssetCurrency(entry.assetSymbol))}</p>
+                    <p className="truncate text-[0.9375rem] font-semibold leading-[1.25] text-white">{formatDisplayMoney(entry.currentValue, displayCurrency)}</p>
                     <p className={`mt-0.5 text-[0.75rem] font-medium leading-[1.35] ${changePercent >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
                       {changePercent >= 0 ? "+" : "-"}{Math.abs(changePercent).toFixed(2)}%
                     </p>
@@ -192,7 +195,6 @@ export function PortfolioTable({
                   const profitLoss = Number(entry.totalProfitLoss);
                   const totalInvestedEntry = Number(entry.totalInvested);
                   const changePercent = totalInvestedEntry > 0 ? (profitLoss / totalInvestedEntry) * 100 : 0;
-                  const entryCurrency = getAssetCurrency(entry.assetSymbol);
 
                   return (
                     <tr className="group transition hover:bg-white/[0.02] [box-shadow:inset_0_-1px_0_#13161c]" key={entry.portfolioEntryId}>
@@ -217,12 +219,12 @@ export function PortfolioTable({
                         <p className="mt-1 text-[0.8rem] font-medium uppercase tracking-[0.12em] text-[#7f8aa3]">{entry.assetSymbol}</p>
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <p className="text-[1rem] font-semibold text-white">{formatCurrencyByCode(currentPrice, entryCurrency)}</p>
+                        <p className="text-[1rem] font-semibold text-white">{formatDisplayMoney(currentPrice, displayCurrency)}</p>
                         <TrendBadge value={changePercent} />
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <p className="text-[1.02rem] font-semibold text-white">{formatCurrencyByCode(entry.currentValue, entryCurrency)}</p>
-                        <p className="mt-1 text-[0.82rem] font-medium text-[#7f8aa3]">Base: {formatCurrencyByCode(entry.totalInvested, entryCurrency)}</p>
+                        <p className="text-[1.02rem] font-semibold text-white">{formatDisplayMoney(entry.currentValue, displayCurrency)}</p>
+                        <p className="mt-1 text-[0.82rem] font-medium text-[#7f8aa3]">Base: {formatDisplayMoney(entry.totalInvested, displayCurrency)}</p>
                       </td>
                       <td className="py-3.5 pl-4 text-right">
                         <button
@@ -270,7 +272,7 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
   const quantity = Number(entry.totalQuantity);
   const currentValue = Number(entry.currentValue);
   const currentPrice = quantity > 0 ? currentValue / quantity : Number(entry.averagePricePerUnit);
-  const currency = getAssetCurrency(entry.assetSymbol);
+  const displayCurrency = resolveDisplayCurrency(entry.presentation);
 
   useEffect(() => {
     setLogoRegistry(readAssetLogoRegistry());
@@ -299,15 +301,15 @@ export function PortfolioDetailCard({ entry }: { entry: PortfolioEntry }) {
         </div>
 
         <span className={`rounded-[1rem] px-4 py-3 text-[0.92rem] font-semibold ${pnl >= 0 ? "bg-[#0f2f24] text-[#20d48d]" : "bg-[#30191d] text-[#ff6b6b]"}`}>
-          {formatSignedCurrency(entry.totalProfitLoss)}
+          {formatSignedDisplayMoney(entry.totalProfitLoss, displayCurrency)}
         </span>
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Current value" value={formatCurrencyByCode(entry.currentValue, currency)} />
-        <MetricCard label="Total invested" value={formatCurrencyByCode(entry.totalInvested, currency)} />
+        <MetricCard label="Current value" value={formatDisplayMoney(entry.currentValue, displayCurrency)} />
+        <MetricCard label="Total invested" value={formatDisplayMoney(entry.totalInvested, displayCurrency)} />
         <MetricCard label="Total quantity" value={formatQuantity(entry.totalQuantity)} />
-        <MetricCard label="Current price" value={formatCurrencyByCode(currentPrice, currency)} />
+        <MetricCard label="Current price" value={formatDisplayMoney(currentPrice, displayCurrency)} />
       </div>
     </section>
   );

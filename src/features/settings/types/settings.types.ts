@@ -49,7 +49,6 @@ export type SessionSettings = {
 
 export type PreferencesSettings = {
   pnlMethod: "FIFO" | "AVERAGE_COST";
-  defaultCurrency: "USD" | "EUR" | "MXN";
   chartDefaultTimeframe: "24H" | "7D" | "30D" | "90D" | "1Y" | "ALL";
   dataProviderPriority: "FIRST_AVAILABLE" | "COINGECKO" | "MANUAL";
   autoSyncFrequency: "MANUAL" | "15M" | "1H" | "6H" | "24H";

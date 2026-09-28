@@ -280,7 +280,6 @@ test.describe("Settings responsive density", () => {
     await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
     for (const id of [
       "pnl-method-select",
-      "default-currency-select",
       "chart-timeframe-select",
       "data-provider-select",
       "sync-frequency-select",

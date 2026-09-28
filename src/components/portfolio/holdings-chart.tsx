@@ -14,7 +14,7 @@ import {
   type HistoryRange,
 } from "@/features/portfolio/lib/range-utils";
 import { tokens } from "@/lib/design-tokens";
-import { formatCurrency, formatSignedCurrency } from "@/lib/utils/format";
+import { formatDisplayMoney, formatFxRateLabel, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 
 type TooltipState = {
   visible: boolean;
@@ -75,6 +75,10 @@ export function HoldingsChart({
   }, []);
 
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
+  // ADR-0010: entries + history arrive already in the backend's display currency.
+  const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
+  // FX label for the applied rate (null when USD / no conversion).
+  const fxLabel = formatFxRateLabel(entries[0]?.presentation);
   const [nowSeconds, setNowSeconds] = useState(0);
   useEffect(() => {
     setNowSeconds(Math.floor(Date.now() / 1000));
@@ -334,9 +338,9 @@ export function HoldingsChart({
               <div className="hidden max-sm:flex max-sm:items-end max-sm:justify-between max-sm:gap-3">
                 <div className="min-w-0">
                   <p className="text-[0.75rem] font-normal leading-[1.4] text-[#B0B6C3]">Saldo total</p>
-                  <p className="mt-1 text-[1.375rem] font-semibold leading-[1.2] text-white">{formatCurrency(totalValue)}</p>
+                  <p className="mt-1 text-[1.375rem] font-semibold leading-[1.2] text-white">{formatDisplayMoney(totalValue, displayCurrency)}</p>
                   <p className={`mt-1 text-[0.875rem] font-medium leading-[1.3] ${allTimeProfit >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
-                    {formatSignedCurrency(allTimeProfit)} ({profitPercent >= 0 ? "+" : ""}{profitPercent.toFixed(2)}%)
+                    {formatSignedDisplayMoney(allTimeProfit, displayCurrency)} ({profitPercent >= 0 ? "+" : ""}{profitPercent.toFixed(2)}%)
                   </p>
                 </div>
 
@@ -354,7 +358,7 @@ export function HoldingsChart({
               <span>
                 Ganancia histórica:{" "}
                 <strong className={allTimeProfit >= 0 ? "text-fintech-positive" : "text-fintech-negative"}>
-                  {formatSignedCurrency(allTimeProfit)}{" "}
+                  {formatSignedDisplayMoney(allTimeProfit, displayCurrency)}{" "}
                   <span className="font-medium">
                     ({profitPercent >= 0 ? "+" : ""}
                     {profitPercent.toFixed(2)}%)
@@ -362,8 +366,16 @@ export function HoldingsChart({
                 </strong>
               </span>
               <span>
-                Costo base: <strong className="text-white">{formatCurrency(costBasis)}</strong>
+                Costo base: <strong className="text-white">{formatDisplayMoney(costBasis, displayCurrency)}</strong>
               </span>
+              {fxLabel ? (
+                <span
+                  className="text-[0.82rem] font-medium text-[#8fa0b8]"
+                  title={`Convertido a ${displayCurrency} · ${fxLabel}`}
+                >
+                  Tipo de cambio: <strong className="text-white">{fxLabel}</strong>
+                </span>
+              ) : null}
               {data?.meta.partial ? (
                 <span className="text-[0.82rem] font-medium text-[#e9b872]">
                   Datos parciales — sin precio: {(data.meta.unavailableSymbols ?? []).join(", ")}
@@ -499,7 +511,7 @@ export function HoldingsChart({
                                           {formatTooltipDate(d.time / 1000)}
                                         </p>
                                         <p className="mt-1 text-[0.75rem] font-semibold leading-[1.25] text-white">
-                                          Total Value: {formatCurrency(d.value)}
+                                          Total Value: {formatDisplayMoney(d.value, displayCurrency)}
                                         </p>
                                       </div>
                                     );
@@ -529,7 +541,7 @@ export function HoldingsChart({
                                 {formatTooltipDate(tooltip.point.time)}
                               </p>
                               <p className="mt-2 text-[0.98rem] font-semibold text-white">
-                                Total Value: {formatCurrency(tooltip.value)}
+                                Total Value: {formatDisplayMoney(tooltip.value, displayCurrency)}
                               </p>
                             </div>
                           ) : null}
@@ -586,10 +598,10 @@ export function HoldingsChart({
         <StatCard
           label="All-time Profit"
           tone={allTimeProfit >= 0 ? "emerald" : "rose"}
-          value={formatSignedCurrency(allTimeProfit)}
+          value={formatSignedDisplayMoney(allTimeProfit, displayCurrency)}
           subvalue={`${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`}
         />
-        <StatCard label="Cost Basis" tone="neutral" value={formatCurrency(costBasis)} subvalue="Average cost method" />
+        <StatCard label="Cost Basis" tone="neutral" value={formatDisplayMoney(costBasis, displayCurrency)} subvalue="Average cost method" />
         <article className="rounded-[1.3rem] bg-[#111317] p-5 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Activos en ganancia</p>
           <div className="mt-3 flex items-end gap-2">
@@ -635,7 +647,7 @@ function PerformerCard({
       <p className="mt-2 truncate text-[0.98rem] font-semibold text-white">{performer.entry.assetSymbol}</p>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="truncate text-[0.78rem] text-fintech-muted">
-          {formatSignedCurrency(performer.entry.totalProfitLoss)}
+          {formatSignedDisplayMoney(performer.entry.totalProfitLoss, resolveDisplayCurrency(performer.entry.presentation))}
         </span>
         <TrendBadge value={performer.percent} />
       </div>

@@ -16,6 +16,9 @@ coverage/
 
 # Playwright — generated outputs (never commit)
 playwright-report/
+playwright-report-a11y/
+playwright-report-responsive/
+playwright-report-visual/
 test-results/
 blob-report/
 playwright/.auth/

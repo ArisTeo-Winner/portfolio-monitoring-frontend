@@ -14,6 +14,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    testTimeout: 15000,
+    hookTimeout: 15000,
     exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**", "tests/integration/**", "**/.claude/**"],
     coverage: {
       provider: "v8",

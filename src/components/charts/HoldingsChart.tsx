@@ -11,7 +11,7 @@ import type {
   HoldingsPerformancePoint,
   HoldingsPerformanceResponse,
 } from "@/features/portfolio/types/holdings-performance.types";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 
 type HoldingsChartProps = {
   portfolioId: string;
@@ -70,6 +70,7 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
     };
   }, [data]);
   const pointsByTime = useMemo(() => buildPointMap(normalizedData?.series ?? []), [normalizedData?.series]);
+  const displayCurrency = resolveDisplayCurrency(normalizedData?.presentation);
 
   useEffect(() => {
     let disposed = false;
@@ -241,8 +242,8 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lineColor }} />
               <span>{normalizedData?.isProfit ? "In profit" : "Under water"}</span>
             </span>
-            <span>All-time Profit: {formatCurrency(normalizedData?.allTimeProfit ?? 0)}</span>
-            <span>Cost Basis: {formatCurrency(normalizedData?.costBasis ?? 0)}</span>
+            <span>All-time Profit: {formatDisplayMoney(normalizedData?.allTimeProfit ?? 0, displayCurrency)}</span>
+            <span>Cost Basis: {formatDisplayMoney(normalizedData?.costBasis ?? 0, displayCurrency)}</span>
             {isFetching ? <span className="text-[#60a5fa]">Refreshing...</span> : null}
           </div>
 
@@ -270,7 +271,7 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
                           return (
                             <div className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm shadow-[0_16px_36px_rgba(0,0,0,0.36)]">
                               <p className="font-medium text-white">{formatChartDate(data.time / 1000)}</p>
-                              <p className="mt-1 text-[#cbd5e1]">Total Value: {formatCurrency(data.value)}</p>
+                              <p className="mt-1 text-[#cbd5e1]">Total Value: {formatDisplayMoney(data.value, displayCurrency)}</p>
                             </div>
                           );
                         }
@@ -297,7 +298,7 @@ export function HoldingsChart({ portfolioId, period = "ALL" }: HoldingsChartProp
                     style={{ left: tooltip.left, top: tooltip.top }}
                   >
                     <p className="font-medium text-white">{formatChartDate(tooltip.point.time)}</p>
-                    <p className="mt-1 text-[#cbd5e1]">Total Value: {formatCurrency(tooltip.point.value)}</p>
+                    <p className="mt-1 text-[#cbd5e1]">Total Value: {formatDisplayMoney(tooltip.point.value, displayCurrency)}</p>
                   </div>
                 ) : null}
 

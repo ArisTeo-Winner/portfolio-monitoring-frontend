@@ -18,7 +18,6 @@ type RawSession = Partial<SessionSettings> & {
 
 const defaultPreferences: PreferencesSettings = {
   pnlMethod: "FIFO",
-  defaultCurrency: "USD",
   chartDefaultTimeframe: "30D",
   dataProviderPriority: "FIRST_AVAILABLE",
   autoSyncFrequency: "1H",

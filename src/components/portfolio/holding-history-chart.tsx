@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { tokens } from "@/lib/design-tokens";
-import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { formatQuantity } from "@/lib/utils/format";
+import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 
 type HistoryRange = "24h" | "7d" | "30d" | "90d" | "historical";
 type TimelinePoint = {
@@ -42,6 +43,7 @@ export function HoldingHistoryChart({
   const chartState = useMemo(() => buildChartState(visiblePoints), [visiblePoints]);
   const hasHistoricalData = allPoints.length > 1 && transactions.length > 0;
 
+  const displayCurrency = resolveDisplayCurrency(entry.presentation);
   const historicalGain = Number(entry.totalProfitLoss);
   const baseCost = Number(entry.totalInvested);
   const historicalPercent = baseCost > 0 ? (historicalGain / baseCost) * 100 : 0;
@@ -56,10 +58,10 @@ export function HoldingHistoryChart({
           <h2 className="mt-3 text-[1.75rem] font-semibold tracking-[-0.05em] text-white">Historial de Holdings</h2>
           <div className="mt-3 flex flex-col gap-2 text-[0.94rem] sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
             <span className={historicalGain >= 0 ? "font-semibold text-[#22c55e]" : "font-semibold text-[#ff6b6b]"}>
-              Ganancia histórica: {formatSignedCurrency(historicalGain)} ({historicalPercent >= 0 ? "+" : ""}
+              Ganancia histórica: {formatSignedDisplayMoney(historicalGain, displayCurrency)} ({historicalPercent >= 0 ? "+" : ""}
               {historicalPercent.toFixed(2)}%)
             </span>
-            <span className="font-medium text-[#8fa0b8]">Costo base: {formatCurrency(baseCost)}</span>
+            <span className="font-medium text-[#8fa0b8]">Costo base: {formatDisplayMoney(baseCost, displayCurrency)}</span>
           </div>
         </div>
 
@@ -95,7 +97,7 @@ export function HoldingHistoryChart({
                   }}
                 >
                   <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-fintech-muted">{formatTooltipDate(activePoint.data.date)}</p>
-                  <p className="mt-2 text-[0.98rem] font-semibold text-white">Total Value: {formatCurrency(activePoint.data.value)}</p>
+                  <p className="mt-2 text-[0.98rem] font-semibold text-white">Total Value: {formatDisplayMoney(activePoint.data.value, displayCurrency)}</p>
                   <p className="mt-1 text-[0.8rem] text-[#8fa0b8]">
                     Holdings: {formatQuantity(activePoint.data.quantity)} {entry.assetSymbol}
                   </p>
@@ -124,7 +126,7 @@ export function HoldingHistoryChart({
                   <g key={`y-${tick.value}`}>
                     <line stroke="#171a1f" strokeDasharray="4 8" x1={CHART_PADDING.left} x2={VIEWBOX_WIDTH - CHART_PADDING.right} y1={tick.y} y2={tick.y} />
                     <text fill="#667085" fontSize="12" textAnchor="start" x="0" y={tick.y + 4}>
-                      {formatCompactCurrency(tick.value)}
+                      {formatCompactCurrency(tick.value, displayCurrency)}
                     </text>
                   </g>
                 ))}
@@ -392,10 +394,10 @@ function formatAxisDate(date: Date) {
   });
 }
 
-function formatCompactCurrency(value: number) {
+function formatCompactCurrency(value: number, displayCurrency: string = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: (displayCurrency || "USD").trim().toUpperCase(),
     maximumFractionDigits: 0,
     notation: "compact",
   }).format(value);

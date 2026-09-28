@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SidebarGroup } from "@/components/portfolio/portfolio-sidebar-data";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatDisplayMoney } from "@/lib/utils/currency";
 
 export function PortfolioSidebar({
   activeType,
@@ -173,7 +173,7 @@ function PortfolioSidebarItem({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[0.76rem] text-[#7f8aa3] max-sm:mt-0.5">{formatCurrency(group.totalValue)}</p>
+            <p className="mt-1 text-[0.76rem] text-[#7f8aa3] max-sm:mt-0.5">{formatDisplayMoney(group.totalValue, group.displayCurrency)}</p>
             <div className="mt-1 flex items-center justify-between max-sm:hidden">
               <p className="text-[0.72rem] text-[#5f6d82]">{group.entryCount} activos</p>
               <p className={`text-[0.74rem] font-semibold ${group.changePercent >= 0 ? "text-[#17c784]" : "text-[#ff6b6b]"}`}>

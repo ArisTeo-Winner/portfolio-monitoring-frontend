@@ -1,6 +1,7 @@
 import type { PortfolioPreference } from "@/features/portfolio/lib/local-portfolios";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetPalette } from "@/lib/utils/asset";
+import { resolveDisplayCurrency } from "@/lib/utils/currency";
 
 /**
  * Color palette per canonical assetType — UI only, not data.
@@ -28,6 +29,9 @@ export type SidebarGroup = {
   created: boolean;
   avatar?: string;
   countAsTotal: boolean;
+  // ADR-0010: currency the aggregated totalValue is expressed in (from the
+  // backend presentation envelope; same for all entries).
+  displayCurrency: string;
 };
 
 /**
@@ -63,6 +67,7 @@ function formatAssetTypeLabel(assetType: string): string {
 
 export function buildSidebarGroups(entries: PortfolioEntry[], preferences: PortfolioPreference[]) {
   const groups: SidebarGroup[] = [];
+  const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
 
   // Normalize assetType so variants like "STOCKS" merge with "STOCK"
   const activeEntries = entries
@@ -90,6 +95,7 @@ export function buildSidebarGroups(entries: PortfolioEntry[], preferences: Portf
       created: Boolean(preference),
       avatar: preference?.avatar,
       countAsTotal: preference?.countAsTotal ?? true,
+      displayCurrency,
     });
   });
 

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 type SelectOption = {
   label: string;
   value: string;
+  disabled?: boolean;
 };
 
 type SettingsSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
@@ -32,7 +33,7 @@ export function SettingsSelect({ className, error, hideLabel = false, label, opt
         {...props}
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
         ))}

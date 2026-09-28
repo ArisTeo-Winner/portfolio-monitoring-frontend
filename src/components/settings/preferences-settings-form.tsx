@@ -17,7 +17,6 @@ const preferencesSchema = z.object({
   autoSyncFrequency: z.enum(["MANUAL", "15M", "1H", "6H", "24H"]),
   chartDefaultTimeframe: z.enum(["24H", "7D", "30D", "90D", "1Y", "ALL"]),
   dataProviderPriority: z.enum(["FIRST_AVAILABLE", "COINGECKO", "MANUAL"]),
-  defaultCurrency: z.enum(["USD", "EUR", "MXN"]),
   pnlMethod: z.enum(["FIFO", "AVERAGE_COST"]),
 });
 
@@ -26,7 +25,6 @@ const defaultValues: PreferencesSettings = {
   autoSyncFrequency: "1H",
   chartDefaultTimeframe: "30D",
   dataProviderPriority: "FIRST_AVAILABLE",
-  defaultCurrency: "USD",
   pnlMethod: "FIFO",
 };
 
@@ -113,20 +111,6 @@ export function PreferencesSettingsForm() {
                   { label: "Average Cost", value: "AVERAGE_COST" },
                 ]}
                 {...register("pnlMethod")}
-              />
-            </SettingsField>
-            <SettingsField label="Moneda por defecto">
-              <SettingsSelect
-                data-testid="default-currency-select"
-                disabled={loading}
-                hideLabel
-                label="Default Currency"
-                options={[
-                  { label: "USD", value: "USD" },
-                  { label: "EUR", value: "EUR" },
-                  { label: "MXN", value: "MXN" },
-                ]}
-                {...register("defaultCurrency")}
               />
             </SettingsField>
             <SettingsField label="Rango grafico inicial">

@@ -135,19 +135,19 @@ describe("getPreferences – MSW integration", () => {
   it("merges stored overrides on top of the defaults", async () => {
     localStorage.setItem(
       "cpm.settings.preferences",
-      JSON.stringify({ defaultCurrency: "EUR", autoSyncEnabled: false }),
+      JSON.stringify({ pnlMethod: "AVERAGE_COST", autoSyncEnabled: false }),
     );
     const result = await getPreferences();
-    expect(result.defaultCurrency).toBe("EUR");
+    expect(result.pnlMethod).toBe("AVERAGE_COST");
     expect(result.autoSyncEnabled).toBe(false);
-    expect(result.pnlMethod).toBe("FIFO"); // default preserved
+    expect(result.chartDefaultTimeframe).toBe("30D"); // default preserved
   });
 
   it("falls back to defaults when localStorage contains malformed JSON", async () => {
     localStorage.setItem("cpm.settings.preferences", "not-json");
     const result = await getPreferences();
     expect(result.pnlMethod).toBe("FIFO");
-    expect(result.defaultCurrency).toBe("USD");
+    expect(result.chartDefaultTimeframe).toBe("30D");
   });
 });
 
@@ -155,7 +155,6 @@ describe("updatePreferences – MSW integration", () => {
   it("persists the new preferences to localStorage and returns them", async () => {
     const newPrefs: PreferencesSettings = {
       pnlMethod: "AVERAGE_COST",
-      defaultCurrency: "MXN",
       chartDefaultTimeframe: "7D",
       dataProviderPriority: "FIRST_AVAILABLE",
       autoSyncFrequency: "1H",
@@ -165,14 +164,13 @@ describe("updatePreferences – MSW integration", () => {
     expect(result).toEqual(newPrefs);
 
     const stored = JSON.parse(localStorage.getItem("cpm.settings.preferences") ?? "{}") as Partial<PreferencesSettings>;
-    expect(stored.defaultCurrency).toBe("MXN");
+    expect(stored.chartDefaultTimeframe).toBe("7D");
     expect(stored.autoSyncEnabled).toBe(false);
   });
 
   it("round-trips: updatePreferences then getPreferences returns the saved values", async () => {
     const prefs: PreferencesSettings = {
       pnlMethod: "AVERAGE_COST",
-      defaultCurrency: "EUR",
       chartDefaultTimeframe: "1Y",
       dataProviderPriority: "FIRST_AVAILABLE",
       autoSyncFrequency: "1H",
@@ -180,7 +178,6 @@ describe("updatePreferences – MSW integration", () => {
     };
     await updatePreferences(prefs);
     const result = await getPreferences();
-    expect(result.defaultCurrency).toBe("EUR");
     expect(result.pnlMethod).toBe("AVERAGE_COST");
     expect(result.chartDefaultTimeframe).toBe("1Y");
   });

@@ -12,7 +12,8 @@ import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types"
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { tokens } from "@/lib/design-tokens";
-import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
+import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { getAssetDisplayName, getAssetPalette } from "@/lib/utils/asset";
 
 type TradeRange = "1D" | "1W" | "1M" | "YTD" | "ALL";
@@ -121,6 +122,9 @@ export function HoldingTradingWorkspace({
   const netValue = grossValue + feeValue;
   const pnl = Number(entry.totalProfitLoss);
   const averageCost = Number(entry.averagePricePerUnit);
+  // ADR-0010: portfolio-valuation stats are in the backend display currency;
+  // market candles and the new-trade preview stay in the asset's native quote.
+  const displayCurrency = resolveDisplayCurrency(entry.presentation);
   const holdings = Number(entry.totalQuantity);
 
   const candles = useMemo(() => {
@@ -344,14 +348,14 @@ export function HoldingTradingWorkspace({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                <WorkspaceStat label="Precio actual" value={formatCurrency(currentPrice)} />
+                <WorkspaceStat label="Precio actual" value={formatDisplayMoney(currentPrice, displayCurrency)} />
                 <WorkspaceStat label="Cantidad" value={`${formatQuantity(entry.totalQuantity)} ${entry.assetSymbol}`} />
-                <WorkspaceStat label="Costo promedio" value={formatCurrency(averageCost)} />
-                <WorkspaceStat label="Valor actual" value={formatCurrency(entry.currentValue)} />
+                <WorkspaceStat label="Costo promedio" value={formatDisplayMoney(averageCost, displayCurrency)} />
+                <WorkspaceStat label="Valor actual" value={formatDisplayMoney(entry.currentValue, displayCurrency)} />
                 <WorkspaceStat
                   label="PnL"
                   tone={pnl >= 0 ? "positive" : "negative"}
-                  value={formatSignedCurrency(entry.totalProfitLoss)}
+                  value={formatSignedDisplayMoney(entry.totalProfitLoss, displayCurrency)}
                 />
               </div>
             </div>

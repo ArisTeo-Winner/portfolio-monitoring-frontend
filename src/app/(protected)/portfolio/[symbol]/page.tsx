@@ -28,7 +28,7 @@ import { getUserTransactions } from "@/features/transactions/api/get-transaction
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
 import { formatCurrency, formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
-import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
+import { computePortfolioTotals, formatDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
 
 const SUPPORTED_TRANSACTION_TYPES = new Set(["CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND"]);
@@ -263,7 +263,11 @@ export default function PortfolioSymbolPage() {
     [portfolioEntries, preferences],
   );
   const totalValueLabel = useMemo(
-    () => formatPortfolioTotal(computePortfolioTotals(portfolioEntries, usdMxnRate)),
+    () =>
+      formatDisplayMoney(
+        computePortfolioTotals(portfolioEntries, usdMxnRate).totalUsd,
+        resolveDisplayCurrency(portfolioEntries[0]?.presentation),
+      ),
     [portfolioEntries, usdMxnRate],
   );
   const _createdCount = preferences.length > 0 ? preferences.length : sidebarGroups.length;

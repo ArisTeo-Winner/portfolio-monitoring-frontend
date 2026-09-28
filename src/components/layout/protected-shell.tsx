@@ -40,8 +40,7 @@ import { getMe } from "@/features/users/api/get-me";
 import type { UserResponse } from "@/features/users/types/user.types";
 import { isMercadosNavEnabled } from "@/lib/navigation/nav-features";
 import { getPortfolioNavBadge } from "@/lib/navigation/release-badges";
-import { formatSignedCurrency } from "@/lib/utils/format";
-import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
+import { computePortfolioTotals, formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 
 type NavItem = {
   href: string;
@@ -180,13 +179,14 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
           .catch(() => null),
       ]);
       const totals = computePortfolioTotals(entries, usdMxnRate);
+      const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
       const invested = entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0);
       const profitLoss = entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0);
       const percent = invested > 0 ? (profitLoss / invested) * 100 : 0;
 
       setPortfolioSummary({
-        total: formatPortfolioTotal(totals),
-        changeValue: formatSignedCurrency(profitLoss),
+        total: formatDisplayMoney(totals.totalUsd, displayCurrency),
+        changeValue: formatSignedDisplayMoney(profitLoss, displayCurrency),
         changePercent: `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`,
         positive: profitLoss >= 0,
       });

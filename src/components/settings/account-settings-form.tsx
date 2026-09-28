@@ -29,7 +29,9 @@ type AccountFormValues = z.infer<typeof accountSchema>;
 
 const currencyOptions = [
   { label: "USD - US Dollar", value: "USD" },
-  { label: "EUR - Euro", value: "EUR" },
+  // EUR is not supported by the presentation-currency layer yet (no USD/EUR FX
+  // pair in v1 — the backend falls back to USD). Disabled until it lands.
+  { label: "EUR - Euro (no disponible)", value: "EUR", disabled: true },
   { label: "MXN - Mexican Peso", value: "MXN" },
 ];
 

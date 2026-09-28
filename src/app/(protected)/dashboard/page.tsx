@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,8 +11,8 @@ import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types"
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import type { TransactionResponse } from "@/features/transactions/types/transaction.types";
 import { ApiError } from "@/lib/api/problem-details";
-import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/utils/format";
-import { computePortfolioTotals, formatPortfolioTotal } from "@/lib/utils/currency";
+import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { computePortfolioTotals, formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { getAssetDisplayName, normalizeAssetType } from "@/lib/utils/asset";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
@@ -94,9 +94,13 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // Display currency comes from the backend presentation envelope (ADR-0010).
+  // Money amounts in `entries` already arrive converted into it, so we only
+  // format — no client-side FX. Falls back to USD when the envelope is absent.
+  const displayCurrency = useMemo(() => resolveDisplayCurrency(entries[0]?.presentation), [entries]);
   const totals = useMemo(() => computePortfolioTotals(entries, usdMxnRate), [entries, usdMxnRate]);
   const totalValue = totals.totalUsd;
-  const totalValueLabel = useMemo(() => formatPortfolioTotal(totals), [totals]);
+  const totalValueLabel = useMemo(() => formatDisplayMoney(totalValue, displayCurrency), [totalValue, displayCurrency]);
   const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const totalProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const changePercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
@@ -120,7 +124,7 @@ export default function DashboardPage() {
     () => [...entries].sort((left, right) => Number(right.currentValue) - Number(left.currentValue)),
     [entries],
   );
-  const featuredMoves = useMemo(() => sortedEntries.slice(0, 4), [sortedEntries]);
+  const topHoldings = useMemo(() => sortedEntries.slice(0, 4), [sortedEntries]);
   const bestAsset = useMemo(() => {
     return [...entries]
       .filter((entry) => Number(entry.totalInvested) > 0)
@@ -168,6 +172,7 @@ export default function DashboardPage() {
 
           <DashboardMobileSummary
             changePercent={changePercent}
+            displayCurrency={displayCurrency}
             totalProfit={totalProfit}
             totalValueLabel={totalValueLabel}
           />
@@ -181,18 +186,18 @@ export default function DashboardPage() {
               value={totalValueLabel}
             />
             <DashboardStatCard
-              accent={totalProfit >= 0 ? "emerald" : "rose"}
-              icon={<TrendDownIcon className="h-12 w-12" />}
-              label="Variación (24h)"
-              subtitle={`${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`}
-              value={formatSignedCurrency(totalProfit)}
+              accent="neutral"
+              icon={<CapitalIcon className="h-12 w-12" />}
+              label="Capital invertido"
+              subtitle={`${entryCount} ${entryCount === 1 ? "activo" : "activos"} en cartera`}
+              value={formatDisplayMoney(totalInvested, displayCurrency)}
             />
             <DashboardStatCard
               accent={totalProfit >= 0 ? "emerald" : "rose"}
               icon={<PulseIcon className="h-12 w-12" />}
-              label="All-time PnL"
+              label="Rendimiento total"
               subtitle={`${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`}
-              value={formatSignedCurrency(totalProfit)}
+              value={formatSignedDisplayMoney(totalProfit, displayCurrency)}
             />
             <DashboardBestAssetCard
               asset={bestAsset}
@@ -206,10 +211,10 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <DashboardFeaturedMovesCard
-              entries={featuredMoves}
-              logoRegistry={logoRegistry}
+            <DashboardTopHoldingsCard
               cryptoLogoMap={cryptoLogoMap}
+              entries={topHoldings}
+              logoRegistry={logoRegistry}
             />
             <DashboardActivityCard
               cryptoLogoMap={cryptoLogoMap}
@@ -225,10 +230,12 @@ export default function DashboardPage() {
 
 function DashboardMobileSummary({
   changePercent,
+  displayCurrency,
   totalProfit,
   totalValueLabel,
 }: {
   changePercent: number;
+  displayCurrency: string;
   totalProfit: number;
   totalValueLabel: string;
 }) {
@@ -240,10 +247,10 @@ function DashboardMobileSummary({
       <p className="mt-2 text-[1.375rem] font-semibold leading-tight text-white">{totalValueLabel}</p>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`text-[0.875rem] font-semibold ${positive ? "text-[#17c784]" : "text-[#ea3943]"}`}>
-          {formatSignedCurrency(totalProfit)} ({changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}%) 24h
+          {formatSignedDisplayMoney(totalProfit, displayCurrency)} ({changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}%)
         </span>
         <span className="text-[0.75rem] font-medium text-[#8a94a6]">
-          {formatSignedCurrency(totalProfit)} All-Time
+          Rendimiento histórico
         </span>
       </div>
     </section>
@@ -487,7 +494,7 @@ function DashboardDistributionCard({
   );
 }
 
-function DashboardFeaturedMovesCard({
+function DashboardTopHoldingsCard({
   entries,
   logoRegistry,
   cryptoLogoMap,
@@ -496,10 +503,11 @@ function DashboardFeaturedMovesCard({
   logoRegistry: AssetLogoRegistry;
   cryptoLogoMap: Record<string, string>;
 }) {
+  const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
   return (
     <section className="overflow-hidden rounded-lg bg-[#111317] shadow-none sm:rounded-[1.4rem] sm:shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
       <div className="flex items-center justify-between border-b border-white/5 px-4 py-3 sm:border-[#171b22] sm:px-6 sm:py-5">
-        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Movimientos Destacados (24h)</h2>
+        <h2 className="text-[0.9375rem] font-semibold text-white sm:text-[1.05rem]">Principales Activos</h2>
         <TrendMiniIcon className="h-5 w-5 text-[#8a94a6]" />
       </div>
 
@@ -528,7 +536,7 @@ function DashboardFeaturedMovesCard({
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[0.8125rem] font-semibold text-white sm:text-[1rem]">{formatCurrency(currentPrice)}</p>
+                  <p className="text-[0.8125rem] font-semibold text-white sm:text-[1rem]">{formatDisplayMoney(currentPrice, displayCurrency)}</p>
                   <p className={`mt-0.5 text-[0.6875rem] font-semibold sm:mt-1 sm:text-[0.82rem] ${percent >= 0 ? "text-[#17c784]" : "text-[#ea3943]"}`}>
                     {percent >= 0 ? "+" : "-"} {Math.abs(percent).toFixed(2)}%
                   </p>
@@ -538,7 +546,7 @@ function DashboardFeaturedMovesCard({
           })}
         </div>
       ) : (
-        <DashboardEmptyState description="Aún no hay activos en cartera para destacar." title="Sin movimientos destacados" />
+        <DashboardEmptyState description="Aún no hay activos en cartera para mostrar." title="Sin activos en cartera" />
       )}
     </section>
   );
@@ -704,12 +712,20 @@ function resolveAssetLogo(
 
 function formatActivityMeta(transaction: TransactionResponse) {
   const exchange = transaction.notes?.trim() ? transaction.notes : "Sin nota";
-  const date = new Date(transaction.transactionDate).toLocaleDateString("en-US", {
-    month: "short",
+  const date = new Date(transaction.transactionDate).toLocaleDateString("es-MX", {
     day: "numeric",
+    month: "short",
     year: "numeric",
   });
   return `${date} - ${exchange}`;
+}
+
+function CapitalIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+    </svg>
+  );
 }
 
 function WalletIcon({ className }: { className?: string }) {

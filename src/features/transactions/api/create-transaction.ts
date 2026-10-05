@@ -8,7 +8,7 @@ import type {
   TransferTransactionPayload,
 } from "@/features/transactions/types/transaction.types";
 
-function toOffsetDateTime(localDateTimeInput: string): string {
+export function toOffsetDateTime(localDateTimeInput: string): string {
   const date = new Date(localDateTimeInput);
   const offsetMinutes = date.getTimezoneOffset();
   const sign = offsetMinutes <= 0 ? "+" : "-";

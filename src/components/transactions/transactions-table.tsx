@@ -13,6 +13,8 @@ import { getAssetDisplayName } from "@/lib/utils/asset";
 import { type CurrencyCode } from "@/lib/utils/currency";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 import { FrictionBreakdownCard } from "@/components/transactions/friction-breakdown-card";
+import { SplitAdjustmentCard } from "@/components/transactions/split-adjustment-card";
+import { useSplitPreview } from "@/features/portfolio/hooks/use-split-preview";
 import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
@@ -1631,6 +1633,25 @@ function InlineTransactionDetail({
   // summary keeps only the "Total invertido" headline; manual entries show all.
   const hasBreakdown = Boolean(details?.frictionBreakdown);
 
+  // ADR-0011: for stock/ETF buys & sells, ask the backend whether a split sits
+  // between the trade date and today and, if so, render the post-split
+  // equivalence overlay. Read-only; the ledger row stays raw. Inputs are fixed
+  // (from the stored tx) so no debounce is needed.
+  const splitEligible =
+    (normalizeTransactionAssetType(assetType) === "STOCK" ||
+      normalizeTransactionAssetType(assetType) === "ETF") &&
+    (normalizedType === "BUY" || normalizedType === "SELL") &&
+    quantity > 0 &&
+    pricePerUnit > 0;
+  const { data: splitPreview } = useSplitPreview({
+    symbol: details?.assetSymbol ?? transaction.assetSymbol,
+    transactionDate,
+    quantity,
+    pricePerUnit,
+    enabled: splitEligible,
+    debounceMs: 0,
+  });
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
@@ -1695,6 +1716,10 @@ function InlineTransactionDetail({
                 transactionType={transactionType}
                 executionUnitPrice={details.pricePerUnit}
               />
+            ) : null}
+
+            {splitPreview ? (
+              <SplitAdjustmentCard preview={splitPreview} currency={detailCurrency ?? "USD"} />
             ) : null}
           </div>
         </div>

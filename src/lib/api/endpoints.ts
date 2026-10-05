@@ -36,6 +36,8 @@ export const endpoints = {
     holdingsPerformance: (portfolioId: string) =>
       `/api/v1/me/portfolio/${encodeURIComponent(portfolioId)}/holdings-performance`,
     history: "/api/v1/me/portfolio/history",
+    // ADR-0011 read-only split equivalence calculator (never persists).
+    splitPreview: "/api/v1/me/portfolio/split-preview",
     assetHistory: (symbol: string) =>
       `/api/v1/me/portfolio/assets/${encodeURIComponent(symbol)}/history`,
     assetMarkers: (symbol: string) =>

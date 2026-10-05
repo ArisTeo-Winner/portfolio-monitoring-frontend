@@ -12,7 +12,9 @@ import { getPopularAssets, type PopularAssets } from "@/features/assets/api/get-
 import { getRecentAssets, rememberRecentAsset } from "@/features/assets/lib/recent-assets";
 import { getAssetPrice } from "@/features/marketdata/api/get-asset-price";
 import { getBanxicoCetesCurveCached, type BanxicoCetesCurve } from "@/features/marketdata/api/get-banxico-cetes-curve";
-import { createBuyTransaction, createSellTransaction, createTransferTransaction, registerDividend, updateTransaction } from "@/features/transactions/api/create-transaction";
+import { createBuyTransaction, createSellTransaction, createTransferTransaction, registerDividend, updateTransaction, toOffsetDateTime } from "@/features/transactions/api/create-transaction";
+import { useSplitPreview } from "@/features/portfolio/hooks/use-split-preview";
+import { SplitPreviewNotice } from "@/components/transactions/split-adjustment-card";
 import type { DividendType, TransactionMode, TransferDirection } from "@/features/transactions/types/transaction.types";
 import { buildFeePayload, calculateBuyTotal, calculateSellTotal, resolveEffectiveFee } from "@/features/transactions/utils/totals";
 import { formatFeeCurrency } from "@/lib/utils/format";
@@ -327,6 +329,30 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     assetFieldType === "GOVERNMENT_BOND" ? "MXN" : getAssetCurrency(selectedAsset?.symbol ?? "");
   const currency = currencyOverride ?? defaultCurrency;
   const showCurrencyToggle = (mode === "BUY" || mode === "SELL" || mode === "DIVIDEND") && (assetFieldType === "STOCK" || assetFieldType === "ETF");
+
+  // ADR-0011 split heads-up: for stock/ETF buys & sells, check whether a split
+  // sits between the chosen trade date and today. Informational only — the submit
+  // still sends the RAW captured values; the backend adjusts on read. Debounced
+  // so it fires on settle, not on every keystroke (endpoint has no rate limit).
+  const splitEligible =
+    !isEditing &&
+    (assetFieldType === "STOCK" || assetFieldType === "ETF") &&
+    (mode === "BUY" || mode === "SELL") &&
+    quantityValue > 0 &&
+    priceValue > 0;
+  const splitPreviewDate = useMemo(() => {
+    if (!transactionDate) return null;
+    const parsed = new Date(transactionDate);
+    return Number.isNaN(parsed.getTime()) ? null : toOffsetDateTime(transactionDate);
+  }, [transactionDate]);
+  const { data: splitPreview } = useSplitPreview({
+    symbol: selectedAsset?.symbol,
+    transactionDate: splitPreviewDate,
+    quantity: quantityValue,
+    pricePerUnit: priceValue,
+    enabled: splitEligible,
+    debounceMs: 500,
+  });
 
   useEffect(() => {
     if (!isOpen || !isBondBuy || maturityDate) return;
@@ -812,6 +838,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
                 {bondDetails}
                 {brokerField}
                 {dateFeeNotesRow}
+                {splitPreview ? <SplitPreviewNotice preview={splitPreview} currency={currency} /> : null}
                 <ProblemAlert message={error} />
                 {totalSpentSection}
                 {submitButton}

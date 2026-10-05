@@ -340,7 +340,9 @@ export default function PortfolioSymbolPage() {
                 />
               ))
             : null}
-          {!loading && entry ? <AssetChartContainer symbol={entry.assetSymbol} /> : null}
+          {!loading && entry ? (
+            <AssetChartContainer symbol={entry.assetSymbol} isLoss={Number(entry.totalProfitLoss) < 0} />
+          ) : null}
           {!loading && error ? (
             <section className="glass rounded-[1.6rem] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
               <h1 className="text-[1.35rem] font-bold text-slate-950">Holding unavailable</h1>

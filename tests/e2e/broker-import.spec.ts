@@ -126,7 +126,7 @@ test.describe("Broker import (GBM) — dual-channel async job flow", () => {
       if (route.request().method() === "DELETE") return route.fulfill({ status: 204, body: "" });
       return route.continue();
     });
-    await page.route(/\/api\/v1\/me\/transactions(\?|$)/, (route) => json(route, txns));
+    await page.route(/\/api\/me\/transactions(\?|$)/, (route) => json(route, txns));
 
     await page.goto("/settings/connections");
     await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });

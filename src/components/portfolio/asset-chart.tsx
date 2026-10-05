@@ -10,7 +10,7 @@ import type {
   UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { areaSeriesOptions, baseChartOptions, CHART_THEME } from "@/lib/chart/lightweight-config";
+import { areaColorsFor, areaSeriesOptions, baseChartOptions, CHART_THEME } from "@/lib/chart/lightweight-config";
 import { useAssetChart } from "@/features/portfolio/hooks/use-asset-chart";
 import { clipToPositionStart } from "@/features/portfolio/lib/range-utils";
 import type { ChartRange } from "@/types/portfolio-chart";
@@ -48,10 +48,17 @@ type Props = {
   symbol: string;
   range: ChartRange;
   scaleMode?: "linear" | "log";
+  /** Holding is at a loss → paint the line + fill red instead of green. */
+  isLoss?: boolean;
 };
 
-export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
+export function AssetChart({ symbol, range, scaleMode = "linear", isLoss = false }: Props) {
   const { history, markers, loading, error } = useAssetChart(symbol, range);
+
+  // Captures the mount-time P&L sign so the create-once chart effect can pick the
+  // right colors at creation (no green flash) without listing isLoss in its deps.
+  // Later sign changes are handled by the recolor effect below.
+  const isLossRef = useRef(isLoss);
 
   // Recorta el tramo "sin posición" (valor 0 antes de la compra) para que la
   // línea arranque en la entrada real, igual que Google Finance. Así se elimina
@@ -85,7 +92,7 @@ export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
     const chart = createChart(container, baseChartOptions);
     chartRef.current = chart;
 
-    const series = chart.addSeries(AreaSeries, areaSeriesOptions);
+    const series = chart.addSeries(AreaSeries, { ...areaSeriesOptions, ...areaColorsFor(isLossRef.current) });
     seriesRef.current = series;
     markersPluginRef.current = createSeriesMarkers(series);
 
@@ -131,6 +138,12 @@ export function AssetChart({ symbol, range, scaleMode = "linear" }: Props) {
       mode: scaleMode === "log" ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
     });
   }, [scaleMode]);
+
+  // Recolor the series green/red when the holding's P&L sign changes, without
+  // recreating the chart.
+  useEffect(() => {
+    seriesRef.current?.applyOptions(areaColorsFor(isLoss));
+  }, [isLoss]);
 
   // Update series data when history changes — backend guarantees ascending order
   useEffect(() => {

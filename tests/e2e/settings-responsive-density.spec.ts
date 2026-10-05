@@ -27,6 +27,12 @@ const SESSION_CARD_HEIGHT_BY_PROJECT: Record<string, number> = {
   "md-tablet": 240,
 };
 
+// Budget for a settings route to render after a full page.goto. This spec
+// measures layout density, not load time: against `next dev` under worker
+// contention the route's JS has been traced taking ~14 s to execute before the
+// session bootstrap even fires, so a 10 s wait fails on a blank page.
+const ROUTE_READY_TIMEOUT_MS = 30_000;
+
 const MIN_TOUCH_TARGET_PX = 44;
 const MAX_TOUCH_TARGET_PX = 56;
 
@@ -151,10 +157,16 @@ test.describe("Settings responsive density", () => {
   // Wrapped in try/catch: Playwright invalidates the `browser` fixture during
   // project transitions with workers:1 ("Test ended") — safe to swallow because
   // the bundle is already warm from the xs-mobile project run.
+  //
+  // The goto is bounded well below the 30 s hook timeout: an unbounded goto
+  // against a cold/contended dev server outlives the hook, and a timed-out
+  // beforeAll fails the first test and marks the rest of the file "did not
+  // run". The request alone is enough to trigger the server-side compile, so
+  // giving up on the wait loses nothing.
   test.beforeAll(async ({ browser }: { browser: Browser }) => {
     try {
       const page = await browser.newPage();
-      await page.goto("/portfolio").catch(() => {});
+      await page.goto("/portfolio", { timeout: 15_000, waitUntil: "commit" }).catch(() => {});
       await page.close();
     } catch {
       // pre-warm best-effort only
@@ -172,19 +184,19 @@ test.describe("Settings responsive density", () => {
 
   test("Account no tiene overflow horizontal", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertNoHorizontalOverflow(page);
   });
 
   test("Account settings-card-account height ≤ limit", async ({ page }, testInfo) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertCardHeight(page, "settings-card-account", CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
   });
 
   test("Account inputs touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of ["first-name-input", "last-name-input"]) {
       await assertTouchTarget(page, id);
     }
@@ -192,7 +204,7 @@ test.describe("Settings responsive density", () => {
 
   test("Account botones de acción touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of ["settings-reset-button", "settings-save-button"]) {
       await assertTouchTarget(page, id);
     }
@@ -200,7 +212,7 @@ test.describe("Settings responsive density", () => {
 
   test("Account selects touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of ["base-currency-select", "timezone-select"]) {
       await assertTouchTarget(page, id);
     }
@@ -208,7 +220,7 @@ test.describe("Settings responsive density", () => {
 
   test("Account 4 settings-field visibles sin scroll", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     const fields = page.getByTestId("settings-field");
     await expect(fields).toHaveCount(8);
     for (let i = 0; i < 4; i++) {
@@ -218,7 +230,7 @@ test.describe("Settings responsive density", () => {
 
   test("Account botones Reset y Save disabled sin cambios", async ({ page }) => {
     await page.goto("/settings/account");
-    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("account-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await expect(page.getByTestId("settings-reset-button")).toBeDisabled();
     await expect(page.getByTestId("settings-save-button")).toBeDisabled();
   });
@@ -227,19 +239,19 @@ test.describe("Settings responsive density", () => {
 
   test("Security no tiene overflow horizontal", async ({ page }) => {
     await page.goto("/settings/security");
-    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertNoHorizontalOverflow(page);
   });
 
   test("Security settings-card-security height ≤ limit", async ({ page }, testInfo) => {
     await page.goto("/settings/security");
-    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertCardHeight(page, "settings-card-security", CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
   });
 
   test("Security inputs de contraseña touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/security");
-    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of ["current-password-input", "new-password-input", "confirm-password-input"]) {
       await assertTouchTarget(page, id);
     }
@@ -247,13 +259,13 @@ test.describe("Settings responsive density", () => {
 
   test("Security botón save touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/security");
-    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertTouchTarget(page, "settings-save-button");
   });
 
   test("Security 3 settings-field visibles", async ({ page }) => {
     await page.goto("/settings/security");
-    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("security-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     const fields = page.getByTestId("settings-card-security").getByTestId("settings-field");
     await expect(fields).toHaveCount(3);
     for (let i = 0; i < 3; i++) {
@@ -265,19 +277,19 @@ test.describe("Settings responsive density", () => {
 
   test("Preferences no tiene overflow horizontal", async ({ page }) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertNoHorizontalOverflow(page);
   });
 
   test("Preferences settings-card-preferences height ≤ limit", async ({ page }, testInfo) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertCardHeight(page, "settings-card-preferences", PREFERENCES_CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
   });
 
   test("Preferences selects touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of [
       "pnl-method-select",
       "chart-timeframe-select",
@@ -290,25 +302,29 @@ test.describe("Settings responsive density", () => {
 
   test("Preferences botones de acción touch target ≥ 44px", async ({ page }) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     for (const id of ["settings-reset-button", "settings-save-button"]) {
       await assertTouchTarget(page, id);
     }
   });
 
-  test("Preferences 6 settings-field visibles", async ({ page }) => {
+  test("Preferences 5 settings-field visibles", async ({ page }) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
+    // 5 fields since ADR-0010 deprecated the "Moneda por defecto" selector
+    // (presentation currency is now driven by users.preferred_currency on the
+    // Account tab). Remaining: PnL method, initial chart range, data-provider
+    // priority, sync frequency, auto-sync toggle.
     const fields = page.getByTestId("settings-field");
-    await expect(fields).toHaveCount(6);
-    for (let i = 0; i < 6; i++) {
+    await expect(fields).toHaveCount(5);
+    for (let i = 0; i < 5; i++) {
       await expect(fields.nth(i)).toBeVisible();
     }
   });
 
   test("Preferences botones Reset y Save disabled sin cambios", async ({ page }) => {
     await page.goto("/settings/preferences");
-    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("preferences-settings-form")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await expect(page.getByTestId("settings-reset-button")).toBeDisabled();
     await expect(page.getByTestId("settings-save-button")).toBeDisabled();
   });
@@ -317,13 +333,13 @@ test.describe("Settings responsive density", () => {
 
   test("Sessions no tiene overflow horizontal", async ({ page }) => {
     await page.goto("/settings/sessions");
-    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertNoHorizontalOverflow(page);
   });
 
   test("Sessions settings-card-sessions height ≤ limit", async ({ page }, testInfo) => {
     await page.goto("/settings/sessions");
-    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertCardHeight(page, "settings-card-sessions", CARD_HEIGHT_BY_PROJECT[testInfo.project.name]);
   });
 
@@ -334,7 +350,7 @@ test.describe("Settings responsive density", () => {
     );
     const maxH = SESSION_CARD_HEIGHT_BY_PROJECT[testInfo.project.name] ?? 180;
     await page.goto("/settings/sessions");
-    await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
 
     const cards = page.getByTestId("session-card");
     const count = await cards.count();
@@ -356,7 +372,7 @@ test.describe("Settings responsive density", () => {
       "Desktop project: revoke button is in table row, not mobile card",
     );
     await page.goto("/settings/sessions");
-    await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("session-card").first()).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
 
     const buttons = page.getByTestId("session-revoke-button");
     const count = await buttons.count();
@@ -378,7 +394,7 @@ test.describe("Settings responsive density", () => {
       "Category select is hidden at md+ breakpoint",
     );
     await page.goto("/settings/sessions");
-    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("settings-card-sessions")).toBeVisible({ timeout: ROUTE_READY_TIMEOUT_MS });
     await assertAllTouchTargets(page, "settings-category-select");
   });
 });

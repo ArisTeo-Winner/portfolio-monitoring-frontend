@@ -1,5 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
+// getUserTransactions goes through the same-origin BFF proxy
+// (endpoints.bff.transactions = "/api/me/transactions"), which MSW sees as
+// http://localhost/api/me/transactions in jsdom — NOT the backend :8080 URL.
+const TRANSACTIONS_URL = "http://localhost/api/me/transactions";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
 import { transactionFixtures } from "../../mocks/fixtures/transactions";
 import { useSessionStore } from "@/state/session.store";
@@ -42,7 +46,7 @@ describe("getUserTransactions – happy path (MSW)", () => {
 
   it("returns an empty array when there are no transactions", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () => HttpResponse.json([])),
+      http.get(TRANSACTIONS_URL, () => HttpResponse.json([])),
     );
     const result = await getUserTransactions();
     expect(result).toEqual([]);
@@ -52,7 +56,7 @@ describe("getUserTransactions – happy path (MSW)", () => {
 describe("getUserTransactions – id normalization (MSW)", () => {
   it("normalizes transaction_id (snake_case) to transactionId when the top-level field is absent", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () =>
+      http.get(TRANSACTIONS_URL, () =>
         HttpResponse.json([transactionFixtures.rawWithLegacyId]),
       ),
     );
@@ -62,7 +66,7 @@ describe("getUserTransactions – id normalization (MSW)", () => {
 
   it("normalizes STOCKS assetType to STOCK", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () =>
+      http.get(TRANSACTIONS_URL, () =>
         HttpResponse.json([
           {
             ...transactionFixtures.list[0],
@@ -81,7 +85,7 @@ describe("getUserTransactions – filtering (MSW)", () => {
   it("passes assetSymbol as a query param and returns filtered results", async () => {
     let capturedUrl: URL | null = null;
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", ({ request }) => {
+      http.get(TRANSACTIONS_URL, ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json(
           transactionFixtures.list.filter((t) => t.assetSymbol === "BTC"),
@@ -103,7 +107,7 @@ describe("getUserTransactions – filtering (MSW)", () => {
 describe("getUserTransactions – error handling (MSW)", () => {
   it("throws ApiError on a 500 server error", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () =>
+      http.get(TRANSACTIONS_URL, () =>
         HttpResponse.json({ detail: "Server error" }, { status: 500 }),
       ),
     );
@@ -112,7 +116,7 @@ describe("getUserTransactions – error handling (MSW)", () => {
 
   it("throws ApiError(403) with the controlled access-denied message", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () =>
+      http.get(TRANSACTIONS_URL, () =>
         HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
       ),
     );
@@ -124,7 +128,7 @@ describe("getUserTransactions – error handling (MSW)", () => {
 
   it("throws when the network is unavailable", async () => {
     server.use(
-      http.get("http://localhost:8080/api/v1/me/transactions", () => HttpResponse.error()),
+      http.get(TRANSACTIONS_URL, () => HttpResponse.error()),
     );
     await expect(getUserTransactions()).rejects.toThrow();
   });

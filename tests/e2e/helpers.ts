@@ -61,6 +61,13 @@ export async function loginAs(page: Page) {
   await page.getByTestId("password-input").locator("input").fill("Password1!");
   await page.getByTestId("submit-login").click();
   await expect(page).toHaveURL(/\/portfolio/, { timeout: 60_000 });
+  // The URL flips to /portfolio BEFORE the protected route's JS has executed:
+  // in `next dev` that bundle is several MB, so under worker contention the
+  // shell can stay blank for seconds — and "networkidle" resolves during that
+  // quiet parse gap. Wait for the shell itself so callers' short assertion
+  // budgets (5-10 s) measure the page, not the bundle. bottom-navigation is
+  // rendered at every breakpoint (only CSS-hidden at lg+), hence "attached".
+  await page.getByTestId("bottom-navigation").waitFor({ state: "attached", timeout: 60_000 });
 }
 
 export async function mockBackendAPIs(page: Page) {
@@ -77,16 +84,25 @@ export async function mockBackendAPIs(page: Page) {
     }),
   );
 
+  // The transaction list is fetched through the SAME-ORIGIN BFF proxy
+  // (endpoints.bff.transactions = "/api/me/transactions", no "/v1/"), which
+  // enriches crypto logos server-side. page.route only intercepts browser
+  // requests, so without this mock the BFF route handler runs server-side and
+  // forwards to the real backend with the fake token → 401 → the app treats it
+  // as session_expired and redirects to /login. Both the direct backend path
+  // (/api/v1/me/transactions, used by details()) and the BFF path are mocked
+  // with the same body. NOTE: the BFF regex requires "/api/me/" so it does NOT
+  // also match the "/api/v1/me/" path above.
+  const transactionsBody = JSON.stringify([
+    { transactionId: "tx-1", transactionType: "BUY", assetSymbol: "BTC", assetType: "CRYPTO", quantity: 0.5, pricePerUnit: 60000, totalValue: 30000, transactionDate: "2025-01-15T10:00:00Z", fee: 0, createdAt: "2025-01-15T10:00:00Z", updatedAt: "2025-01-15T10:00:00Z" },
+    { transactionId: "tx-2", transactionType: "SELL", assetSymbol: "ETH", assetType: "CRYPTO", quantity: 2, pricePerUnit: 3000, totalValue: 6000, transactionDate: "2025-01-20T14:30:00Z", fee: 0, createdAt: "2025-01-20T14:30:00Z", updatedAt: "2025-01-20T14:30:00Z" },
+    { transactionId: "tx-3", transactionType: "BUY", assetSymbol: "SOL", assetType: "CRYPTO", quantity: 10, pricePerUnit: 150, totalValue: 1500, transactionDate: "2025-02-01T09:00:00Z", fee: 0, createdAt: "2025-02-01T09:00:00Z", updatedAt: "2025-02-01T09:00:00Z" },
+  ]);
   await page.route(/\/api\/v1\/me\/transactions/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        { transactionId: "tx-1", transactionType: "BUY", assetSymbol: "BTC", assetType: "CRYPTO", quantity: 0.5, pricePerUnit: 60000, totalValue: 30000, transactionDate: "2025-01-15T10:00:00Z", fee: 0, createdAt: "2025-01-15T10:00:00Z", updatedAt: "2025-01-15T10:00:00Z" },
-        { transactionId: "tx-2", transactionType: "SELL", assetSymbol: "ETH", assetType: "CRYPTO", quantity: 2, pricePerUnit: 3000, totalValue: 6000, transactionDate: "2025-01-20T14:30:00Z", fee: 0, createdAt: "2025-01-20T14:30:00Z", updatedAt: "2025-01-20T14:30:00Z" },
-        { transactionId: "tx-3", transactionType: "BUY", assetSymbol: "SOL", assetType: "CRYPTO", quantity: 10, pricePerUnit: 150, totalValue: 1500, transactionDate: "2025-02-01T09:00:00Z", fee: 0, createdAt: "2025-02-01T09:00:00Z", updatedAt: "2025-02-01T09:00:00Z" },
-      ]),
-    }),
+    route.fulfill({ status: 200, contentType: "application/json", body: transactionsBody }),
+  );
+  await page.route(/\/api\/me\/transactions/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: transactionsBody }),
   );
 
   await page.route(/\/api\/v1\/users\/me/, (route) =>

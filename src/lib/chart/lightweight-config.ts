@@ -7,6 +7,8 @@ export const CHART_THEME = {
   lineNegative: tokens.negative,
   topGradient: `${tokens.positive}28`,
   bottomGradient: `${tokens.positive}00`,
+  topGradientNegative: `${tokens.negative}28`,
+  bottomGradientNegative: `${tokens.negative}00`,
   background: "transparent" as const,
   text: "#c4cede",
   grid: "rgba(255,255,255,0.03)",
@@ -14,6 +16,25 @@ export const CHART_THEME = {
   crosshairLabel: "#1a2235",
   border: "#1e2535",
 } as const;
+
+/**
+ * Area-series colors for a holding in profit (green) or loss (red). Returned as
+ * a partial series-options object so it can be spread into addSeries or passed
+ * to series.applyOptions — the line, gradient fill and crosshair marker all
+ * switch together so the chart reads as green-up / red-down at a glance.
+ */
+export function areaColorsFor(
+  negative: boolean,
+): DeepPartial<AreaStyleOptions & SeriesOptionsCommon> {
+  const line = negative ? CHART_THEME.lineNegative : CHART_THEME.line;
+  return {
+    lineColor: line,
+    topColor: negative ? CHART_THEME.topGradientNegative : CHART_THEME.topGradient,
+    bottomColor: negative ? CHART_THEME.bottomGradientNegative : CHART_THEME.bottomGradient,
+    crosshairMarkerBorderColor: line,
+    crosshairMarkerBackgroundColor: line,
+  };
+}
 
 export const baseChartOptions: DeepPartial<ChartOptions> = {
   autoSize: true,

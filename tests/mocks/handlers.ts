@@ -32,8 +32,8 @@ export const handlers = [
     return HttpResponse.json(portfolioFixtures.entries);
   }),
 
-  // ── Transactions ──────────────────────────────────────────────────────────
-  http.get("http://localhost:8080/api/v1/me/transactions", () => {
+  // ── Transactions (same-origin BFF proxy: endpoints.bff.transactions) ───────
+  http.get("http://localhost/api/me/transactions", () => {
     return HttpResponse.json(transactionFixtures.list);
   }),
 

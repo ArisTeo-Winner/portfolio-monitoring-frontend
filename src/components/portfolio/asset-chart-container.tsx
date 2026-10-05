@@ -7,9 +7,11 @@ import type { ChartRange } from "@/types/portfolio-chart";
 
 const RANGES = HISTORY_RANGES;
 
-export function AssetChartContainer({ symbol }: { symbol: string }) {
+export function AssetChartContainer({ symbol, isLoss = false }: { symbol: string; isLoss?: boolean }) {
   const [range, setRange] = useState<ChartRange>("3M");
   const [scaleMode, setScaleMode] = useState<"linear" | "log">("linear");
+  // Active chip tint follows the chart: red when the holding is at a loss.
+  const activeChipClass = isLoss ? "bg-[#2a1a1e] text-[#ff6b6b]" : "bg-[#1a1e24] text-[#16C784]";
 
   return (
     <section className="overflow-hidden rounded-[1.65rem] bg-[#0B0E11] shadow-[0_30px_84px_rgba(0,0,0,0.32)] max-sm:rounded-none">
@@ -24,7 +26,7 @@ export function AssetChartContainer({ symbol }: { symbol: string }) {
                 aria-pressed={range === r.value}
                 className={`rounded-lg px-2.5 py-1 text-[0.6875rem] font-semibold transition ${
                   range === r.value
-                    ? "bg-[#1a1e24] text-[#16C784]"
+                    ? activeChipClass
                     : "text-[#71819b] hover:text-[#c4cede]"
                 }`}
                 key={r.value}
@@ -40,7 +42,7 @@ export function AssetChartContainer({ symbol }: { symbol: string }) {
             aria-pressed={scaleMode === "log"}
             className={`rounded-lg px-2.5 py-1 text-[0.6875rem] font-semibold transition ${
               scaleMode === "log"
-                ? "bg-[#1a1e24] text-[#16C784]"
+                ? activeChipClass
                 : "text-[#71819b] hover:text-[#c4cede]"
             }`}
             onClick={() => setScaleMode((m) => (m === "linear" ? "log" : "linear"))}
@@ -52,7 +54,7 @@ export function AssetChartContainer({ symbol }: { symbol: string }) {
         </div>
       </div>
 
-      <AssetChart symbol={symbol} range={range} scaleMode={scaleMode} />
+      <AssetChart symbol={symbol} range={range} scaleMode={scaleMode} isLoss={isLoss} />
     </section>
   );
 }

@@ -14,6 +14,7 @@ const chartMock = vi.hoisted(() => ({
   fitContent: vi.fn(),
   remove: vi.fn(),
   addSeries: vi.fn(),
+  applyOptions: vi.fn(),
 }));
 
 const createSeriesMarkersMock = vi.hoisted(() => vi.fn());
@@ -50,6 +51,7 @@ vi.mock("@/lib/api/client", () => ({
 vi.mock("@/lib/chart/lightweight-config", () => ({
   baseChartOptions: {},
   areaSeriesOptions: {},
+  areaColorsFor: (negative: boolean) => ({ lineColor: negative ? "#EA3943" : "#16C784" }),
   CHART_THEME: { background: "transparent" },
 }));
 
@@ -205,6 +207,28 @@ describe("AssetChart", () => {
         { time: 1779224441, value: 356.7 },
         { time: 1779310841, value: 330.5 },
       ]);
+    });
+  });
+
+  it("paints the series red when the holding is at a loss", async () => {
+    mockSuccess();
+    render(<AssetChart symbol="HYPE" range="ALL" isLoss />);
+
+    await waitFor(() => {
+      expect(chartMock.applyOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ lineColor: "#EA3943" }),
+      );
+    });
+  });
+
+  it("paints the series green when the holding is in profit", async () => {
+    mockSuccess();
+    render(<AssetChart symbol="HYPE" range="ALL" isLoss={false} />);
+
+    await waitFor(() => {
+      expect(chartMock.applyOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ lineColor: "#16C784" }),
+      );
     });
   });
 

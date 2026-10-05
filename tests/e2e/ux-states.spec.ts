@@ -13,8 +13,11 @@ test.describe("UX States – Empty & Error", () => {
   test("portfolio vacío muestra estado empty controlado", async ({ page }) => {
     await mockBackendAPIs(page);
 
-    // Override after mockBackendAPIs so this handler runs first (LIFO)
-    await page.route(/\/api\/v1\/me\/portfolio/, (route) =>
+    // Override after mockBackendAPIs so this handler runs first (LIFO).
+    // Anchored so it does NOT also swallow /api/v1/me/portfolio/history: that
+    // endpoint must keep its { meta, series } shape — answering it with a bare
+    // [] makes HoldingsChart read data.meta.partial on undefined and crash.
+    await page.route(/\/api\/v1\/me\/portfolio(\?|$)/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -75,7 +78,7 @@ test.describe("UX States – Empty & Error", () => {
   test("transacciones vacías muestra estado empty controlado", async ({ page }) => {
     await mockBackendAPIs(page);
 
-    await page.route(/\/api\/v1\/me\/transactions/, (route) =>
+    await page.route(/\/api\/me\/transactions/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -97,7 +100,7 @@ test.describe("UX States – Empty & Error", () => {
     await mockBackendAPIs(page);
 
     // TransactionsTable catch block: setTransactions([]) on error → empty state
-    await page.route(/\/api\/v1\/me\/transactions/, (route) =>
+    await page.route(/\/api\/me\/transactions/, (route) =>
       route.fulfill({
         status: 500,
         contentType: "application/json",
@@ -134,7 +137,7 @@ test.describe("UX States – Empty & Error", () => {
   test("network error en transacciones no crashea la página", async ({ page }) => {
     await mockBackendAPIs(page);
 
-    await page.route(/\/api\/v1\/me\/transactions/, (route) => route.abort("failed"));
+    await page.route(/\/api\/me\/transactions/, (route) => route.abort("failed"));
 
     await loginAs(page);
     await page.getByTestId("nav-transactions").click();
@@ -150,7 +153,7 @@ test.describe("UX States – Empty & Error", () => {
   test("403 en transacciones no crashea la página y no muestra stack trace", async ({ page }) => {
     await mockBackendAPIs(page);
 
-    await page.route(/\/api\/v1\/me\/transactions/, (route) =>
+    await page.route(/\/api\/me\/transactions/, (route) =>
       route.fulfill({
         status: 403,
         contentType: "application/json",

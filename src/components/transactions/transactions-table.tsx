@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { AddTransactionModal, type InitialTransactionDraft } from "@/components/transactions/add-transaction-modal";
 import { Modal } from "@/components/ui/modal";
 import { ProblemAlert } from "@/components/ui/problem-alert";
+import { ApiError } from "@/lib/api/problem-details";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { deleteTransaction, updateTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
@@ -66,6 +67,10 @@ export function TransactionsTable({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineTransferType, setInlineTransferType] = useState<TransferDirection | undefined>(undefined);
+  // ADR-0007 edit policy: `source` decides which fields the inline editor exposes
+  // (MANUAL = full, imported = notes only). Fetched lazily when Edit opens.
+  const [inlineSource, setInlineSource] = useState<string | undefined>(undefined);
+  const [inlineEditLoading, setInlineEditLoading] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -292,18 +297,31 @@ export function TransactionsTable({
 
   function startInlineEdit(transaction: TransactionResponse) {
     setOpenMenuId(null);
+    setExpandedDetailId(null);
     setInlineTransferType(undefined);
+    setInlineSource(undefined);
     setInlineEditId(transaction.transactionId);
 
-    // Transfers need their direction (TRANSFER_IN/OUT) to update correctly; it
-    // isn't on the list row, so fetch it lazily (same as the modal path did).
-    if (transaction.transactionId && normalizeTransactionMode(transaction.transactionType) === "TRANSFER") {
-      getTransactionDetails(transaction.transactionId)
-        .then((details) => setInlineTransferType(normalizeTransferType(details.transferType)))
-        .catch((error) => {
-          console.error("Failed to load transfer direction", error);
-        });
+    // The list row has neither `source` (ADR-0007 edit policy) nor transferType,
+    // so fetch the detail lazily when Edit opens. Financial fields stay locked
+    // until this resolves; on failure we default to MANUAL (permissive UI) since
+    // the backend still enforces the read-only policy with a 409.
+    if (!transaction.transactionId) {
+      setInlineSource("MANUAL");
+      return;
     }
+    const isTransfer = normalizeTransactionMode(transaction.transactionType) === "TRANSFER";
+    setInlineEditLoading(true);
+    getTransactionDetails(transaction.transactionId)
+      .then((details) => {
+        setInlineSource(details.source ?? "MANUAL");
+        if (isTransfer) setInlineTransferType(normalizeTransferType(details.transferType));
+      })
+      .catch((error) => {
+        console.error("Failed to load transaction edit policy", error);
+        setInlineSource("MANUAL");
+      })
+      .finally(() => setInlineEditLoading(false));
   }
 
   async function handleInlineSaved() {
@@ -618,8 +636,10 @@ export function TransactionsTable({
                 ) : null}
                 {isRowEditing ? (
                   <InlineTransactionEditor
+                    loadingPolicy={inlineEditLoading}
                     onCancel={() => setInlineEditId(null)}
                     onSaved={handleInlineSaved}
+                    source={inlineSource}
                     transaction={transaction}
                     transferType={inlineTransferType}
                   />
@@ -818,10 +838,33 @@ function toLocalDateTimeInput(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function EditorField({ label, children }: { label: string; children: React.ReactNode }) {
+function sourceLabel(source?: string): string {
+  if (source === "DRIVEWEALTH") return "DriveWealth";
+  if (source === "GBM_STATEMENT" || source === "GBM_EQUITY") return "GBM";
+  return source ?? "importada";
+}
+
+function LockIcon({ className }: { className?: string }) {
   return (
-    <div className="rounded-[0.7rem] border border-[#232931] bg-[#14191f] px-2.5 py-1.5">
-      <span className="text-[0.5625rem] font-bold uppercase tracking-[0.14em] text-[#6f7a8f]">{label}</span>
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <rect height="9" rx="2" strokeWidth="1.8" width="14" x="5" y="11" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function EditorField({ label, children, highlight = false, locked = false }: { label: string; children: React.ReactNode; highlight?: boolean; locked?: boolean }) {
+  const shell = locked
+    ? "border-[#232931] bg-[#14191f] opacity-60"
+    : highlight
+      ? "border-[#2f4a8a] bg-[#121a2b]"
+      : "border-[#232931] bg-[#14191f]";
+  return (
+    <div className={`rounded-[0.7rem] border px-2.5 py-1.5 ${shell}`}>
+      <span className="flex items-center gap-1 text-[0.5625rem] font-bold uppercase tracking-[0.14em] text-[#6f7a8f]">
+        {label}
+        {locked ? <LockIcon className="h-2.5 w-2.5" /> : null}
+      </span>
       <div className="mt-1 flex items-center gap-1.5">{children}</div>
     </div>
   );
@@ -831,17 +874,26 @@ function EditorField({ label, children }: { label: string; children: React.React
 // Save commits through updateTransaction with a submit guard so one click is
 // exactly one PUT, then onSaved refreshes and collapses the row back to S2.
 function InlineTransactionEditor({
+  loadingPolicy = false,
   onCancel,
   onSaved,
+  source,
   transaction,
   transferType,
 }: {
+  loadingPolicy?: boolean;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
+  source?: string;
   transaction: TransactionResponse;
   transferType?: TransferDirection;
 }) {
   const isTransfer = normalizeTransactionType(transaction.transactionType) === "TRANSFER";
+  // ADR-0007: imported transactions (DriveWealth / GBM) are the broker's
+  // authoritative record — only Notes is editable; financial fields are locked.
+  // While the source is still loading we keep them locked (safe default).
+  const manual = source === "MANUAL";
+  const financialLocked = loadingPolicy || !manual;
   const [quantity, setQuantity] = useState(String(transaction.quantity ?? ""));
   const [price, setPrice] = useState(transaction.pricePerUnit ? String(transaction.pricePerUnit) : "");
   const [fee, setFee] = useState(transaction.fee > 0 ? String(transaction.fee) : "");
@@ -849,11 +901,14 @@ function InlineTransactionEditor({
   const [date, setDate] = useState(() => toLocalDateTimeInput(transaction.transactionDate));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLInputElement>(null);
 
+  // Focus the first editable field once the edit policy is known.
   useEffect(() => {
-    firstFieldRef.current?.focus();
-  }, []);
+    if (loadingPolicy) return;
+    (manual ? dateRef : notesRef).current?.focus();
+  }, [loadingPolicy, manual]);
 
   const quantityValue = Number.parseFloat(quantity) || 0;
   const priceValue = Number.parseFloat(price) || 0;
@@ -861,18 +916,22 @@ function InlineTransactionEditor({
   const totalValue = priceValue * quantityValue;
 
   async function handleSave() {
-    if (submitting) return;
-    if (!(quantityValue > 0)) {
-      setError("La cantidad debe ser mayor que cero.");
-      return;
-    }
-    if (!isTransfer && !(priceValue > 0)) {
-      setError("El precio no es válido.");
-      return;
+    if (submitting || loadingPolicy) return;
+    if (manual) {
+      if (!(quantityValue > 0)) {
+        setError("La cantidad debe ser mayor que cero.");
+        return;
+      }
+      if (!isTransfer && !(priceValue > 0)) {
+        setError("El precio no es válido.");
+        return;
+      }
     }
     setError(null);
     setSubmitting(true);
     try {
+      // Imported rows send their original (locked) financial values unchanged, so
+      // the backend sees a notes-only edit and accepts it (ADR-0007).
       await updateTransaction(transaction.transactionId, {
         assetSymbol: transaction.assetSymbol,
         assetType: transaction.assetType,
@@ -885,7 +944,12 @@ function InlineTransactionEditor({
       });
       await onSaved();
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "No fue posible actualizar la transacción.");
+      // Backend defense: a financial change on an imported row returns 409.
+      if (updateError instanceof ApiError && updateError.status === 409) {
+        setError("Registro del broker importado: solo las notas son editables.");
+      } else {
+        setError(updateError instanceof Error ? updateError.message : "No fue posible actualizar la transacción.");
+      }
       setSubmitting(false);
     }
   }
@@ -901,7 +965,7 @@ function InlineTransactionEditor({
             }
           }}
         >
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-[#3861fb]/35 bg-[#3861fb]/[0.12] px-2.5 py-1 text-[0.625rem] font-bold uppercase tracking-[0.12em] text-[#4f74ff]">
               Editar transacción
             </span>
@@ -909,21 +973,33 @@ function InlineTransactionEditor({
             <span className="text-[0.74rem] text-[#7f8aa3]">{transaction.assetSymbol.toUpperCase()}</span>
           </div>
 
+          {!loadingPolicy && !manual ? (
+            <div className="mb-3 flex items-start gap-2.5 rounded-[0.7rem] border border-[#e8b41f]/30 bg-[#e8b41f]/[0.08] px-3 py-2 text-[0.78rem] text-[#f0d79a]">
+              <LockIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#e8b41f]" />
+              <p>
+                <span className="font-semibold text-[#ffe7b0]">Registro del broker ({sourceLabel(source)}).</span>{" "}
+                Es el registro autoritativo importado: solo puedes editar las <span className="font-semibold text-[#ffe7b0]">Notas</span>. Los campos financieros son de solo lectura.
+              </p>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            <EditorField label="Date">
+            <EditorField label="Date" locked={financialLocked}>
               <input
-                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none"
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                disabled={financialLocked}
                 onChange={(event) => setDate(event.target.value)}
-                ref={firstFieldRef}
+                ref={dateRef}
                 type="datetime-local"
                 value={date}
               />
             </EditorField>
             {!isTransfer ? (
-              <EditorField label="Price / unit">
+              <EditorField label="Price / unit" locked={financialLocked}>
                 <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
                 <input
-                  className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                  className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                  disabled={financialLocked}
                   inputMode="decimal"
                   onChange={(event) => setPrice(event.target.value)}
                   placeholder="0.00"
@@ -933,9 +1009,10 @@ function InlineTransactionEditor({
                 />
               </EditorField>
             ) : null}
-            <EditorField label="Amount (qty)">
+            <EditorField label="Amount (qty)" locked={financialLocked}>
               <input
-                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                disabled={financialLocked}
                 inputMode="decimal"
                 onChange={(event) => setQuantity(event.target.value)}
                 placeholder="0.00"
@@ -944,10 +1021,11 @@ function InlineTransactionEditor({
                 value={quantity}
               />
             </EditorField>
-            <EditorField label="Fees">
+            <EditorField label="Fees" locked={financialLocked}>
               <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
               <input
-                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                disabled={financialLocked}
                 inputMode="decimal"
                 onChange={(event) => setFee(event.target.value)}
                 placeholder="0.00"
@@ -956,11 +1034,13 @@ function InlineTransactionEditor({
                 value={fee}
               />
             </EditorField>
-            <EditorField label="Notes">
+            <EditorField highlight={!loadingPolicy && !manual} label="Notes">
               <input
-                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e]"
+                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                disabled={loadingPolicy}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Exchange, memo..."
+                ref={notesRef}
                 type="text"
                 value={notes}
               />
@@ -984,11 +1064,11 @@ function InlineTransactionEditor({
             </button>
             <button
               className="rounded-[0.7rem] bg-[#3861fb] px-5 py-2 text-[0.82rem] font-semibold text-white transition hover:bg-[#4f74ff] disabled:cursor-not-allowed disabled:opacity-55"
-              disabled={submitting}
+              disabled={submitting || loadingPolicy}
               onClick={handleSave}
               type="button"
             >
-              {submitting ? "Saving…" : "Save"}
+              {submitting ? "Saving…" : loadingPolicy ? "Verificando…" : manual ? "Save" : "Save notes"}
             </button>
           </div>
         </div>

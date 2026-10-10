@@ -19,6 +19,9 @@ export const endpoints = {
     // Same-origin proxy for the transactions list — forwards to the backend and
     // enriches crypto logoUrl server-side (src/app/api/me/transactions/route.ts).
     transactions: "/api/me/transactions",
+    // Optional same-origin proxy for market status — only needed for a cross-origin
+    // landing or edge caching; the app calls the backend directly (CORS allows it).
+    marketStatus: "/api/market/status",
   },
   users: {
     me: "/api/v1/users/me",
@@ -53,6 +56,12 @@ export const endpoints = {
     sell: "/api/v1/me/transactions/sell",
     transfer: "/api/v1/me/transactions/transfer",
     dividend: "/api/v1/me/transactions/dividend",
+  },
+  // ADR-0012 market status. Public (no auth); computed from the backend's official
+  // BMV/BIVA + NYSE calendars. `calendar` is the per-code detail for the Mercados page.
+  market: {
+    status: "/api/v1/market/status",
+    calendar: (code: string) => `/api/v1/market/${encodeURIComponent(code)}/calendar`,
   },
   assets: {
     search: "/api/v1/assets/search",

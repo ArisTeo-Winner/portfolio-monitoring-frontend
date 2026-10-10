@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
+import { MarketStatusChip } from "@/features/market/components/MarketStatusChip";
 import { AddTransactionModalProvider, type OpenAddTransactionModalOptions } from "@/components/layout/add-transaction-modal-context";
 import { logout } from "@/features/auth/api/logout";
 import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
@@ -343,16 +344,9 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
               summary={portfolioSummary}
             />
 
-            <div className="relative hidden w-44 xl:block xl:w-56 2xl:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <input
-                className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-900/60 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-700"
-                onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Buscar activos, txs..."
-                type="text"
-                value={searchValue}
-              />
-            </div>
+            {/* ADR-0012: the global market indicator replaces the desktop search box,
+                between "+ Activo" and the Globe icon. Mobile keeps its own search. */}
+            <MarketStatusChip className="hidden xl:flex" />
 
             <div className="relative">
               <DesktopIconButton

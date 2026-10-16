@@ -1,7 +1,11 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Search } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CryptoSelector } from "@/components/transactions/cryptoSelector";
+import { GbmUploadSection } from "@/components/import/gbm-upload-section";
+import { invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
 import { Modal } from "@/components/ui/modal";
 import { ProblemAlert } from "@/components/ui/problem-alert";
 import type { AssetOption } from "@/features/assets/types/asset.types";
@@ -32,7 +36,22 @@ const EMPTY_POPULAR_ASSETS: PopularAssets = { stocks: [], etfs: [], cryptos: [],
 
 const SELECTOR_FILTERS = ["ALL", "CRYPTO", "STOCK", "ETF", "GOVERNMENT_BOND", "INDEX"] as const;
 type SelectorFilter = (typeof SELECTOR_FILTERS)[number];
-type ModalView = "type" | "form" | "asset" | "fee" | "notes";
+// ADR-0012 F2 / "Origen de Datos" wizard: the guided entry (global "+ Activo")
+// now starts at `origin` (choose the loading philosophy) before the manual
+// category flow. `providers` + `gbm` are the automatic-sync branch.
+type ModalView = "origin" | "providers" | "gbm" | "type" | "form" | "asset" | "fee" | "notes";
+type DataOrigin = "auto" | "manual";
+
+// Automatic-sync providers shown in the `providers` step. Only GBM is live
+// today; the rest render disabled with a "Próximamente" badge (same policy as
+// the create-portfolio method grid).
+const DATA_PROVIDERS = [
+  { id: "gbm", title: "Importar desde GBM", description: "Estado de cuenta / confirmaciones DriveWealth en PDF", channel: "PDF", available: true },
+  { id: "binance", title: "Connect Binance Account", description: "Sincroniza tus activos sin usar API key", channel: "API", available: false },
+  { id: "ibkr", title: "Interactive Brokers", description: "Importa posiciones y operaciones (Flex Query)", channel: "API", available: false },
+  { id: "okx", title: "Connect OKX Account", description: "Sincroniza tus activos sin usar API key", channel: "API", available: false },
+  { id: "wallet", title: "Connect Your Wallet", description: "Pega tu dirección pública (no se firma nada)", channel: "WEB3", available: false },
+] as const;
 
 export type InitialTransactionDraft = {
   mode: TransactionMode;
@@ -62,7 +81,6 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const lockedAssetType = portfolioAssetType ? normalizeAssetType(portfolioAssetType) : undefined;
   const initialFilter = ((initialAsset?.assetType ? normalizeAssetType(initialAsset.assetType) : undefined) ?? lockedAssetType ?? "ALL") as SelectorFilter;
   const shouldSelectAssetTypeFirst = requireAssetTypeSelection && !lockedAssetType && !initialAsset && !initialDraft;
-  const totalSteps = shouldSelectAssetTypeFirst ? 3 : 2;
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
   const [popularAssets, setPopularAssets] = useState<PopularAssets>(EMPTY_POPULAR_ASSETS);
   const [recentAssets, setRecentAssets] = useState<AssetOption[]>([]);
@@ -74,7 +92,9 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     return buildMergedSuggestions([...suggestedAssets, ...flatPopularAssets], logoRegistry);
   }, [logoRegistry, suggestedAssets, flatPopularAssets]);
 
-  const [view, setView] = useState<ModalView>(shouldSelectAssetTypeFirst ? "type" : initialAsset || initialDraft ? "form" : "asset");
+  const [view, setView] = useState<ModalView>(shouldSelectAssetTypeFirst ? "origin" : initialAsset || initialDraft ? "form" : "asset");
+  // Which "loading philosophy" the user picked in the origin step (null until chosen).
+  const [dataOrigin, setDataOrigin] = useState<DataOrigin | null>(null);
   const [mode, setMode] = useState<TransactionMode>("BUY");
   const [transferType, setTransferType] = useState<TransferDirection>("TRANSFER_IN");
   const [selectedFilter, setSelectedFilter] = useState<SelectorFilter>(initialFilter);
@@ -119,6 +139,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   // genuinely new transaction), so a retried submit after a failed request
   // doesn't defeat the backend's idempotency protection.
   const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
+  const queryClient = useQueryClient();
 
   const availableFilterTypes = useMemo(() => {
     const discovered = new Set<SelectorFilter>();
@@ -161,7 +182,8 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
       : null;
     const defaultAsset = hydratedInitialAsset ?? filterAssetsByType(nextSuggestions, nextFilter)[0] ?? null;
     idempotencyKeyRef.current = createIdempotencyKey();
-    setView(shouldSelectAssetTypeFirst ? "type" : initialAsset || initialDraft ? "form" : "asset");
+    setView(shouldSelectAssetTypeFirst ? "origin" : initialAsset || initialDraft ? "form" : "asset");
+    setDataOrigin(null);
     setMode(initialDraft?.mode ?? "BUY");
     setTransferType(initialDraft?.transferType ?? "TRANSFER_IN");
     setSelectedFilter(nextFilter);
@@ -381,7 +403,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   const formTitle = isEditing ? "Edit Transaction" : "Add Transaction";
   const formDescription = isEditing
     ? "Actualiza los datos de la operación."
-    : `Paso ${shouldSelectAssetTypeFirst ? totalSteps : 2} de ${totalSteps}. Completa los datos de la operación.`;
+    : `${stepLabelFor("form")}. Completa los datos de la operación.`;
 
   const submitDisabled =
     submitting ||
@@ -541,9 +563,57 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
     setView("asset");
   }
 
+  function handleOriginSelect(origin: DataOrigin) {
+    setDataOrigin(origin);
+    setError(null);
+    setView(origin === "auto" ? "providers" : "type");
+  }
+
+  function handleProviderSelect(providerId: string) {
+    // Only GBM is wired today; the rest are informational ("Próximamente").
+    if (providerId !== "gbm") return;
+    setError(null);
+    setView("gbm");
+  }
+
+  async function refreshAfterImport() {
+    invalidatePortfolioCache();
+    await queryClient.invalidateQueries({ queryKey: ["portfolio-holdings-performance"] });
+    await queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("portfolio:refresh"));
+    await onCreated?.();
+  }
+
+  // Step counter for the guided entry. The manual branch keeps the real
+  // category→asset→form sub-steps (4 total); the automatic branch is
+  // origin→provider→import (3 total). Non-guided entries keep the legacy "de 2".
+  function stepLabelFor(target: ModalView): string {
+    if (!shouldSelectAssetTypeFirst) return target === "asset" ? "Paso 1 de 2" : "Paso 2 de 2";
+    if (target === "origin") return "Paso 1";
+    if (dataOrigin === "auto") {
+      const n = target === "providers" ? 2 : 3; // gbm
+      return `Paso ${n} de 3`;
+    }
+    const n = target === "type" ? 2 : target === "asset" ? 3 : 4; // form / fee / notes = 4
+    return `Paso ${n} de 4`;
+  }
+
+  // Selector-style steps share the wide, padding-less panel and render their own close button.
+  const isSelectorView = view === "origin" || view === "providers" || view === "gbm" || view === "type" || view === "asset";
+
   return (
-    <Modal onClose={view === "asset" ? undefined : onClose} overlayClassName="bg-[#04070d]/84 backdrop-blur-[8px]" panelClassName={view === "asset" ? "max-h-[90vh] max-w-[608px] overflow-hidden rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-0 py-0 text-white shadow-[0_28px_72px_rgba(0,0,0,0.5)] ring-0 md:rounded-[1.15rem] md:shadow-[0_40px_120px_rgba(0,0,0,0.62)]" : `max-h-[90vh] max-w-[430px] ${view === "form" && isBondBuy ? "md:max-w-[760px]" : ""} overflow-y-auto rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-3 py-3 text-white shadow-[0_24px_72px_rgba(0,0,0,0.48)] ring-0 md:rounded-[1.05rem] md:shadow-[0_32px_96px_rgba(0,0,0,0.54)]`}>
-      {view === "type" ? <AssetTypeSelectionView filters={typeSelectionFilters} onClose={onClose} onSelect={handleAssetTypeSelect} /> : null}
+    <Modal onClose={isSelectorView ? undefined : onClose} overlayClassName="bg-[#04070d]/84 backdrop-blur-[8px]" panelClassName={isSelectorView ? "max-h-[90vh] max-w-[608px] overflow-hidden rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-0 py-0 text-white shadow-[0_28px_72px_rgba(0,0,0,0.5)] ring-0 md:rounded-[1.15rem] md:shadow-[0_40px_120px_rgba(0,0,0,0.62)]" : `max-h-[90vh] max-w-[430px] ${view === "form" && isBondBuy ? "md:max-w-[760px]" : ""} hide-scrollbar overflow-y-auto rounded-[0.9rem] border border-[#1e232b] bg-[radial-gradient(circle_at_top,rgba(20,23,28,0.98),rgba(10,12,16,0.99)_72%)] px-3 py-3 text-white shadow-[0_24px_72px_rgba(0,0,0,0.48)] ring-0 md:rounded-[1.05rem] md:shadow-[0_32px_96px_rgba(0,0,0,0.54)]`}>
+      {view === "origin" ? <OriginSelectionView trigger={isEditing ? "transaction" : "activo"} onClose={onClose} onSelect={handleOriginSelect} stepLabel={stepLabelFor("origin")} /> : null}
+      {view === "providers" ? <ProviderSelectionView onBack={() => setView("origin")} onClose={onClose} onSelect={handleProviderSelect} stepLabel={stepLabelFor("providers")} /> : null}
+      {view === "gbm" ? (
+        <div className="flex max-h-[90vh] flex-col md:max-h-[82vh]">
+          <SelectorHeader onBack={() => setView("providers")} onClose={onClose} stepLabel={stepLabelFor("gbm")} title="Importar desde GBM" />
+          <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-5 md:px-7 md:pb-7">
+            <GbmUploadSection onImported={refreshAfterImport} />
+          </div>
+        </div>
+      ) : null}
+      {view === "type" ? <AssetTypeSelectionView filters={typeSelectionFilters} onBack={shouldSelectAssetTypeFirst ? () => setView("origin") : undefined} onClose={onClose} onSelect={handleAssetTypeSelect} stepLabel={stepLabelFor("type")} /> : null}
       {view === "asset" ? (
         <AssetSelectorView
           activeFilter={activeSelectorFilter}
@@ -561,12 +631,12 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
           query={selectorQuery}
           recentAssets={recentAssets}
           showFilterTabs={!shouldSelectAssetTypeFirst && !lockedAssetType}
-          stepLabel={shouldSelectAssetTypeFirst ? "Paso 2 de 3" : "Paso 1 de 2"}
+          stepLabel={stepLabelFor("asset")}
         />
       ) : null}
       {view === "fee" ? (
         usesSplit ? (
-          <SimpleEditor title="Comisión e IVA" cta="Aplicar costos" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}>
+          <SimpleEditor title="Comisión e IVA" cta="Aplicar costos" onBack={() => setView("form")} stepLabel={stepLabelFor("fee")}>
             <div className="space-y-2">
               <Field label="Comisión del broker">
                 <div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.15rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setBrokerCommission(event.target.value)} placeholder="0.00" step="any" type="number" value={brokerCommission} /></div>
@@ -578,10 +648,10 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             </div>
           </SimpleEditor>
         ) : (
-          <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor>
+          <SimpleEditor title="Add Fee" cta="Apply Fee" onBack={() => setView("form")} stepLabel={stepLabelFor("fee")}><Field label="Fee"><div className="flex items-center gap-2.5"><span className="text-[0.875rem] font-semibold text-[#7f8aa3] md:text-[1rem]">$</span><input className="w-full bg-transparent text-[0.875rem] font-semibold text-white outline-none placeholder:text-[#6f7a8f] md:text-[1.35rem] md:tracking-[-0.03em]" inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.00" step="any" type="number" value={fee} /></div></Field></SimpleEditor>
         )
       ) : null}
-      {view === "notes" ? <SimpleEditor title="Add Notes" cta="Save Notes" onBack={() => setView("form")} stepLabel={shouldSelectAssetTypeFirst ? `Paso ${totalSteps} de ${totalSteps}` : "Paso 2 de 2"}><Field label="Notes"><textarea className="min-h-24 w-full resize-none bg-transparent text-[0.875rem] leading-5 text-white outline-none placeholder:text-[#6f7a8f] md:min-h-32 md:text-[0.95rem] md:leading-7" maxLength={255} onChange={(event) => setNotes(event.target.value)} placeholder="Exchange, source wallet, memo, reasoning..." value={notes} /></Field></SimpleEditor> : null}
+      {view === "notes" ? <SimpleEditor title="Add Notes" cta="Save Notes" onBack={() => setView("form")} stepLabel={stepLabelFor("fee")}><Field label="Notes"><textarea className="min-h-24 w-full resize-none bg-transparent text-[0.875rem] leading-5 text-white outline-none placeholder:text-[#6f7a8f] md:min-h-32 md:text-[0.95rem] md:leading-7" maxLength={255} onChange={(event) => setNotes(event.target.value)} placeholder="Exchange, source wallet, memo, reasoning..." value={notes} /></Field></SimpleEditor> : null}
       {view === "form" ? (
         <div className="space-y-2">
           <header className="pr-8 md:space-y-0.5 md:border-b md:border-[#1b2028] md:pb-2">
@@ -589,6 +659,7 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
             <h2 className="text-[1.125rem] font-semibold text-white md:text-[1.38rem] md:tracking-[-0.03em]">{formTitle}</h2>
             <p className="hidden text-sm text-[#7f8aa3] md:block">{formDescription}</p>
           </header>
+          {isEditing ? null : <StepRail stepLabel={stepLabelFor("form")} />}
 
           {!isEditing ? (
             <div className="rounded-xl border border-[#1b2028] bg-[#101418] p-1 md:rounded-[0.9rem]">
@@ -851,37 +922,133 @@ export function AddTransactionModal({ isOpen, onClose, onCreated, suggestedAsset
   );
 }
 
-function AssetTypeSelectionView({ filters, onClose, onSelect }: { filters: SelectorFilter[]; onClose: () => void; onSelect: (filter: SelectorFilter) => void }) {
+function OriginSelectionView({ onClose, onSelect, stepLabel, trigger }: { onClose: () => void; onSelect: (origin: DataOrigin) => void; stepLabel: string; trigger: "activo" | "transaction" }) {
+  const verb = trigger === "transaction" ? "registrar tu operación" : "agregar tu activo";
+  const choices: { id: DataOrigin; title: string; description: string; icon: ReactNode; badgeClassName: string }[] = [
+    {
+      id: "auto",
+      title: "Sincronización Automática",
+      description: "Integraciones, APIs y PDFs. Importa desde GBM, Binance, OKX, Interactive Brokers y más.",
+      icon: <AutoSyncIcon className="h-5 w-5" />,
+      badgeClassName: "bg-[#0f1d1b] text-[#17c784]",
+    },
+    {
+      id: "manual",
+      title: "Registro Manual Tradicional",
+      description: "Elige la clase de activo y captura la operación tú mismo, con precarga al precio de mercado.",
+      icon: <ManualEntryIcon className="h-5 w-5" />,
+      badgeClassName: "bg-[#101722] text-[#60a5fa]",
+    },
+  ];
   return (
-    <div>
-      <SelectorHeader onClose={onClose} stepLabel="Paso 1 de 3" title="Tipo de Activo" />
-      <div className="hidden border-t border-[#1b2028] px-6 pb-6 pt-5 md:block">
-        <p className="text-[0.94rem] font-medium text-[#dfe6f5]">Selecciona la clase de activo que deseas registrar:</p>
+    <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]">
+      <SelectorHeader onClose={onClose} stepLabel={stepLabel} title="Origen de Datos" />
+      <div className="hidden px-7 pb-5 pt-5 md:block">
+        <p className="text-center text-[1.04rem] font-medium text-white">¿Cómo quieres {verb}?</p>
+        <p className="mt-1 text-center text-sm text-[#6f7a8f]">Elige la filosofía de carga.</p>
       </div>
-      <div className="grid gap-3 px-4 pb-4 md:px-6 md:pb-6 sm:grid-cols-2">
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 pb-4 pt-3 md:space-y-3 md:px-7 md:pb-7 md:pt-0">
+        {choices.map((choice) => (
+          <button
+            className="group grid w-full grid-cols-[auto_1fr_auto] items-center gap-3.5 rounded-[0.9rem] border border-[#1b2028] bg-[#101418] px-3.5 py-3.5 text-left transition hover:border-[#2a313b] hover:bg-[#14191f] md:gap-4 md:rounded-[1.05rem] md:px-4 md:py-4"
+            key={choice.id}
+            onClick={() => onSelect(choice.id)}
+            type="button"
+          >
+            <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.85rem] md:h-12 md:w-12 ${choice.badgeClassName}`}>
+              {choice.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[0.92rem] font-semibold text-white md:text-[0.98rem]">{choice.title}</p>
+              <p className="mt-1 text-[0.76rem] leading-[1.45] text-[#7f8aa3] md:text-[0.8rem]">{choice.description}</p>
+            </div>
+            <span aria-hidden="true" className="text-[1.1rem] leading-none text-[#7f8aa3] transition group-hover:translate-x-0.5 group-hover:text-white md:text-lg">&rsaquo;</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProviderSelectionView({ onBack, onClose, onSelect, stepLabel }: { onBack: () => void; onClose: () => void; onSelect: (providerId: string) => void; stepLabel: string }) {
+  return (
+    <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]">
+      <SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Sincronización Automática" />
+      <div className="hidden px-7 pb-5 pt-5 md:block">
+        <p className="text-center text-[1.04rem] font-medium text-white">Conecta una fuente y deja que importe por ti</p>
+        <p className="mt-1 text-center text-sm text-[#6f7a8f]">GBM está disponible hoy.</p>
+      </div>
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-3 md:space-y-2.5 md:px-7 md:pb-7 md:pt-0">
+        {DATA_PROVIDERS.map((provider) => (
+          <button
+            className={`group grid w-full grid-cols-[auto_1fr_auto] items-center gap-3.5 rounded-[0.85rem] border px-3.5 py-3 text-left transition md:rounded-[0.95rem] ${
+              provider.available
+                ? "border-[#1b2028] bg-[#101418] hover:border-[#2a313b] hover:bg-[#14191f]"
+                : "cursor-default border-[#161b22] bg-[#0c1015] opacity-60"
+            }`}
+            disabled={!provider.available}
+            key={provider.id}
+            onClick={() => provider.available && onSelect(provider.id)}
+            type="button"
+          >
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.8rem] ${provider.available ? "bg-[#0f1d1b] text-[#17c784]" : "bg-[#141821] text-[#7f8aa3]"}`}>
+              <ProviderIcon id={provider.id} className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[0.88rem] font-semibold text-white md:text-[0.92rem]">{provider.title}</p>
+              <p className="mt-0.5 truncate text-[0.72rem] text-[#7f8aa3] md:text-[0.76rem]">{provider.description}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] md:text-[0.64rem] ${provider.available ? "bg-[#0f2a1e] text-[#17c784]" : "bg-[#1e2535] text-[#7f8aa3]"}`}>
+                {provider.available ? "Activo" : "Próximamente"}
+              </span>
+              {provider.available ? <span aria-hidden="true" className="text-[1rem] leading-none text-[#7f8aa3] transition group-hover:translate-x-0.5 group-hover:text-white md:text-lg">&rsaquo;</span> : null}
+            </div>
+          </button>
+        ))}
+        <p className="pt-1 text-center text-[0.78rem] text-[#5f6d82]">¿No ves tu exchange preferido? Escríbenos.</p>
+      </div>
+    </div>
+  );
+}
+
+function AssetTypeSelectionView({ filters, onBack, onClose, onSelect, stepLabel }: { filters: SelectorFilter[]; onBack?: () => void; onClose: () => void; onSelect: (filter: SelectorFilter) => void; stepLabel: string }) {
+  return (
+    <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]">
+      <SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Tipo de Activo" />
+      <div className="hidden px-7 pb-6 pt-6 md:block">
+        <p className="text-center text-[1.04rem] font-medium text-white">Selecciona la clase de activo que deseas registrar</p>
+      </div>
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto px-4 pb-4 md:space-y-1.5 md:px-7 md:pb-7">
         {filters.map((filter) => {
           const card = getAssetTypeCard(filter);
           return (
-          <button
-            className="rounded-[0.875rem] border border-[#232a33] bg-[#14191f] p-3 text-left transition hover:border-[#313a46] hover:bg-[#171c22] md:rounded-[1rem] md:p-4"
-            key={filter}
-            onClick={() => onSelect(filter)}
-            type="button"
-          >
-            <div className={`mb-3 flex h-7 w-7 items-center justify-center rounded-full md:mb-4 md:h-11 md:w-11 ${card.badgeClassName}`}>
-              {card.icon}
-            </div>
-            <p className="text-[0.875rem] font-semibold text-white md:text-[1rem]">{card.title}</p>
-            <p className="mt-1 text-[0.6875rem] leading-4 text-[#7f8aa3] md:mt-1.5 md:text-[0.82rem] md:leading-6">{card.description}</p>
-          </button>
-        )})}
+            <button
+              className="grid h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[0.625rem] border border-transparent bg-[#101418] px-3 py-2 text-left transition hover:border-[#232931] hover:bg-[#14191f] md:h-auto md:rounded-[0.9rem] md:py-3"
+              key={filter}
+              onClick={() => onSelect(filter)}
+              type="button"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full md:h-9 md:w-9 ${card.badgeClassName}`}>
+                  {card.icon}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[0.875rem] font-medium text-white md:text-[0.92rem]">{card.title}</p>
+                  <p className="mt-0.5 truncate text-[0.6875rem] text-[#6f7a8f] md:text-[0.72rem]">{card.description}</p>
+                </div>
+              </div>
+              <span aria-hidden="true" className="text-[1rem] leading-none text-[#7f8aa3] md:text-lg">&rsaquo;</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAssetType, onBack, onClose, onFilterChange, onQueryChange, onSelect, popularAssets, portfolioLabel, query, recentAssets, showFilterTabs, stepLabel }: { activeFilter: SelectorFilter; assets: AssetOption[]; filters: SelectorFilter[]; loading: boolean; lockedAssetType?: string; onBack?: () => void; onClose: () => void; onFilterChange: (value: SelectorFilter) => void; onQueryChange: (value: string) => void; onSelect: (asset: AssetOption) => void; popularAssets: PopularAssets; portfolioLabel: string; query: string; recentAssets: AssetOption[]; showFilterTabs: boolean; stepLabel: string }) {
-  if (activeFilter === "CRYPTO") return <div><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="hidden px-7 pb-7 pt-6 md:block"><p className="text-center text-[1.04rem] font-medium text-white">Selecciona una moneda para registrar tu operación</p><p className="mt-1 text-center text-sm text-[#6f7a8f]">{portfolioLabel} wallet</p></div><div className="px-4 pb-4 md:px-7 md:pb-7"><CryptoSelector onChange={(crypto) => onSelect({ assetId: crypto.id, symbol: crypto.symbol.toUpperCase(), name: crypto.name, assetType: "CRYPTO", logoUrl: crypto.image ?? `https://assets.coingecko.com/coins/images/1/small/${crypto.id}.png`, supportedForTransactions: true, suggestedPrice: crypto.currentPrice })} value={null} /></div></div>;
+  if (activeFilter === "CRYPTO") return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><CryptoSelector heading={<><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona una moneda para registrar tu operación</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p></>} onChange={(crypto) => onSelect({ assetId: crypto.id, symbol: crypto.symbol.toUpperCase(), name: crypto.name, assetType: "CRYPTO", logoUrl: crypto.image ?? `https://assets.coingecko.com/coins/images/1/small/${crypto.id}.png`, supportedForTransactions: true, suggestedPrice: crypto.currentPrice })} value={null} /></div>;
 
   const isBrowseMode = !query.trim();
   const visibleRecent = filterAssetsByType(recentAssets, activeFilter);
@@ -895,7 +1062,7 @@ function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAsset
         ]
       : [{ label: "Populares", assets }];
 
-  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operación</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><span className="text-[0.8125rem] text-[#6f7a8f] md:text-sm">Search</span><input className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar símbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7">
+  return <div className="flex max-h-[90vh] flex-col md:max-h-[78vh]"><SelectorHeader onBack={onBack} onClose={onClose} stepLabel={stepLabel} title="Seleccionar Activo" /><div className="px-4 pb-3 md:px-7 md:pb-6 md:pt-6"><p className="hidden text-center text-[1.04rem] font-medium text-white md:block">Selecciona un activo para registrar tu operación</p><p className="mt-1 hidden text-center text-sm text-[#6f7a8f] md:block">{portfolioLabel} wallet</p><div className="mt-0 rounded-[0.875rem] border border-[#252c36] bg-[#14191f] px-3 py-2 md:mt-5 md:rounded-[0.85rem] md:px-4 md:py-3"><div className="flex items-center gap-3"><Search aria-hidden="true" className="h-4 w-4 shrink-0 text-[#6f7a8f]" /><input aria-label="Buscar activo" className="w-full bg-transparent text-[0.875rem] text-white outline-none placeholder:text-[#6f7a8f] md:text-[0.92rem]" onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar símbolo, empresa o activo" value={query} />{query ? <button className="text-[0.8125rem] font-medium text-[#7f8aa3] transition hover:text-white md:text-sm" onClick={() => onQueryChange("")} type="button">Limpiar</button> : null}</div></div>{showFilterTabs ? <div className="mt-3 flex flex-wrap gap-1.5 md:mt-4 md:gap-2">{filters.map((filter) => { const active = filter === activeFilter; return <button className={active ? "h-7 rounded-xl border border-[#2a313b] bg-[#1a2028] px-3 text-[0.75rem] font-semibold text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]" : "h-7 rounded-xl border border-[#1b2028] bg-[#101418] px-3 text-[0.75rem] font-semibold text-[#6f7a8f] transition hover:border-[#2a313b] hover:text-white md:h-auto md:rounded-full md:px-3.5 md:py-2 md:text-[0.76rem]"} disabled={Boolean(lockedAssetType)} key={filter} onClick={() => onFilterChange(filter)} type="button">{getFilterLabel(filter)}</button>; })}</div> : null}</div><div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-7 md:pb-7">
     {isBrowseMode ? (
       <div className="space-y-4">
         {visibleRecent.length ? (
@@ -913,8 +1080,8 @@ function AssetSelectorView({ activeFilter, assets, filters, loading, lockedAsset
     ) : (
       <>
         <div className="grid grid-cols-[1fr_auto] gap-4 px-2 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-[#6f7a8f] md:text-[0.72rem]"><span>Activo</span><span>Clase</span></div>
-        {loading ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">Searching assets...</p> : null}
-        {!loading && !assets.length ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">No assets matched the current search.</p> : null}
+        {loading ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">Buscando activos...</p> : null}
+        {!loading && !assets.length ? <p className="px-2 py-4 text-[0.8125rem] text-[#6f7a8f] md:py-5 md:text-sm">No se encontraron activos para esa búsqueda.</p> : null}
         <div className="space-y-1 md:space-y-1.5">{assets.map((asset) => <AssetRow asset={asset} key={`${asset.symbol}-${asset.assetType}`} onSelect={onSelect} />)}</div>
       </>
     )}
@@ -963,11 +1130,57 @@ function AssetRow({ asset, onSelect }: { asset: AssetOption; onSelect: (asset: A
 }
 
 function SelectorHeader({ onBack, onClose, stepLabel, title }: { onBack?: () => void; onClose: () => void; stepLabel: string; title: string }) {
-  return <header className="px-4 py-3 md:px-7 md:pb-5 md:pt-6"><div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">{onBack ? <button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#171d27] hover:text-white md:p-2 md:text-[1.45rem]" onClick={onBack} type="button"><span aria-hidden="true">&lsaquo;</span></button> : <span className="h-8 w-8 md:h-9 md:w-9" aria-hidden="true" />}<div className="text-center"><h2 className="text-[1.125rem] font-semibold text-white md:text-[1.16rem] md:tracking-[-0.03em]">{title}</h2><p className="mt-0.5 text-[0.6875rem] text-[#6f7a8f] md:mt-1 md:text-sm">{stepLabel}</p></div><button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#171d27] hover:text-white md:p-2 md:text-[1.7rem]" onClick={onClose} type="button"><span aria-hidden="true">&times;</span></button></div></header>;
+  return <header className="px-4 py-3 md:px-7 md:pb-5 md:pt-6"><div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">{onBack ? <button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#171d27] hover:text-white md:p-2 md:text-[1.45rem]" onClick={onBack} type="button"><span aria-hidden="true">&lsaquo;</span></button> : <span className="h-8 w-8 md:h-9 md:w-9" aria-hidden="true" />}<div className="text-center"><h2 className="text-[1.125rem] font-semibold text-white md:text-[1.16rem] md:tracking-[-0.03em]">{title}</h2><p className="mt-0.5 text-[0.6875rem] text-[#6f7a8f] md:mt-1 md:text-sm">{stepLabel}</p></div><button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#171d27] hover:text-white md:p-2 md:text-[1.7rem]" onClick={onClose} type="button"><span aria-hidden="true">&times;</span></button></div><StepRail stepLabel={stepLabel} /></header>;
+}
+
+// Progress rail for the guided wizard: one segment per real step, filling as the
+// user advances. Completed segments snap solid; only the current one animates in
+// (so arriving at a step reads as "the next segment fills", not a reset). The
+// step count is parsed from the "Paso X de Y" label, so no extra prop threading.
+function parseStepProgress(stepLabel: string): { current: number; total: number } | null {
+  const match = /Paso\s+(\d+)\s+de\s+(\d+)/.exec(stepLabel);
+  if (!match) return null;
+  const current = Number(match[1]);
+  const total = Number(match[2]);
+  return total > 1 && current >= 1 && current <= total ? { current, total } : null;
+}
+
+function StepRail({ stepLabel, className = "" }: { stepLabel: string; className?: string }) {
+  const progress = parseStepProgress(stepLabel);
+  const [filled, setFilled] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setFilled(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  if (!progress) return null;
+  const { current, total } = progress;
+  return (
+    <div
+      aria-label={stepLabel}
+      aria-valuemax={total}
+      aria-valuemin={1}
+      aria-valuenow={current}
+      className={`mt-3 flex items-center gap-1.5 md:mt-3.5 ${className}`}
+      role="progressbar"
+    >
+      {Array.from({ length: total }, (_, index) => {
+        const isCurrent = index === current - 1;
+        const active = index < current && (!isCurrent || filled);
+        return (
+          <span className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-[#1b2230]" key={index}>
+            <span
+              className={`absolute inset-0 origin-left rounded-full bg-[linear-gradient(90deg,#1fd38b,#0f9e67)] ${isCurrent ? "transition-transform duration-[600ms] ease-out motion-reduce:transition-none" : ""}`}
+              style={{ transform: `scaleX(${active ? 1 : 0})` }}
+            />
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function SimpleEditor({ children, cta, onBack, stepLabel, title }: { children: ReactNode; cta: string; onBack: () => void; stepLabel: string; title: string }) {
-  return <div className="space-y-3 md:space-y-5"><header className="flex items-center gap-2.5 pr-8"><button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#14191f] hover:text-white md:p-2 md:text-[1.7rem]" onClick={onBack} type="button"><span aria-hidden="true">&lsaquo;</span></button><div><h2 className="text-[1.125rem] font-semibold text-white md:text-[1.25rem] md:tracking-[-0.03em]">{title}</h2><p className="mt-0.5 text-[0.6875rem] text-[#6f7a8f] md:mt-1 md:text-sm">{stepLabel}</p></div></header>{children}<button className="w-full rounded-[0.82rem] bg-[#3f8c53] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition hover:bg-[#4a9b5f] md:px-5 md:py-3 md:text-[0.92rem]" onClick={onBack} type="button">{cta}</button></div>;
+  return <div className="space-y-3 md:space-y-5"><header className="flex items-center gap-2.5 pr-8"><button className="rounded-full p-1.5 text-[1.125rem] leading-none text-[#7f8aa3] transition hover:bg-[#14191f] hover:text-white md:p-2 md:text-[1.7rem]" onClick={onBack} type="button"><span aria-hidden="true">&lsaquo;</span></button><div><h2 className="text-[1.125rem] font-semibold text-white md:text-[1.25rem] md:tracking-[-0.03em]">{title}</h2><p className="mt-0.5 text-[0.6875rem] text-[#6f7a8f] md:mt-1 md:text-sm">{stepLabel}</p></div></header><StepRail stepLabel={stepLabel} className="-mt-1" />{children}<button className="w-full rounded-[0.82rem] bg-[#3f8c53] px-4 py-2.5 text-[0.875rem] font-semibold text-white transition hover:bg-[#4a9b5f] md:px-5 md:py-3 md:text-[0.92rem]" onClick={onBack} type="button">{cta}</button></div>;
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
@@ -1153,6 +1366,62 @@ function buildMergedSuggestions(assets: AssetOption[], logoRegistry: AssetLogoRe
     map.set(`${asset.symbol}-${assetType}`, { ...asset, assetType, logoUrl });
   });
   return Array.from(map.values());
+}
+
+function AutoSyncIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M13 2 4 13h6l-1 9 10-12h-6l1-8z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ManualEntryIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 20h9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ProviderIcon({ id, className }: { id: string; className?: string }) {
+  switch (id) {
+    case "gbm":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24">
+          <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+          <path d="M14 3v4h4M9 16l2.2 2.2L15 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+        </svg>
+      );
+    case "wallet":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24">
+          <path d="M3 10h18M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+          <circle cx="17" cy="15" fill="currentColor" r="1" />
+        </svg>
+      );
+    case "okx":
+      return (
+        <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+          <rect height="6" width="6" x="2" y="9" /><rect height="6" width="6" x="9" y="2" />
+          <rect height="6" width="6" x="9" y="16" /><rect height="6" width="6" x="16" y="9" />
+        </svg>
+      );
+    case "binance":
+      return (
+        <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2l2.4 2.4-7.6 7.6-2.4-2.4L12 2zM4.8 9.6l2.4 2.4-2.4 2.4-2.4-2.4 2.4-2.4zm14.4 0l2.4 2.4-2.4 2.4-2.4-2.4 2.4-2.4zm-7.2 2.4l2.4 2.4-7.6 7.6-2.4-2.4 7.6-7.6zm2.4 2.4l2.4-2.4 2.4 2.4-2.4 2.4-2.4-2.4z" />
+        </svg>
+      );
+    default: // ibkr and any future API provider
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24">
+          <path d="M5 18.5h14M6.5 16V9.5M11.5 16V6.5M16.5 16v-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+          <path d="M6 9l3-2.5 3.2 1.7 4-4.2 1.8 1.7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        </svg>
+      );
+  }
 }
 
 function CryptoAssetIcon({ className }: { className?: string }) {

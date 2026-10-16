@@ -16,6 +16,7 @@ import { AssetAvatar } from "@/components/shared/AssetAvatar";
 import { FrictionBreakdownCard } from "@/components/transactions/friction-breakdown-card";
 import { SplitAdjustmentCard } from "@/components/transactions/split-adjustment-card";
 import { useSplitPreview } from "@/features/portfolio/hooks/use-split-preview";
+import { executionSortMs, formatTradeDate, tradeDateLabel } from "@/features/transactions/lib/transaction-datetime";
 import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 
 type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
@@ -157,11 +158,15 @@ export function TransactionsTable({
   const resolveLogo = useAssetLogos(assetRefs);
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((transaction) => {
-      const matchesType = typeFilter === "ALL" || normalizeTransactionType(transaction.transactionType) === typeFilter;
-      const matchesAsset = assetFilter === "ALL" || transaction.assetSymbol.toUpperCase() === assetFilter;
-      return matchesType && matchesAsset;
-    });
+    return transactions
+      .filter((transaction) => {
+        const matchesType = typeFilter === "ALL" || normalizeTransactionType(transaction.transactionType) === typeFilter;
+        const matchesAsset = assetFilter === "ALL" || transaction.assetSymbol.toUpperCase() === assetFilter;
+        return matchesType && matchesAsset;
+      })
+      // ADR-0013: order by executedAtUtc (the only cross-market-comparable instant);
+      // falls back to transactionDate for rows without the binomial.
+      .sort((left, right) => executionSortMs(right) - executionSortMs(left));
   }, [assetFilter, transactions, typeFilter]);
 
   const mobileAssetSummaries = useMemo(() => {
@@ -209,7 +214,7 @@ export function TransactionsTable({
       .map((summary) => ({
         ...summary,
         transactions: [...summary.transactions].sort(
-          (left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime(),
+          (left, right) => executionSortMs(right) - executionSortMs(left),
         ),
       }))
       .sort((left, right) => new Date(right.lastTransactionAt).getTime() - new Date(left.lastTransactionAt).getTime());
@@ -481,9 +486,7 @@ export function TransactionsTable({
               const normalizedType = normalizeTransactionType(transaction.transactionType);
               const isBuy = normalizedType === "BUY";
               const isSell = normalizedType === "SELL";
-              const dateValue = new Date(transaction.transactionDate);
-              const dateLabel = dateValue.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-              const timeLabel = dateValue.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+              const tradeDate = formatTradeDate(transaction);
               const amountPrefix = isBuy ? "+" : isSell ? "-" : "";
               const noteLabel = transaction.notes?.trim() ? transaction.notes : "--";
               const txCurrency = resolveTransactionCurrency(transaction.currency);
@@ -527,8 +530,9 @@ export function TransactionsTable({
                   </td>
 
                   <td className="px-5 py-4">
-                    <div className="text-[0.82rem] font-medium text-slate-400">
-                      {dateLabel}, {timeLabel}
+                    <div className="text-[0.82rem] font-medium text-slate-400" title={tradeDate.tooltip}>
+                      {tradeDate.dateLabel}{tradeDate.timeLabel ? `, ${tradeDate.timeLabel}` : ""}
+                      {tradeDate.zoneTag ? <span className="ml-1 text-[#6f7a8f]">({tradeDate.zoneTag})</span> : null}
                     </div>
                   </td>
 
@@ -1532,9 +1536,6 @@ function resolveSummaryValue(
   return transaction.totalValue;
 }
 
-function formatDetailsDate(value: string) {
-  return new Date(value).toLocaleString("es-MX");
-}
 
 function formatSignedQuantity(value: number, symbol: string) {
   const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
@@ -1750,7 +1751,7 @@ function InlineTransactionDetail({
         <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
           <div>
             <DetailRow label="Tipo" value={normalizedType === "BUY" ? "Compra" : normalizedType === "SELL" ? "Venta" : "Transferencia"} />
-            <DetailRow label="Fecha" value={formatDetailsDate(transactionDate)} />
+            <DetailRow label="Fecha" value={tradeDateLabel(transaction)} />
             <DetailRow
               label={normalizeTransactionAssetType(assetType) === "STOCK" ? "Precio por acción" : "Precio por unidad"}
               value={pricePerUnit > 0 ? formatMoneyByCurrency(pricePerUnit, detailCurrency) : "--"}

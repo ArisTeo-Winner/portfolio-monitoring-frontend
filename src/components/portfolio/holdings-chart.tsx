@@ -14,7 +14,7 @@ import {
   type HistoryRange,
 } from "@/features/portfolio/lib/range-utils";
 import { tokens } from "@/lib/design-tokens";
-import { formatDisplayMoney, formatFxRateLabel, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
+import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 
 type TooltipState = {
   visible: boolean;
@@ -77,8 +77,6 @@ export function HoldingsChart({
   const totalValue = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.currentValue), 0), [entries]);
   // ADR-0010: entries + history arrive already in the backend's display currency.
   const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
-  // FX label for the applied rate (null when USD / no conversion).
-  const fxLabel = formatFxRateLabel(entries[0]?.presentation);
   const [nowSeconds, setNowSeconds] = useState(0);
   useEffect(() => {
     setNowSeconds(Math.floor(Date.now() / 1000));
@@ -368,14 +366,6 @@ export function HoldingsChart({
               <span>
                 Costo base: <strong className="text-white">{formatDisplayMoney(costBasis, displayCurrency)}</strong>
               </span>
-              {fxLabel ? (
-                <span
-                  className="text-[0.82rem] font-medium text-[#8fa0b8]"
-                  title={`Convertido a ${displayCurrency} · ${fxLabel}`}
-                >
-                  Tipo de cambio: <strong className="text-white">{fxLabel}</strong>
-                </span>
-              ) : null}
               {data?.meta.partial ? (
                 <span className="text-[0.82rem] font-medium text-[#e9b872]">
                   Datos parciales — sin precio: {(data.meta.unavailableSymbols ?? []).join(", ")}

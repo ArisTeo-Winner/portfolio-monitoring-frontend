@@ -80,7 +80,16 @@ export type TransactionResponse = {
   quantity: number;
   pricePerUnit: number;
   totalValue: number;
+  // Legacy — midnight-UTC, shifts the calendar day. Do NOT use for display; kept
+  // as the fallback for rows not yet migrated (ADR-0013 F3 backfill pending).
   transactionDate: string;
+  // ADR-0013 F4 "operation binomial" for displaying the real trade time:
+  // localExecutionTime = plaza wall-clock (no zone, e.g. "2025-06-24T11:27:29");
+  // executionZoneId    = IANA zone name (e.g. "America/New_York"); label shown as the plaza;
+  // executedAtUtc      = UTC instant — the ONLY field safe to sort by across markets.
+  localExecutionTime?: string | null;
+  executionZoneId?: string | null;
+  executedAtUtc?: string | null;
   fee: number;
   notes?: string | null;
   createdAt: string;

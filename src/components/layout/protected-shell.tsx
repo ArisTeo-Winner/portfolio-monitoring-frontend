@@ -35,7 +35,8 @@ import { AddTransactionModalProvider, type OpenAddTransactionModalOptions } from
 import { logout } from "@/features/auth/api/logout";
 import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
 import { endpoints } from "@/lib/api/endpoints";
-import { getPortfolio } from "@/features/portfolio/api/get-portfolio";
+import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { updateAccountSettings } from "@/features/settings/api/settings";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import { getMe } from "@/features/users/api/get-me";
 import type { UserResponse } from "@/features/users/types/user.types";
@@ -61,6 +62,21 @@ type ActiveDropdown =
   | "search-mobile"
   | null;
 
+type BaseCurrency = "USD" | "EUR" | "MXN";
+
+const BASE_CURRENCY_OPTIONS: { code: BaseCurrency; label: string; available: boolean }[] = [
+  { code: "USD", label: "USD - Dólar", available: true },
+  // EUR is not supported by the presentation-currency layer yet (no USD/EUR FX
+  // pair in v1), mirroring the disabled option in account settings.
+  { code: "EUR", label: "EUR - Euro", available: false },
+  { code: "MXN", label: "MXN - Peso Mex", available: true },
+];
+
+function normalizeBaseCurrency(value?: string | null): BaseCurrency {
+  const code = value?.trim().toUpperCase();
+  return code === "MXN" || code === "EUR" ? code : "USD";
+}
+
 export function ProtectedShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -79,6 +95,8 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     setAddModalOpen(true);
   }, [setAddModalConfig, setAddModalOpen]);
   const [user, setUser] = useState<UserResponse | null>(null);
+  const [savingCurrency, setSavingCurrency] = useState<BaseCurrency | null>(null);
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
   const [portfolioSummary, setPortfolioSummary] = useState<{
     total: string;
     changeValue: string;
@@ -225,6 +243,51 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
     setActiveDropdown((current) => (current === name ? null : name));
   };
 
+  // The base currency can also be changed in Settings > Cuenta, so re-read the
+  // profile whenever the selector opens to mark the currently saved option.
+  useEffect(() => {
+    if (activeDropdown !== "locale") return;
+    setCurrencyError(null);
+    getMe().then(setUser).catch(() => {});
+  }, [activeDropdown]);
+
+  const baseCurrency = normalizeBaseCurrency(user?.preferredCurrency);
+
+  // Source of truth is users.preferred_currency (ADR-0010): persist it with the
+  // same full-profile PUT the account form sends, then refetch valuations so the
+  // backend's presentation envelope comes back in the new currency.
+  async function handleBaseCurrencyChange(currency: BaseCurrency) {
+    if (!user || savingCurrency || currency === baseCurrency) return;
+
+    setSavingCurrency(currency);
+    setCurrencyError(null);
+
+    try {
+      const updated = await updateAccountSettings({
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        phoneNumber: user.phoneNumber ?? "",
+        address: user.address ?? "",
+        city: user.city ?? "",
+        state: user.state ?? "",
+        postalCode: user.postalCode ?? "",
+        country: user.country ?? "",
+        dateOfBirth: user.dateOfBirth ? user.dateOfBirth.slice(0, 10) : null,
+        preferredCurrency: currency,
+        timezone: user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      setUser({ ...user, preferredCurrency: normalizeBaseCurrency(updated?.preferredCurrency ?? currency) });
+      invalidatePortfolioCache();
+      window.dispatchEvent(new Event("portfolio:refresh"));
+      router.refresh();
+      setActiveDropdown(null);
+    } catch {
+      setCurrencyError("No se pudo cambiar la moneda base. Intenta de nuevo.");
+    } finally {
+      setSavingCurrency(null);
+    }
+  }
+
   const handleMobileNavigation = useCallback(
     (href: string) => {
       setActiveDropdown(null);
@@ -359,13 +422,25 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
               {activeDropdown === "locale" ? (
                 <DesktopPopover align="right">
                   <PopoverSectionTitle>Idioma</PopoverSectionTitle>
-                  <PopoverAction active>ES Espanol</PopoverAction>
-                  <PopoverAction>US English</PopoverAction>
+                  <PopoverAction active>ES Español</PopoverAction>
+                  <PopoverAction disabled hint="Próximamente">US English</PopoverAction>
                   <div className="my-2 border-t border-zinc-800/60" />
                   <PopoverSectionTitle>Moneda Base</PopoverSectionTitle>
-                  <PopoverAction active>USD - Dolar</PopoverAction>
-                  <PopoverAction>EUR - Euro</PopoverAction>
-                  <PopoverAction>MXN - Peso Mex</PopoverAction>
+                  {BASE_CURRENCY_OPTIONS.map((option) => (
+                    <PopoverAction
+                      active={option.code === baseCurrency}
+                      disabled={!option.available || !user || savingCurrency !== null}
+                      hint={!option.available ? "No disponible" : savingCurrency === option.code ? "Guardando..." : undefined}
+                      key={option.code}
+                      onClick={() => void handleBaseCurrencyChange(option.code)}
+                      testId={`base-currency-${option.code.toLowerCase()}`}
+                    >
+                      {option.label}
+                    </PopoverAction>
+                  ))}
+                  {currencyError ? (
+                    <p className="px-4 pt-2 text-xs text-rose-400" role="alert">{currencyError}</p>
+                  ) : null}
                 </DesktopPopover>
               ) : null}
             </div>
@@ -608,8 +683,8 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
                 <ProfileRow
                   icon={<Globe className="h-[18px] w-[18px]" />}
                   label="Moneda base"
-                  onClick={() => handleMobileNavigation("/settings/preferences")}
-                  value="USD - Dolar"
+                  onClick={() => handleMobileNavigation("/settings/account")}
+                  value={BASE_CURRENCY_OPTIONS.find((option) => option.code === baseCurrency)?.label}
                 />
                 <ProfileRow
                   icon={<Moon className="h-[18px] w-[18px]" />}
@@ -873,20 +948,35 @@ function PopoverSectionTitle({ children }: { children: ReactNode }) {
 function PopoverAction({
   children,
   active = false,
+  disabled = false,
+  hint,
+  onClick,
+  testId,
 }: {
   children: ReactNode;
   active?: boolean;
+  disabled?: boolean;
+  hint?: string;
+  onClick?: () => void;
+  testId?: string;
 }) {
   return (
     <button
-      className={`mx-2 block w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-sm transition ${
+      aria-pressed={active}
+      className={`mx-2 flex w-[calc(100%-1rem)] items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
         active
           ? "bg-zinc-800/50 text-zinc-50"
-          : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-50"
+          : disabled
+            ? "cursor-not-allowed text-zinc-500"
+            : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-50"
       }`}
+      data-testid={testId}
+      disabled={disabled && !active}
+      onClick={onClick}
       type="button"
     >
-      {children}
+      <span>{children}</span>
+      {hint ? <span className="text-[11px] text-zinc-500">{hint}</span> : null}
     </button>
   );
 }

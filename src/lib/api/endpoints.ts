@@ -64,6 +64,8 @@ export const endpoints = {
   market: {
     status: "/api/v1/market/status",
     calendar: (code: string) => `/api/v1/market/${encodeURIComponent(code)}/calendar`,
+    // ADR-0014 dividend growth (public, cacheable ~1h). CAGR values are fractions.
+    dividendGrowth: (symbol: string) => `/api/v1/market/dividends/${encodeURIComponent(symbol)}/growth`,
   },
   assets: {
     search: "/api/v1/assets/search",

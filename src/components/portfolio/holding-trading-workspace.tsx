@@ -15,6 +15,7 @@ import { tokens } from "@/lib/design-tokens";
 import { formatCurrency, formatQuantity } from "@/lib/utils/format";
 import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { getAssetDisplayName, getAssetPalette } from "@/lib/utils/asset";
+import { DividendGrowthCard } from "@/features/market/components/DividendGrowthCard";
 
 type TradeRange = "1D" | "1W" | "1M" | "YTD" | "ALL";
 type TradeMode = "BUY" | "SELL";
@@ -416,6 +417,7 @@ export function HoldingTradingWorkspace({
                 </div>
               )}
             </div>
+            <DividendGrowthCard symbol={entry.assetSymbol} />
           </div>
 
           <div className="bg-[#0f1217]">

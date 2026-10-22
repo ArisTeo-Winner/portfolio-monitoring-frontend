@@ -5,6 +5,7 @@ import type { LogicalRange, MouseEventParams, Time } from "lightweight-charts";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
 import { usePortfolioHistory } from "@/features/portfolio/hooks/usePortfolioHistory";
+import { useTotalReturn, type TotalReturnBreakdown } from "@/features/portfolio/hooks/use-total-return";
 import type { PortfolioHistoryPoint } from "@/features/portfolio/types/portfolio-history.types";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import {
@@ -48,6 +49,10 @@ export function HoldingsChart({
   const [scaleMode, setScaleMode] = useState<"linear" | "log">("linear");
   const [isChartExpanded, setIsChartExpanded] = useState(true);
   const { data, error, isLoading, fetchStatus } = usePortfolioHistory(range, portfolioId);
+  // ADR-0014: dividend-aware Total Return (price + income) over the whole
+  // portfolio. Null on pre-ADR-0014 backends or an empty portfolio, in which
+  // case the price-only "All-time Profit" card is shown instead.
+  const totalReturn = useTotalReturn();
   // A query can retry into fetchStatus "paused" (e.g. offline, or the tab is
   // backgrounded mid-retry) without ever settling into `error` — treat that
   // as its own failure state so it never silently falls through to the
@@ -89,7 +94,6 @@ export function HoldingsChart({
     }
     return raw;
   }, [data?.series, range, totalValue, nowSeconds]);
-  const firstNonZero = series.find((p) => p.value > 0);
   const allTimeProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
   const costBasis = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   // Color based on all-time profit/loss from entries (cost basis vs current value),
@@ -585,12 +589,16 @@ export function HoldingsChart({
       </article>
 
       <div className="grid gap-4 max-sm:hidden">
-        <StatCard
-          label="All-time Profit"
-          tone={allTimeProfit >= 0 ? "emerald" : "rose"}
-          value={formatSignedDisplayMoney(allTimeProfit, displayCurrency)}
-          subvalue={`${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`}
-        />
+        {totalReturn ? (
+          <TotalReturnCard breakdown={totalReturn} />
+        ) : (
+          <StatCard
+            label="All-time Profit"
+            tone={allTimeProfit >= 0 ? "emerald" : "rose"}
+            value={formatSignedDisplayMoney(allTimeProfit, displayCurrency)}
+            subvalue={`${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`}
+          />
+        )}
         <StatCard label="Cost Basis" tone="neutral" value={formatDisplayMoney(costBasis, displayCurrency)} subvalue="Average cost method" />
         <article className="rounded-[1.3rem] bg-[#111317] p-5 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Activos en ganancia</p>
@@ -711,6 +719,35 @@ function formatTooltipDate(unixTimestamp: number) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function TotalReturnCard({ breakdown }: { breakdown: TotalReturnBreakdown }) {
+  const { price, income, totalReturn, totalReturnPercent, currency } = breakdown;
+  const positive = totalReturn >= 0;
+  const valueClass = positive ? "text-fintech-positive" : "text-fintech-negative";
+  return (
+    <article className="rounded-[1.3rem] bg-[#111317] p-5 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
+      <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Total Return</p>
+      <div className="mt-3 flex items-baseline gap-2">
+        <p className={`text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums ${valueClass}`}>
+          {formatSignedDisplayMoney(totalReturn, currency)}
+        </p>
+        <span className={`text-[0.82rem] font-semibold tabular-nums ${valueClass}`}>
+          {positive ? "+" : ""}{totalReturnPercent.toFixed(2)}%
+        </span>
+      </div>
+      <div className="mt-3 space-y-1.5 border-t border-[#1b1f27] pt-3">
+        <div className="flex items-center justify-between text-[0.8rem]">
+          <span className="text-fintech-muted">Plusvalía</span>
+          <span className="font-medium tabular-nums text-white">{formatSignedDisplayMoney(price, currency)}</span>
+        </div>
+        <div className="flex items-center justify-between text-[0.8rem]">
+          <span className="text-fintech-muted">Dividendos</span>
+          <span className="font-medium tabular-nums text-white">{formatSignedDisplayMoney(income, currency)}</span>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function StatCard({

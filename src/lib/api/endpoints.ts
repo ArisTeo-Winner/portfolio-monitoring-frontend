@@ -35,6 +35,8 @@ export const endpoints = {
   },
   portfolio: {
     me: "/api/v1/me/portfolio",
+    // ADR-0014 portfolio-wide Total Return aggregate (scope ALL, no params).
+    summary: "/api/v1/me/portfolio/summary",
     bySymbol: (symbol: string) => `/api/v1/me/portfolio/${encodeBmvSymbol(symbol)}`,
     holdingsPerformance: (portfolioId: string) =>
       `/api/v1/me/portfolio/${encodeURIComponent(portfolioId)}/holdings-performance`,

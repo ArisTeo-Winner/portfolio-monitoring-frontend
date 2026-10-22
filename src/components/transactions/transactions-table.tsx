@@ -17,9 +17,10 @@ import { FrictionBreakdownCard } from "@/components/transactions/friction-breakd
 import { SplitAdjustmentCard } from "@/components/transactions/split-adjustment-card";
 import { useSplitPreview } from "@/features/portfolio/hooks/use-split-preview";
 import { executionSortMs, formatTradeDate, tradeDateLabel } from "@/features/transactions/lib/transaction-datetime";
+import { normalizeTransactionMode, normalizeTransactionType } from "@/features/transactions/lib/transaction-type";
 import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
 
-type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER";
+type TransactionFilter = "ALL" | "BUY" | "SELL" | "TRANSFER" | "DIVIDEND";
 
 type AssetActionSummary = {
   key: string;
@@ -416,6 +417,7 @@ export function TransactionsTable({
                 <option value="BUY">Buy</option>
                 <option value="SELL">Sell</option>
                 <option value="TRANSFER">Transfer</option>
+                <option value="DIVIDEND">Dividend</option>
               </FilterSelect>
 
               <FilterSelect
@@ -524,7 +526,7 @@ export function TransactionsTable({
                       </span>
                       <TransactionTypeBadge type={normalizedType} />
                       <span className="text-[0.84rem] font-semibold text-white">
-                        {normalizedType === "BUY" ? "Buy" : normalizedType === "SELL" ? "Sell" : "Transfer"}
+                        {normalizedType === "BUY" ? "Buy" : normalizedType === "SELL" ? "Sell" : normalizedType === "DIVIDEND" ? "Dividend" : "Transfer"}
                       </span>
                     </div>
                   </td>
@@ -825,10 +827,27 @@ function TransactionTypeBadge({ type }: { type: TransactionFilter }) {
     );
   }
 
+  if (type === "DIVIDEND") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#a855f7] text-white">
+        <DividendIcon className="h-3 w-3" />
+      </span>
+    );
+  }
+
   return (
     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3861fb] text-white">
       <TransferIcon className="h-3 w-3" />
     </span>
+  );
+}
+
+function DividendIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5v9M14.3 9.4a2.3 2.3 0 0 0-2.3-1.4c-1.3 0-2.3.8-2.3 1.9 0 2.6 4.6 1.3 4.6 3.9 0 1.1-1 1.9-2.3 1.9a2.3 2.3 0 0 1-2.3-1.4" />
+    </svg>
   );
 }
 
@@ -1328,6 +1347,7 @@ function MobileAssetActionPanel({
               const amountColor =
                 type === "BUY" ? "text-emerald-500" :
                 type === "SELL" ? "text-rose-400" :
+                type === "DIVIDEND" ? "text-[#c084fc]" :
                 "text-white";
               const actionKey = transaction.transactionId || `${transaction.assetSymbol}-${transaction.transactionDate}-${index}`;
 
@@ -1345,7 +1365,7 @@ function MobileAssetActionPanel({
                     >
                       <div className="min-w-0">
                         <p className="text-[0.875rem] font-semibold text-white">
-                          {type === "BUY" ? "Compra" : type === "SELL" ? "Venta" : "Transferencia"}
+                          {type === "BUY" ? "Compra" : type === "SELL" ? "Venta" : type === "DIVIDEND" ? "Dividendo" : "Transferencia"}
                         </p>
                         <p className="mt-0.5 text-[0.6875rem] text-slate-400">
                           {new Date(transaction.transactionDate).toLocaleString("en-US", {
@@ -1485,20 +1505,6 @@ function formatMoneyByCurrency(value: string | number, currency: CurrencyCode | 
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
   return currency ? `$${formatted} ${currency}` : `$${formatted}`;
-}
-
-function normalizeTransactionMode(transactionType: string): InitialTransactionDraft["mode"] {
-  const normalized = transactionType.toUpperCase();
-  if (normalized === "SELL") return "SELL";
-  if (normalized === "TRANSFER") return "TRANSFER";
-  return "BUY";
-}
-
-function normalizeTransactionType(transactionType: string): TransactionFilter {
-  const normalized = transactionType.toUpperCase();
-  if (normalized === "SELL") return "SELL";
-  if (normalized === "TRANSFER") return "TRANSFER";
-  return "BUY";
 }
 
 function normalizeTransactionAssetType(assetType: string) {
@@ -1750,7 +1756,7 @@ function InlineTransactionDetail({
       ) : (
         <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
           <div>
-            <DetailRow label="Tipo" value={normalizedType === "BUY" ? "Compra" : normalizedType === "SELL" ? "Venta" : "Transferencia"} />
+            <DetailRow label="Tipo" value={normalizedType === "BUY" ? "Compra" : normalizedType === "SELL" ? "Venta" : normalizedType === "DIVIDEND" ? "Dividendo" : "Transferencia"} />
             <DetailRow label="Fecha" value={tradeDateLabel(transaction)} />
             <DetailRow
               label={normalizeTransactionAssetType(assetType) === "STOCK" ? "Precio por acción" : "Precio por unidad"}

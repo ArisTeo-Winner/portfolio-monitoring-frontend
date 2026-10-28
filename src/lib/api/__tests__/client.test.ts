@@ -1,4 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The client calls ensureClientRuntimeConfig() on every request, which throws a
+// "Frontend origin mismatch" when NEXT_PUBLIC_APP_URL (set in CI to a staging URL)
+// does not match the jsdom origin (http://localhost:3000). These tests exercise
+// body/Content-Type handling, not that runtime guard, so stub it to a no-op while
+// keeping the real `env` values the assertions rely on.
+vi.mock("@/lib/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/config/env")>();
+  return { ...actual, ensureClientRuntimeConfig: () => {} };
+});
+
 import { apiRequest, apiUpload } from "../client";
 import { env } from "@/lib/config/env";
 

@@ -48,7 +48,7 @@ jobs:
           [[ -z "${NEXT_PUBLIC_API_BASE_URL}" ]] && \
             echo "NEXT_PUBLIC_API_BASE_URL=https://crypto-portfolio-monitoring.onrender.com" >> "$GITHUB_ENV"
           [[ -z "${NEXT_PUBLIC_APP_URL}" ]] && \
-            echo "NEXT_PUBLIC_APP_URL=https://frontend-staging.example.com" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -253,7 +253,7 @@ jobs:
           [[ -z "${NEXT_PUBLIC_API_BASE_URL}" ]] && \
             echo "NEXT_PUBLIC_API_BASE_URL=https://crypto-portfolio-monitoring.onrender.com" >> "$GITHUB_ENV"
           [[ -z "${NEXT_PUBLIC_APP_URL}" ]] && \
-            echo "NEXT_PUBLIC_APP_URL=https://frontend-staging.example.com" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
 
       - name: Build Docker image
         run: |

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-holdings-overview";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
+import { DividendsPanel } from "@/components/portfolio/dividends-panel";
 import { readAssetLogoRegistry, resolveAssetName, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { prefetchAssetLogos } from "@/features/assets/lib/logo-prefetcher";
 import { useAssetLogos } from "@/features/assets/hooks/use-asset-logos";
@@ -13,7 +14,7 @@ import { formatQuantity } from "@/lib/utils/format";
 import { formatDisplayMoney, formatSignedDisplayMoney, resolveDisplayCurrency } from "@/lib/utils/currency";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
 
-type WorkspaceTab = "assets" | "history";
+export type WorkspaceTab = "assets" | "dividends" | "history";
 
 export function PortfolioSummary({
   portfolioId,
@@ -87,7 +88,7 @@ export function PortfolioTable({
         return haystack.includes(search.toLowerCase());
       })
       .sort((left, right) => Number(right.currentValue) - Number(left.currentValue));
-  }, [entries, search]);
+  }, [entries, search, logoRegistry]);
 
   const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
   const totalProfitLoss = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
@@ -103,6 +104,7 @@ export function PortfolioTable({
           <div className={`flex items-center justify-between border-b border-zinc-800/60 bg-[#121214] px-6 max-sm:border-[#262D3D] max-sm:bg-[#0F1116] max-sm:px-0 max-sm:pb-2 ${activeTab === "history" ? "pb-0" : ""}`}>
             <div className="flex items-center gap-6 max-sm:gap-4">
             <TabButton active={activeTab === "assets"} label="Activos" onClick={() => onTabChange("assets")} />
+            <TabButton active={activeTab === "dividends"} label="Dividendos" onClick={() => onTabChange("dividends")} />
             <TabButton active={activeTab === "history"} label="Transacciones" onClick={() => onTabChange("history")} />
           </div>
 
@@ -119,12 +121,14 @@ export function PortfolioTable({
               </label>
             ) : null}
 
-            <div className="flex items-center gap-3 rounded-[0.95rem] bg-[#0f1217] px-4 py-3 text-[0.84rem] shadow-[0_16px_34px_rgba(0,0,0,0.16)] max-sm:hidden">
-              <span className="text-[#7f8aa3]">{activeTab === "assets" ? "Activos" : "Pnl"}</span>
-              <span className="font-semibold text-white">
-                {activeTab === "assets" ? visibleEntries.length : formatSignedDisplayMoney(totalProfitLoss, displayCurrency)}
-              </span>
-            </div>
+            {activeTab !== "dividends" ? (
+              <div className="flex items-center gap-3 rounded-[0.95rem] bg-[#0f1217] px-4 py-3 text-[0.84rem] shadow-[0_16px_34px_rgba(0,0,0,0.16)] max-sm:hidden">
+                <span className="text-[#7f8aa3]">{activeTab === "assets" ? "Activos" : "Pnl"}</span>
+                <span className="font-semibold text-white">
+                  {activeTab === "assets" ? visibleEntries.length : formatSignedDisplayMoney(totalProfitLoss, displayCurrency)}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -143,6 +147,8 @@ export function PortfolioTable({
       <div className={activeTab === "history" ? "px-6 pb-6 pt-0 max-sm:px-3 max-sm:pb-3" : "px-6 py-6 max-sm:px-3 max-sm:py-2"}>
         {activeTab === "history" ? (
           <TransactionsTable assetType={assetType} onDeleted={onHistoryChanged} />
+        ) : activeTab === "dividends" ? (
+          <DividendsPanel entries={entries} />
         ) : visibleEntries.length ? (
           <div data-testid="portfolio-assets">
           <div className="space-y-2 sm:hidden">

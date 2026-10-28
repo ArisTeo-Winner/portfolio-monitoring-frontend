@@ -99,9 +99,18 @@ export function HoldingsChart({
   // Color based on all-time profit/loss from entries (cost basis vs current value),
   // not on the historical series comparison which can be misleading when the
   // first non-zero point is a small early position.
-  const isProfit = allTimeProfit >= 0;
-  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const profitPercent = costBasis > 0 ? (allTimeProfit / costBasis) * 100 : 0;
+  // ADR-0014: when the backend Total Return (realized + unrealized) is available,
+  // the headline shows it instead of the entries-only unrealized figure — so the
+  // header matches the Total Return card and includes realized gains from sells.
+  const headlineProfit = totalReturn ? totalReturn.totalReturn : allTimeProfit;
+  const headlineProfitPercent = totalReturn ? totalReturn.totalReturnPercent : profitPercent;
+  const headlineLabel = totalReturn ? "Rendimiento total" : "Ganancia histórica";
+  // Cost basis that the headline % reconciles against: the summary's total invested
+  // (incl. sold positions) when Total Return is shown, else the entries' remaining cost.
+  const headlineCostBasis = totalReturn ? totalReturn.costBasis : costBasis;
+  const isProfit = headlineProfit >= 0;
+  const lineColor = isProfit ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const profitBreakdown = useMemo(() => {
     const profitable = entries.filter((entry) => Number(entry.totalProfitLoss) > 0).length;
     const losing = entries.filter((entry) => Number(entry.totalProfitLoss) < 0).length;
@@ -341,8 +350,8 @@ export function HoldingsChart({
                 <div className="min-w-0">
                   <p className="text-[0.75rem] font-normal leading-[1.4] text-[#B0B6C3]">Saldo total</p>
                   <p className="mt-1 text-[1.375rem] font-semibold leading-[1.2] text-white">{formatDisplayMoney(totalValue, displayCurrency)}</p>
-                  <p className={`mt-1 text-[0.875rem] font-medium leading-[1.3] ${allTimeProfit >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
-                    {formatSignedDisplayMoney(allTimeProfit, displayCurrency)} ({profitPercent >= 0 ? "+" : ""}{profitPercent.toFixed(2)}%)
+                  <p className={`mt-1 text-[0.875rem] font-medium leading-[1.3] ${headlineProfit >= 0 ? "text-[#16C784]" : "text-[#EA3943]"}`}>
+                    {formatSignedDisplayMoney(headlineProfit, displayCurrency)} ({headlineProfitPercent >= 0 ? "+" : ""}{headlineProfitPercent.toFixed(2)}%)
                   </p>
                 </div>
 
@@ -358,17 +367,17 @@ export function HoldingsChart({
             ) : null}
             <div className="mt-3 flex flex-col gap-1 text-[0.9rem] text-[#8fa0b8] max-sm:hidden sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
               <span>
-                Ganancia histórica:{" "}
-                <strong className={allTimeProfit >= 0 ? "text-fintech-positive" : "text-fintech-negative"}>
-                  {formatSignedDisplayMoney(allTimeProfit, displayCurrency)}{" "}
+                {headlineLabel}:{" "}
+                <strong className={headlineProfit >= 0 ? "text-fintech-positive" : "text-fintech-negative"}>
+                  {formatSignedDisplayMoney(headlineProfit, displayCurrency)}{" "}
                   <span className="font-medium">
-                    ({profitPercent >= 0 ? "+" : ""}
-                    {profitPercent.toFixed(2)}%)
+                    ({headlineProfitPercent >= 0 ? "+" : ""}
+                    {headlineProfitPercent.toFixed(2)}%)
                   </span>
                 </strong>
               </span>
               <span>
-                Costo base: <strong className="text-white">{formatDisplayMoney(costBasis, displayCurrency)}</strong>
+                Costo base: <strong className="text-white">{formatDisplayMoney(headlineCostBasis, displayCurrency)}</strong>
               </span>
               {data?.meta.partial ? (
                 <span className="text-[0.82rem] font-medium text-[#e9b872]">
@@ -590,7 +599,7 @@ export function HoldingsChart({
 
       <div className="grid gap-4 max-sm:hidden">
         {totalReturn ? (
-          <TotalReturnCard breakdown={totalReturn} />
+          <TotalReturnCard breakdown={totalReturn} fallbackUnrealized={allTimeProfit} />
         ) : (
           <StatCard
             label="All-time Profit"
@@ -599,7 +608,7 @@ export function HoldingsChart({
             subvalue={`${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`}
           />
         )}
-        <StatCard label="Cost Basis" tone="neutral" value={formatDisplayMoney(costBasis, displayCurrency)} subvalue="Average cost method" />
+        <StatCard label="Cost Basis" tone="neutral" value={formatDisplayMoney(headlineCostBasis, displayCurrency)} subvalue="Average cost method" />
         <article className="rounded-[1.3rem] bg-[#111317] p-5 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
           <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Activos en ganancia</p>
           <div className="mt-3 flex items-end gap-2">
@@ -721,13 +730,18 @@ function formatTooltipDate(unixTimestamp: number) {
   });
 }
 
-function TotalReturnCard({ breakdown }: { breakdown: TotalReturnBreakdown }) {
+function TotalReturnCard({ breakdown, fallbackUnrealized }: { breakdown: TotalReturnBreakdown; fallbackUnrealized: number }) {
   const { price, income, totalReturn, totalReturnPercent, currency } = breakdown;
+  // Prefer the backend split; until realizedPnl/unrealizedPnl ship, derive it so
+  // the three lines still reconcile to the total: unrealized is the entries' sum
+  // (which the holdings table also shows), realized is the rest of allTimeProfit.
+  const unrealized = breakdown.unrealized ?? fallbackUnrealized;
+  const realized = breakdown.realized ?? price - unrealized;
   const positive = totalReturn >= 0;
   const valueClass = positive ? "text-fintech-positive" : "text-fintech-negative";
   return (
     <article className="rounded-[1.3rem] bg-[#111317] p-5 shadow-[0_30px_84px_rgba(0,0,0,0.24)]">
-      <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Total Return</p>
+      <p className="text-[0.72rem] font-medium uppercase tracking-[0.18em] text-[#71819b]">Rendimiento total</p>
       <div className="mt-3 flex items-baseline gap-2">
         <p className={`text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums ${valueClass}`}>
           {formatSignedDisplayMoney(totalReturn, currency)}
@@ -737,16 +751,20 @@ function TotalReturnCard({ breakdown }: { breakdown: TotalReturnBreakdown }) {
         </span>
       </div>
       <div className="mt-3 space-y-1.5 border-t border-[#1b1f27] pt-3">
-        <div className="flex items-center justify-between text-[0.8rem]">
-          <span className="text-fintech-muted">Plusvalía</span>
-          <span className="font-medium tabular-nums text-white">{formatSignedDisplayMoney(price, currency)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[0.8rem]">
-          <span className="text-fintech-muted">Dividendos</span>
-          <span className="font-medium tabular-nums text-white">{formatSignedDisplayMoney(income, currency)}</span>
-        </div>
+        <TotalReturnRow label="No realizada" value={formatSignedDisplayMoney(unrealized, currency)} />
+        <TotalReturnRow label="Realizada" value={formatSignedDisplayMoney(realized, currency)} />
+        <TotalReturnRow label="Dividendos" value={formatSignedDisplayMoney(income, currency)} />
       </div>
     </article>
+  );
+}
+
+function TotalReturnRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between text-[0.8rem]">
+      <span className="text-fintech-muted">{label}</span>
+      <span className="font-medium tabular-nums text-white">{value}</span>
+    </div>
   );
 }
 

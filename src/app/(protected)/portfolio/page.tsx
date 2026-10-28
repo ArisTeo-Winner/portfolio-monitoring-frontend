@@ -8,7 +8,7 @@ import { CreatePortfolioModal } from "@/components/portfolio/create-portfolio-mo
 import { useAddTransactionModal } from "@/components/layout/add-transaction-modal-context";
 import { PortfolioSidebar } from "@/components/portfolio/portfolio-sidebar";
 import { buildSidebarGroups } from "@/components/portfolio/portfolio-sidebar-data";
-import { PortfolioSummary, PortfolioTable } from "@/components/portfolio/portfolio-widgets";
+import { PortfolioSummary, PortfolioTable, type WorkspaceTab } from "@/components/portfolio/portfolio-widgets";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
@@ -37,7 +37,7 @@ function PortfolioPageContent() {
   const { openAddTransactionModal } = useAddTransactionModal();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<SidebarGroup | null>(null);
-  const [activeTab, setActiveTab] = useState<"assets" | "history">("assets");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("assets");
   const [logoRegistry, setLogoRegistry] = useState<AssetLogoRegistry>({});
 
   const loadPortfolio = useCallback(async (force = false) => {

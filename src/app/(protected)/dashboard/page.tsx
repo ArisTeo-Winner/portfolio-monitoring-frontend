@@ -6,6 +6,7 @@ import { PortfolioHoldingsOverview } from "@/components/portfolio/portfolio-hold
 import { fetchCoinGeckoCryptoLogoMap, readCoinGeckoCryptoLogoMap } from "@/features/assets/lib/coingecko-crypto-logos";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, type AssetLogoRegistry } from "@/features/assets/lib/asset-logo-registry";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { useTotalReturn } from "@/features/portfolio/hooks/use-total-return";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getUserTransactions } from "@/features/transactions/api/get-transactions";
@@ -101,9 +102,15 @@ export default function DashboardPage() {
   const totals = useMemo(() => computePortfolioTotals(entries, usdMxnRate), [entries, usdMxnRate]);
   const totalValue = totals.totalUsd;
   const totalValueLabel = useMemo(() => formatDisplayMoney(totalValue, displayCurrency), [totalValue, displayCurrency]);
-  const totalInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
-  const totalProfit = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
-  const changePercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+  const entriesUnrealized = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0), [entries]);
+  const entriesInvested = useMemo(() => entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0), [entries]);
+  // ADR-0014: show the complete Rendimiento total (realized + unrealized + dividends)
+  // and the matching cost basis from the summary, so the % reconciles. Falls back
+  // to the entries' unrealized figure on pre-ADR-0014 backends.
+  const totalReturn = useTotalReturn();
+  const totalProfit = totalReturn ? totalReturn.totalReturn : entriesUnrealized;
+  const totalInvested = totalReturn ? totalReturn.costBasis : entriesInvested;
+  const changePercent = totalReturn ? totalReturn.totalReturnPercent : entriesInvested > 0 ? (entriesUnrealized / entriesInvested) * 100 : 0;
   const entryCount = entries.length;
 
   const btcEntry = useMemo(
@@ -733,14 +740,6 @@ function WalletIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24">
       <rect height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" width="14" x="5" y="7" />
       <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h4A1.5 1.5 0 0 1 16 5.5V7" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function TrendDownIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M4 7h5.5l3.25 3.25L20 3m0 0v6.5M20 3h-6.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
     </svg>
   );
 }

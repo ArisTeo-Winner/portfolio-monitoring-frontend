@@ -36,6 +36,7 @@ import { logout } from "@/features/auth/api/logout";
 import { clearSession, persistSession, readSession } from "@/features/auth/lib/session";
 import { endpoints } from "@/lib/api/endpoints";
 import { getPortfolio, invalidatePortfolioCache } from "@/features/portfolio/api/get-portfolio";
+import { getPortfolioSummary } from "@/features/portfolio/api/get-portfolio-summary";
 import { updateAccountSettings } from "@/features/settings/api/settings";
 import { getUsdMxnRateCached } from "@/features/marketdata/api/get-usd-mxn-rate";
 import { getMe } from "@/features/users/api/get-me";
@@ -191,23 +192,28 @@ export function ProtectedShell({ children }: { children: ReactNode }) {
 
   const refreshPortfolioTotal = useCallback(async (force = false) => {
     try {
-      const [entries, usdMxnRate] = await Promise.all([
+      const [entries, usdMxnRate, summary] = await Promise.all([
         getPortfolio({ force }),
         getUsdMxnRateCached()
           .then((fx) => fx.rate)
           .catch(() => null),
+        getPortfolioSummary().catch(() => null),
       ]);
       const totals = computePortfolioTotals(entries, usdMxnRate);
       const displayCurrency = resolveDisplayCurrency(entries[0]?.presentation);
       const invested = entries.reduce((acc, entry) => acc + Number(entry.totalInvested), 0);
-      const profitLoss = entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0);
-      const percent = invested > 0 ? (profitLoss / invested) * 100 : 0;
+      const unrealized = entries.reduce((acc, entry) => acc + Number(entry.totalProfitLoss), 0);
+      // ADR-0014: the nav delta shows the complete Rendimiento total (realized +
+      // unrealized + dividends) to match the portfolio/dashboard headline; falls
+      // back to the entries' unrealized P&L when the summary is unavailable.
+      const change = summary?.totalReturn ?? unrealized;
+      const percent = summary?.totalReturnPercent ?? (invested > 0 ? (unrealized / invested) * 100 : 0);
 
       setPortfolioSummary({
         total: formatDisplayMoney(totals.totalUsd, displayCurrency),
-        changeValue: formatSignedDisplayMoney(profitLoss, displayCurrency),
+        changeValue: formatSignedDisplayMoney(change, displayCurrency),
         changePercent: `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`,
-        positive: profitLoss >= 0,
+        positive: change >= 0,
       });
     } catch {
       setPortfolioSummary(null);

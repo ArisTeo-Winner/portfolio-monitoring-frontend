@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ProblemAlert } from "@/components/ui/problem-alert";
 import { GbmUploadSection } from "@/components/import/gbm-upload-section";
@@ -88,7 +88,7 @@ const METHODS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CreatePortfolioModal({ isOpen, onClose, onCreated, existingAssetTypes, editingPortfolio }: Props) {
+export function CreatePortfolioModal({ isOpen, onClose, onCreated, editingPortfolio }: Props) {
   const addPortfolio = usePortfolioStore((s) => s.addPortfolio);
   const editPortfolio = usePortfolioStore((s) => s.editPortfolio);
   const queryClient = useQueryClient();

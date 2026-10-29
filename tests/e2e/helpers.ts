@@ -179,6 +179,21 @@ export async function mockBackendAPIs(page: Page) {
     }),
   );
 
+  // GBM import-job history — the broker import panel fetches this on mount from
+  // every page that renders it (/settings/connections). Left unmocked it forwards
+  // to the real backend with the fake token → 401 → the app treats it as
+  // session_expired and redirects to /login mid-assertion, unmounting the panel
+  // (observed as a flaky failure on the MXN-channel test). Return an empty history
+  // by default; tests that drive the job lifecycle register routeJobEndpoints()
+  // afterwards, which wins by LIFO route precedence.
+  await page.route(/\/api\/v1\/me\/broker\/gbm\/import-jobs/, (route) => {
+    const req = route.request();
+    if (req.method() === "GET" && req.url().endsWith("/import-jobs")) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    }
+    return route.continue();
+  });
+
   // Sessions mock — needed by settings/sessions page; included here so any test
   // that calls mockBackendAPIs has the route covered even if the real Render backend
   // is cold (30-50 s cold start would otherwise timeout the 10 s toBeVisible check).

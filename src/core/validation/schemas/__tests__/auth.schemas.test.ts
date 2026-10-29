@@ -16,7 +16,7 @@ describe("loginSchema", () => {
     const result = loginSchema.safeParse({ email: "not-an-email", password: "secret" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toBe("Correo inválido");
+      expect(result.error.issues[0].message).toBe("Correo inválido");
     }
   });
 
@@ -29,7 +29,7 @@ describe("loginSchema", () => {
     const result = loginSchema.safeParse({ email: "user@example.com", password: "" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toBe("Contraseña requerida");
+      expect(result.error.issues[0].message).toBe("Contraseña requerida");
     }
   });
 
@@ -56,7 +56,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, username: "ab" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain("4 caracteres");
+      expect(result.error.issues[0].message).toContain("4 caracteres");
     }
   });
 
@@ -64,7 +64,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, username: "a".repeat(51) });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain("50 caracteres");
+      expect(result.error.issues[0].message).toContain("50 caracteres");
     }
   });
 
@@ -72,7 +72,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, email: "bad-email" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toBe("Correo inválido");
+      expect(result.error.issues[0].message).toBe("Correo inválido");
     }
   });
 
@@ -80,7 +80,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "Aa1!" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors.some((e) => e.message.includes("8 caracteres"))).toBe(true);
+      expect(result.error.issues.some((e) => e.message.includes("8 caracteres"))).toBe(true);
     }
   });
 
@@ -88,7 +88,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "password1!" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors.some((e) => e.message.includes("mayúscula"))).toBe(true);
+      expect(result.error.issues.some((e) => e.message.includes("mayúscula"))).toBe(true);
     }
   });
 
@@ -96,7 +96,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "PASSWORD1!" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors.some((e) => e.message.includes("minúscula"))).toBe(true);
+      expect(result.error.issues.some((e) => e.message.includes("minúscula"))).toBe(true);
     }
   });
 
@@ -104,7 +104,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "Password!" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors.some((e) => e.message.includes("número"))).toBe(true);
+      expect(result.error.issues.some((e) => e.message.includes("número"))).toBe(true);
     }
   });
 
@@ -112,7 +112,7 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({ ...valid, password: "Password1" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors.some((e) => e.message.includes("símbolo"))).toBe(true);
+      expect(result.error.issues.some((e) => e.message.includes("símbolo"))).toBe(true);
     }
   });
 });

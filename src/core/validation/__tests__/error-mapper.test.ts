@@ -30,7 +30,7 @@ describe("mapZodError", () => {
   it("joins multiple error messages with ' · '", () => {
     const schema = z.object({
       a: z.string().min(1, "a required"),
-      b: z.number({ required_error: "b required" }),
+      b: z.number({ error: "b required" }),
     });
     const result = schema.safeParse({ a: "", b: undefined });
     if (result.success) throw new Error("Expected failure");

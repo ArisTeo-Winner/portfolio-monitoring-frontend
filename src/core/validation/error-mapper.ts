@@ -9,5 +9,5 @@ export function mapApiError(error: unknown, fallback: string): string {
 }
 
 export function mapZodError(error: ZodError): string {
-  return error.errors.map((issue) => issue.message).join(" · ");
+  return error.issues.map((issue) => issue.message).join(" · ");
 }

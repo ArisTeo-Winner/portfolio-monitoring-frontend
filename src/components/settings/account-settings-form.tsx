@@ -20,7 +20,7 @@ const accountSchema = z.object({
   state: z.string().max(80, "Máximo 80 caracteres.").optional(),
   postalCode: z.string().max(20, "Máximo 20 caracteres.").optional(),
   country: z.string().max(80, "Máximo 80 caracteres.").optional(),
-  dateOfBirth: z.date({ invalid_type_error: "Fecha inválida." }).nullable().optional(),
+  dateOfBirth: z.date({ error: "Fecha inválida." }).nullable().optional(),
   preferredCurrency: z.enum(["USD", "EUR", "MXN"]),
   timezone: z.string().min(1, "Selecciona una zona horaria."),
 });

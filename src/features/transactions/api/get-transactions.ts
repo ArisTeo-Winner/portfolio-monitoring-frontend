@@ -20,8 +20,10 @@ export async function getUserTransactions(filters: TransactionFilters = {}) {
   if (filters.transactionType) params.set("transactionType", filters.transactionType);
 
   const query = params.toString();
-  const endpoint = query ? `${endpoints.transactions.me}?${query}` : endpoints.transactions.me;
-  const data = await apiRequest<TransactionResponse[]>(endpoint, { auth: true });
+  // Same-origin BFF proxy: forwards to the backend and enriches crypto logoUrl
+  // server-side, so the icon shipped in each row is already correct.
+  const endpoint = query ? `${endpoints.bff.transactions}?${query}` : endpoints.bff.transactions;
+  const data = await apiRequest<TransactionResponse[]>(endpoint, { auth: true, sameOrigin: true });
   const normalizedData = data.map((transaction) => normalizeTransactionResponse(transaction as RawTransactionResponse));
 
   if (filters.assetType) {

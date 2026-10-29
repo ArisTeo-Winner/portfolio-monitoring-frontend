@@ -1,18 +1,54 @@
+import { encodeBmvSymbol } from "@/lib/utils/currency";
+
 export const endpoints = {
+  // Spring Boot backend endpoints (called server-side by the BFF route handlers,
+  // and directly by the API client for authorized data requests).
   auth: {
     login: "/api/v1/auth/login",
     register: "/api/v1/users/register",
     logout: "/api/v1/auth/logout",
     refresh: "/api/v1/tokens/refresh",
   },
+  // First-party BFF route handlers (src/app/api/auth/*), same-origin. These own
+  // the `cpm.rt` HttpOnly cookie; the browser talks to these, never to the
+  // backend origin, for the token lifecycle.
+  bff: {
+    login: "/api/auth/login",
+    refresh: "/api/auth/refresh",
+    logout: "/api/auth/logout",
+    // Same-origin proxy for the transactions list — forwards to the backend and
+    // enriches crypto logoUrl server-side (src/app/api/me/transactions/route.ts).
+    transactions: "/api/me/transactions",
+    // Optional same-origin proxy for market status — only needed for a cross-origin
+    // landing or edge caching; the app calls the backend directly (CORS allows it).
+    marketStatus: "/api/market/status",
+  },
   users: {
     me: "/api/v1/users/me",
   },
+  settings: {
+    account: "/api/v1/users/me",
+    changePassword: "/api/v1/users/password/change",
+    sessions: "/api/v1/me/sessions",
+    session: (sessionId: string) => `/api/v1/me/sessions/${encodeURIComponent(sessionId)}`,
+    preferences: "/api/v1/me/preferences",
+  },
   portfolio: {
     me: "/api/v1/me/portfolio",
-    bySymbol: (symbol: string) => `/api/v1/me/portfolio/${symbol}`,
+    // ADR-0014 portfolio-wide Total Return aggregate (scope ALL, no params).
+    summary: "/api/v1/me/portfolio/summary",
+    bySymbol: (symbol: string) => `/api/v1/me/portfolio/${encodeBmvSymbol(symbol)}`,
     holdingsPerformance: (portfolioId: string) =>
       `/api/v1/me/portfolio/${encodeURIComponent(portfolioId)}/holdings-performance`,
+    history: "/api/v1/me/portfolio/history",
+    // ADR-0011 read-only split equivalence calculator (never persists).
+    splitPreview: "/api/v1/me/portfolio/split-preview",
+    assetHistory: (symbol: string) =>
+      `/api/v1/me/portfolio/assets/${encodeURIComponent(symbol)}/history`,
+    assetMarkers: (symbol: string) =>
+      `/api/v1/me/portfolio/assets/${encodeURIComponent(symbol)}/markers`,
+    cetesMarkToMarket: (transactionId: string) =>
+      `/api/v1/portfolio/cetes/${encodeURIComponent(transactionId)}/mark-to-market`,
   },
   transactions: {
     me: "/api/v1/me/transactions",
@@ -21,12 +57,41 @@ export const endpoints = {
     buy: "/api/v1/me/transactions/buy",
     sell: "/api/v1/me/transactions/sell",
     transfer: "/api/v1/me/transactions/transfer",
+    dividend: "/api/v1/me/transactions/dividend",
+  },
+  // ADR-0012 market status. Public (no auth); computed from the backend's official
+  // BMV/BIVA + NYSE calendars. `calendar` is the per-code detail for the Mercados page.
+  market: {
+    status: "/api/v1/market/status",
+    calendar: (code: string) => `/api/v1/market/${encodeURIComponent(code)}/calendar`,
+    // ADR-0014 dividend growth (public, cacheable ~1h). CAGR values are fractions.
+    dividendGrowth: (symbol: string) => `/api/v1/market/dividends/${encodeURIComponent(symbol)}/growth`,
   },
   assets: {
     search: "/api/v1/assets/search",
+    popular: "/api/v1/assets/popular",
+    byType: "/api/v1/assets",
   },
   marketdata: {
     cryptoPrice: (symbol: string) => `/api/v1/crypto/${symbol}/price`,
     stockPrice: (symbol: string) => `/api/v1/marketdata/stock?symbol=${encodeURIComponent(symbol)}`,
+    bmvHistorical: (symbol: string, from: string, to: string) =>
+      `/api/v1/marketdata/bmv/historical/${encodeBmvSymbol(symbol)}?from=${from}&to=${to}`,
+    usdMxnRate: "/api/v1/marketdata/fx/usdmxn",
+    banxicoCetesCurve: "/api/v1/marketdata/banxico/cetes/curve",
+  },
+  brokerImport: {
+    // Channel 1 — GBM monthly account statement (MXN). One file per month.
+    // Multipart field `file`; returns a single async job.
+    statements: "/api/v1/me/broker/gbm/statements",
+    // Channel 2 — DriveWealth trade confirmations (USD). Multiple files, one
+    // per trading day. Multipart field `files`; returns one job per file.
+    drivewealthConfirmations: "/api/v1/me/broker/gbm/drivewealth-confirmations",
+    // Auto-detects the broker from each uploaded PDF (1..N files). Returns 202
+    // with one async job per file.
+    upload: "/api/v1/me/broker/gbm/import",
+    jobs: "/api/v1/me/broker/gbm/import-jobs",
+    job: (jobId: string) => `/api/v1/me/broker/gbm/import-jobs/${encodeURIComponent(jobId)}`,
+    retry: (jobId: string) => `/api/v1/me/broker/gbm/import-jobs/${encodeURIComponent(jobId)}/retry`,
   },
 };

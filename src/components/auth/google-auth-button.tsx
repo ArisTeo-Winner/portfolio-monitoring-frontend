@@ -8,6 +8,7 @@ export function GoogleAuthButton({ label, className }: { label: string; classNam
     <Button
       block
       className={className}
+      data-testid="oauth2-google-button"
       icon={<GoogleIcon />}
       onClick={() => startGoogleLogin()}
       type="button"

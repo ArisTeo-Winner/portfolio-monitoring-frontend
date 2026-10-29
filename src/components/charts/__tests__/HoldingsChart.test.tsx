@@ -43,6 +43,10 @@ vi.mock("lightweight-charts", () => {
     ColorType: {
       Solid: "Solid",
     },
+    PriceScaleMode: {
+      Normal: 0,
+      Logarithmic: 1,
+    },
   };
 });
 

@@ -12,6 +12,7 @@ type Props = InputHTMLAttributes<HTMLInputElement> & {
   labelClassName?: string;
   wrapperClassName?: string;
   inputClassName?: string;
+  "data-testid"?: string;
 };
 
 export function Input({
@@ -24,6 +25,7 @@ export function Input({
   labelClassName,
   wrapperClassName,
   inputClassName,
+  "data-testid": dataTestId,
   ...props
 }: Props) {
   return (
@@ -33,20 +35,21 @@ export function Input({
           <span className={cn("text-sm font-semibold text-slate-800", labelClassName)}>{label}</span>
           {action}
         </div>
-      ) : null}
+      ) : (
+        <span className="sr-only">{label}</span>
+      )}
       <div
+        data-testid={dataTestId}
         className={cn(
-          "flex items-center rounded-2xl bg-white/96 px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.08)]",
-          error
-            ? "shadow-[0_10px_28px_rgba(239,68,68,0.12)]"
-            : "focus-within:shadow-[0_14px_34px_rgba(15,23,42,0.1),0_0_0_6px_rgba(53,89,232,0.06)]",
+          "flex min-h-[44px] items-center rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 transition duration-150 ease-out",
+          error ? "border-red-500/60" : "focus-within:border-blue-500",
           wrapperClassName,
         )}
       >
-        {icon ? <span className="mr-3 shrink-0 text-slate-400">{icon}</span> : null}
+        {icon ? <span className="mr-3 shrink-0 text-neutral-400">{icon}</span> : null}
         <input
           className={cn(
-            "w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400",
+            "w-full bg-transparent text-sm text-neutral-50 outline-none placeholder:text-neutral-500",
             inputClassName,
             className,
           )}
@@ -54,7 +57,7 @@ export function Input({
           {...props}
         />
       </div>
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {error ? <p className="text-xs text-red-400">{error}</p> : null}
     </label>
   );
 }

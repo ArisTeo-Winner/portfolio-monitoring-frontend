@@ -1,0 +1,25 @@
+export const settingsDensity = {
+  page: "mx-auto w-full max-w-[1440px] px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pb-12 lg:px-8",
+  pageInner: "w-full max-w-3xl xl:max-w-4xl",
+  layout: "mb-5 md:mb-6",
+  card: "overflow-hidden !p-0",
+  contentCard: "px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-6",
+  contentHeader: "mb-4 border-b border-neutral-800 px-0 pb-4 pt-0 sm:px-0 md:px-0 md:pb-4 md:pt-0",
+  cardNarrow: "overflow-hidden !p-0 max-w-xl",
+  cardHeader: "!mb-0 border-b border-neutral-800 px-5 pt-4 pb-4 sm:px-6 md:px-8 md:pt-6 md:pb-5",
+  title: "text-lg",
+  description: "leading-5",
+  fields: "divide-y divide-neutral-800",
+  field: "grid gap-2 px-5 py-2.5 sm:px-6 md:gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:px-8 md:py-5 lg:grid-cols-[260px_minmax(0,1fr)]",
+  label: "mb-1 text-sm font-semibold text-zinc-400 md:mb-0 md:pt-3",
+  control: "max-w-2xl",
+  actions: "mt-4 grid gap-2 px-5 pb-4 sm:px-6 md:flex md:justify-end md:px-8 md:pb-6",
+  button: "h-12 rounded-2xl font-semibold",
+  repeatedList: "grid min-w-0 gap-3 sm:gap-4",
+  sessionCard: "scroll-mb-28 grid min-w-0 gap-2 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4 sm:py-3",
+  sessionBadge: "h-7 px-2.5 text-xs sm:h-8 sm:px-3 sm:text-sm",
+  sessionDate: "text-[0.8125rem] leading-5 sm:text-sm",
+  sessionAction: "h-11 max-w-full rounded-xl text-sm font-semibold",
+} as const;
+
+export type SettingsDensityKey = keyof typeof settingsDensity;

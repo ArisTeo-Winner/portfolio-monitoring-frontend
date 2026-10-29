@@ -24,22 +24,9 @@ export async function getPortfolio(options: { force?: boolean } = {}) {
 
   const request = apiRequest<PortfolioEntry[]>(endpoints.portfolio.me, { auth: true, method: "GET" })
     .then((data) => {
-      const knownStocks = ["MSFT", "AAPL", "GOOGL", "AMZN", "TSLA", "META"];
-      const knownIndices = ["SPY", "QQQ", "DIA"];
-
-      const correctedEntries = data.map((entry) => {
-        let correctedType = entry.assetType;
-        if (knownStocks.includes(entry.assetSymbol.toUpperCase())) {
-          correctedType = "STOCKS";
-        } else if (knownIndices.includes(entry.assetSymbol.toUpperCase())) {
-          correctedType = "INDEX";
-        }
-        return { ...entry, assetType: correctedType };
-      });
-
-      portfolioCache = correctedEntries;
+      portfolioCache = data;
       portfolioCacheAt = Date.now();
-      return correctedEntries;
+      return data;
     })
     .finally(() => {
       portfolioInFlight = null;

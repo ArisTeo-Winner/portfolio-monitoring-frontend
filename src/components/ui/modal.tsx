@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils/cn";
 
 type Props = {
   children: ReactNode;
@@ -13,10 +14,10 @@ type Props = {
 export function Modal({ children, onClose, overlayClassName, panelClassName, hideDefaultCloseButton = false }: Props) {
   return (
     <div
-      className={`fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/28 px-2.5 py-2.5 backdrop-blur-md md:px-3 md:py-4 ${overlayClassName ?? ""}`}
+      className={cn("fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/28 px-2.5 py-2.5 backdrop-blur-md md:px-3 md:py-4", overlayClassName)}
     >
       <div
-        className={`relative my-auto max-h-[calc(100vh-1rem)] w-full max-w-[404px] overflow-y-auto rounded-[1.25rem] bg-white/98 p-3.5 shadow-[0_24px_80px_rgba(15,23,42,0.18)] md:p-4 ${panelClassName ?? ""}`}
+        className={cn("relative my-auto max-h-[calc(100vh-1rem)] w-full max-w-[404px] overflow-y-auto rounded-[1.25rem] bg-white/98 p-3.5 shadow-[0_24px_80px_rgba(15,23,42,0.18)] md:p-4", panelClassName)}
       >
         {onClose && !hideDefaultCloseButton ? (
           <button

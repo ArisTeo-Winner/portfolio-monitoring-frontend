@@ -3,19 +3,39 @@
 @tailwind utilities;
 
 :root {
-  --background: #0A0A0A;
-  --foreground: #f8fafc;
-  --brand: #FCD34D;
-  --brand-soft: #fde68a;
-  --accent: #1ec6b6;
-  --panel: #111111;
-  --panel-border: #2B3139;
+  --background: #0B0F17;
+  --foreground: #F9FAFB;
+  --brand: #2563EB;
+  --brand-soft: #3B82F6;
+  --accent: #16C784;
+  --panel: #111827;
+  --panel-border: #1F2937;
+  --surface-elevated: #1A2233;
+  --text-secondary: #9CA3AF;
+  --positive: #16C784;
+  --negative: #EA3943;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: "Inter", "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  min-height: 100dvh;
+}
+
+/* Reserve bottom space for the fixed mobile nav so scrollIntoView clears it */
+html {
+  scroll-padding-bottom: 5.5rem; /* ~88px > mobile nav height (~85px) */
+}
+
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-bottom: 0;
+  }
 }
 
 /* Scroll elegante */
@@ -48,18 +68,13 @@ button:disabled {
 }
 
 .glass {
-  background: #09090b;
-  backdrop-filter: blur(18px);
-  box-shadow:
-    0 18px 44px rgba(15, 23, 42, 0.08),
-    0 2px 6px rgba(15, 23, 42, 0.04);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: none;
 }
 
 .hero-grid {
-  background-image:
-    linear-gradient(rgba(53, 89, 232, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 89, 232, 0.06) 1px, transparent 1px);
-  background-size: 48px 48px;
+  background-image: none;
 }
 
 @keyframes public-marquee {

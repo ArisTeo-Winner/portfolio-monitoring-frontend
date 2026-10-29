@@ -54,7 +54,9 @@ jobs:
 
       - name: Install Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+          # Fetch install.sh from the immutable release tag matching TRIVY_VERSION
+          # (not the mutable 'main' ref) so the bootstrap script cannot be tampered with upstream.
+          curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/${TRIVY_VERSION}/contrib/install.sh" | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
           trivy --version
 
       - name: Trivy dependency scan

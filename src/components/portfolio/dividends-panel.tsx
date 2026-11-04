@@ -7,6 +7,7 @@ import type { DividendGrowthResponse } from "@/features/market/types/dividend-gr
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, resolveAssetName } from "@/features/assets/lib/asset-logo-registry";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
+import { groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
 
 type ViewMode = "zen" | "detail";
 
@@ -102,7 +103,6 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
           nonPayers={nonPayers}
           payers={payers}
           primaryTotal={primaryTotal}
-          totalsByCurrency={totalsByCurrency}
           maxIncome={maxIncome}
         />
       ) : (
@@ -116,13 +116,11 @@ function ZenView({
   payers,
   nonPayers,
   primaryTotal,
-  totalsByCurrency,
   maxIncome,
 }: {
   payers: Row[];
   nonPayers: Row[];
   primaryTotal: [string, number] | null;
-  totalsByCurrency: [string, number][];
   maxIncome: number;
 }) {
   return (
@@ -138,11 +136,6 @@ function ZenView({
               <p className="mt-2 text-[0.86rem] text-[#7f8aa3]">
                 ≈ <b className="font-semibold tabular-nums text-white">{money(primaryTotal[1] / 12)}</b> cada mes, sin mover un dedo
               </p>
-              {totalsByCurrency.length > 1 ? (
-                <p className="mt-1 text-[0.74rem] text-[#5f6d82]">
-                  + {totalsByCurrency.slice(1).map(([c, v]) => `${money(v)} ${c}`).join(" · ")} en otras monedas
-                </p>
-              ) : null}
             </>
           ) : (
             <p className="mt-3 text-[0.95rem] text-[#7f8aa3]">Tus activos todavía no reparten dividendos.</p>
@@ -158,6 +151,8 @@ function ZenView({
           </span>
         </article>
       </div>
+
+      <CurrencyDiversification payers={payers} />
 
       {payers.length ? (
         <div>
@@ -213,6 +208,81 @@ function PayerRow({ row, maxIncome }: { row: Row; maxIncome: number }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+// Zen "ingreso por moneda": shows which currencies your passive income arrives
+// in. The proportion bar is by NUMBER of paying holdings (unit-free) and amounts
+// stay in their own currency — we never sum/convert across currencies here.
+function CurrencyDiversification({ payers }: { payers: Row[] }) {
+  const groups = useMemo(() => groupIncomeByCurrency(payers), [payers]);
+  if (!groups.length) return null;
+
+  const multi = groups.length > 1;
+  return (
+    <article
+      data-testid="dividends-currency-diversification"
+      className="rounded-[1.3rem] border border-[#1b2028] bg-[#111317] p-5"
+    >
+      <p className="text-[0.72rem] font-medium uppercase tracking-[0.16em] text-[#71819b]">Tu ingreso por moneda</p>
+      <p className="mt-2 text-[0.9rem] text-[#9daccc]">
+        {multi ? (
+          <>Tu ingreso llega repartido en <b className="font-semibold text-white">{groups.length} monedas</b>.</>
+        ) : (
+          <>Todo tu ingreso llega en <b className="font-semibold text-white">{groups[0].currency}</b>.</>
+        )}
+      </p>
+
+      <div className="mt-4 space-y-3">
+        {groups.map((g) => {
+          const holdings = payers.filter((p) => p.currency === g.currency);
+          const pct = Math.round(g.share * 100);
+          return (
+            <div key={g.currency} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
+              <span className="rounded-[0.6rem] border border-[#2a313b] bg-[#0f1217] px-2.5 py-1 text-[0.78rem] font-semibold text-white">
+                {g.currency}
+              </span>
+              <div className="min-w-0">
+                <div className="flex -space-x-2">
+                  {holdings.slice(0, 5).map((h) => (
+                    <AssetAvatar
+                      key={h.entry.assetSymbol}
+                      assetType={h.entry.assetType}
+                      dark
+                      logoUrl={h.logoUrl}
+                      symbol={h.entry.assetSymbol}
+                    />
+                  ))}
+                  {holdings.length > 5 ? (
+                    <span className="flex h-7 items-center rounded-full border border-[#1b2028] bg-[#0f1217] px-2 text-[0.68rem] text-[#7f8aa3]">
+                      +{holdings.length - 5}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 h-[5px] max-w-[260px] overflow-hidden rounded-[3px] bg-[#121a28]">
+                  <i
+                    className="block h-full rounded-[3px] bg-[linear-gradient(90deg,#0f9e67,#1fd38b)]"
+                    style={{ width: `${Math.max(6, pct)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[0.9rem] font-semibold tabular-nums text-white">
+                  {money(g.total)} <span className="text-[0.62em] font-semibold text-[#7f8aa3]">{g.currency}</span>
+                </p>
+                <p className="text-[0.68rem] text-[#5f6d82]">
+                  {g.count} {g.count === 1 ? "activo" : "activos"} · {pct}%
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-3 text-[0.68rem] text-[#5f6d82]">
+        La proporción es por número de activos. Los montos no se suman entre monedas.
+      </p>
+    </article>
   );
 }
 

@@ -1,7 +1,5 @@
 "use client";
 
-import type { AssetOption } from "@/features/assets/types/asset.types";
-
 const STORAGE_KEY = "asset-logo-registry";
 
 export type AssetLogoEntry = { logoUrl: string; name?: string };
@@ -23,7 +21,10 @@ export function readAssetLogoRegistry(): AssetLogoRegistry {
 }
 
 export function rememberAssetLogo(
-  asset: Pick<AssetOption, "symbol" | "assetType" | "logoUrl" | "name"> | null | undefined,
+  asset:
+    | { symbol: string; assetType?: string | null; logoUrl?: string | null; name?: string | null }
+    | null
+    | undefined,
 ) {
   if (!asset?.symbol || !asset?.logoUrl || typeof window === "undefined") return;
 

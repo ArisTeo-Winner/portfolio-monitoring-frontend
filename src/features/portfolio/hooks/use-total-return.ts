@@ -12,9 +12,9 @@ type DisplayCurrency = ReturnType<typeof resolveDisplayCurrency>;
 // an empty portfolio (dividend-aware figures come back null); in both cases the
 // caller falls back to the price-only "All-time Profit" view.
 //
-// `realized`/`unrealized` are null until the backend exposes realizedPnl/
-// unrealizedPnl; consumers then derive the split as allTimeProfit minus the
-// entries' unrealized P&L (which they already have), so the breakdown reconciles.
+// `realized`/`unrealized` carry the backend split (shipped since ADR-0014); they
+// are null only when a field is absent, in which case consumers derive the split
+// as allTimeProfit minus the entries' unrealized P&L so the breakdown reconciles.
 export type TotalReturnBreakdown = {
   price: number; // plusvalía — allTimeProfit (realized + unrealized)
   income: number; // Σ net dividends

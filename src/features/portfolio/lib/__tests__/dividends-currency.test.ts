@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
+import { computeDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
 
 describe("groupIncomeByCurrency", () => {
   it("returns an empty array for no payers", () => {
@@ -46,5 +46,21 @@ describe("groupIncomeByCurrency", () => {
     ]);
 
     expect(groups.map((g) => g.currency)).toEqual(["USD", "EUR", "MXN"]);
+  });
+});
+
+describe("computeDividendYield", () => {
+  it("computes income / value when currencies match", () => {
+    expect(computeDividendYield(1.83, 408.22, "USD", "USD")).toBeCloseTo(0.004483, 5);
+  });
+
+  it("returns null when the dividend and value currencies differ (needs FX)", () => {
+    // BIMBOA pays in MXN but the value is shown in USD → no honest front-only yield.
+    expect(computeDividendYield(0.87, 54.49, "MXN", "USD")).toBeNull();
+  });
+
+  it("returns null for a non-payer or a zero/negative value", () => {
+    expect(computeDividendYield(0, 100, "USD", "USD")).toBeNull();
+    expect(computeDividendYield(5, 0, "USD", "USD")).toBeNull();
   });
 });

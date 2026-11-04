@@ -26,3 +26,19 @@ export function groupIncomeByCurrency(
     .map(([currency, { total, count }]) => ({ currency, total, count, share: count / totalCount }))
     .sort((a, b) => b.count - a.count || a.currency.localeCompare(b.currency));
 }
+
+// Dividend yield = annual income / current value, as a fraction (0.0159 = 1.59%).
+// It is only meaningful when the dividend's native currency matches the currency
+// the value is expressed in (ADR-0010 display currency). Cross-currency yield
+// needs an FX conversion the backend owns, so here it returns null and the UI
+// shows it as not available rather than inflating it by the FX ratio.
+export function computeDividendYield(
+  annualIncome: number,
+  currentValue: number,
+  dividendCurrency: string,
+  displayCurrency: string,
+): number | null {
+  if (dividendCurrency !== displayCurrency) return null;
+  if (!(currentValue > 0) || annualIncome <= 0) return null;
+  return annualIncome / currentValue;
+}

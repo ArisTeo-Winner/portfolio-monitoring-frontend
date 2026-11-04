@@ -7,7 +7,7 @@ import type { DividendGrowthResponse } from "@/features/market/types/dividend-gr
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, resolveAssetName } from "@/features/assets/lib/asset-logo-registry";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
-import { groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
+import { computeDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
 
 type ViewMode = "zen" | "detail";
 
@@ -19,6 +19,7 @@ type Row = {
   annualIncome: number; // DPS of the latest year × shares, in the dividend's native currency
   currency: string; // native currency of the dividend (NOT the presentation currency)
   cagr5y: number | null; // fraction
+  dividendYield: number | null; // fraction; null when cross-currency or non-payer
   pays: boolean;
 };
 
@@ -27,7 +28,13 @@ type Row = {
 // dividend-growth endpoint (DPS is in the dividend's NATIVE currency, labeled as
 // such). "Próximo pago" and yield-in-your-currency need a backend dividend
 // calendar + presentation-currency aggregate, so they render as "Pendiente".
-export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
+export function DividendsPanel({
+  entries,
+  displayCurrency,
+}: {
+  entries: PortfolioEntry[];
+  displayCurrency: string;
+}) {
   const [mode, setMode] = useState<ViewMode>("zen");
 
   const results = useQueries({
@@ -49,19 +56,21 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
       const latestDps = years.at(-1)?.totalDps ?? 0;
       const shares = Number(entry.totalQuantity) || 0;
       const annualIncome = latestDps * shares;
+      const currency = data?.currency ?? "USD";
       return {
         entry,
         name: resolveAssetName(entry.assetSymbol, entry.assetType, registry),
         logoUrl: getAssetLogoFromRegistry(registry, entry.assetSymbol, entry.assetType) ?? null,
         shares,
         annualIncome,
-        currency: data?.currency ?? "USD",
+        currency,
         cagr5y: data?.cagr5y ?? null,
+        dividendYield: computeDividendYield(annualIncome, Number(entry.currentValue) || 0, currency, displayCurrency),
         pays: annualIncome > 0,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- results identity changes each render; gate on the stable loading flag + entries instead.
-  }, [entries, loading, registry]);
+  }, [entries, loading, registry, displayCurrency]);
 
   const payers = rows.filter((r) => r.pays).sort((a, b) => b.annualIncome - a.annualIncome);
   const nonPayers = rows.filter((r) => !r.pays);
@@ -289,12 +298,13 @@ function CurrencyDiversification({ payers }: { payers: Row[] }) {
 function DetailView({ rows }: { rows: Row[] }) {
   return (
     <div className="overflow-x-auto rounded-[1rem] border border-[#1b2028]">
-      <table className="w-full min-w-[720px] border-collapse text-[0.84rem]">
+      <table className="w-full min-w-[800px] border-collapse text-[0.84rem]">
         <thead>
           <tr className="border-b border-[#1b2028] text-[0.66rem] uppercase tracking-[0.08em] text-[#5f6d82]">
             <th className="px-4 py-3 text-left font-semibold">Holding</th>
             <th className="px-4 py-3 text-right font-semibold">Acciones</th>
             <th className="px-4 py-3 text-right font-semibold">Dividendo/año</th>
+            <th className="px-4 py-3 text-right font-semibold">Rendim.</th>
             <th className="px-4 py-3 text-right font-semibold">Crecim. 5A</th>
             <th className="px-4 py-3 text-right font-semibold">Próximo pago</th>
             <th className="px-4 py-3 text-right font-semibold">Ex-dividendo</th>
@@ -317,6 +327,13 @@ function DetailView({ rows }: { rows: Row[] }) {
                 {r.pays ? <span className="text-white">{money(r.annualIncome)} {r.currency}</span> : <span className="text-[#5f6d82]">—</span>}
               </td>
               <td className="px-4 py-3 text-right">
+                {r.dividendYield != null ? (
+                  <span className="text-white">{(r.dividendYield * 100).toFixed(2)}%</span>
+                ) : (
+                  <span className="text-[#5f6d82]">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right">
                 {r.cagr5y != null ? (
                   <span className={r.cagr5y >= 0 ? "text-[#1fd38b]" : "text-[#ff6b6b]"}>{r.cagr5y >= 0 ? "+" : ""}{(r.cagr5y * 100).toFixed(1)}%</span>
                 ) : (
@@ -330,7 +347,7 @@ function DetailView({ rows }: { rows: Row[] }) {
         </tbody>
       </table>
       <p className="px-4 py-3 text-[0.72rem] text-[#5f6d82]">
-        Dividendo en la moneda nativa del activo. Próximo pago y ex-dividendo llegan con el calendario de dividendos del backend.
+        Dividendo en la moneda nativa del activo. El rendimiento se muestra solo cuando el dividendo y el valor están en la misma moneda (el cross-currency necesita conversión del backend). Próximo pago y ex-dividendo llegan con el calendario de dividendos del backend.
       </p>
     </div>
   );

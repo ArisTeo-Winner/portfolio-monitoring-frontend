@@ -148,7 +148,7 @@ export function PortfolioTable({
         {activeTab === "history" ? (
           <TransactionsTable assetType={assetType} onDeleted={onHistoryChanged} />
         ) : activeTab === "dividends" ? (
-          <DividendsPanel entries={entries} />
+          <DividendsPanel entries={entries} displayCurrency={displayCurrency} />
         ) : visibleEntries.length ? (
           <div data-testid="portfolio-assets">
           <div className="space-y-2 sm:hidden">

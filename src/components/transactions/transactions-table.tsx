@@ -417,7 +417,10 @@ export function TransactionsTable({
                 <option value="BUY">Buy</option>
                 <option value="SELL">Sell</option>
                 <option value="TRANSFER">Transfer</option>
-                <option value="DIVIDEND">Dividend</option>
+                {/* ADR-0029: /me/transactions no longer lists DIVIDEND rows (they
+                    live in Portfolio > Dividendos / /me/dividends), so the Dividend
+                    filter would be permanently empty here. The badge + type union
+                    keep DIVIDEND for robustness if a legacy row ever appears. */}
               </FilterSelect>
 
               <FilterSelect

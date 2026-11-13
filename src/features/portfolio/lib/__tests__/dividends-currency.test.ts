@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
+import {
+  computeDividendYield,
+  groupIncomeByCurrency,
+  resolveDividendYield,
+} from "@/features/portfolio/lib/dividends-currency";
 
 describe("groupIncomeByCurrency", () => {
   it("returns an empty array for no payers", () => {
@@ -62,5 +66,27 @@ describe("computeDividendYield", () => {
   it("returns null for a non-payer or a zero/negative value", () => {
     expect(computeDividendYield(0, 100, "USD", "USD")).toBeNull();
     expect(computeDividendYield(5, 0, "USD", "USD")).toBeNull();
+  });
+});
+
+describe("resolveDividendYield (ADR-0031)", () => {
+  it("uses the backend yieldPct when provided, even across currencies", () => {
+    // NVDA pays USD but value shown in MXN: local calc would be null, but the
+    // backend yield (native USD) is authoritative and must be shown as-is.
+    expect(resolveDividendYield(0.036667, 100, 50_000, "USD", "MXN")).toBe(0.036667);
+  });
+
+  it("passes through an explicit backend null (no history / no price) as N/D", () => {
+    // Even though the local same-currency calc could produce a number here, an
+    // explicit null from the backend wins — we never fabricate a fallback yield.
+    expect(resolveDividendYield(null, 1.83, 408.22, "USD", "USD")).toBeNull();
+  });
+
+  it("falls back to the local same-currency calc when the field is absent (pre-deploy backend)", () => {
+    expect(resolveDividendYield(undefined, 1.83, 408.22, "USD", "USD")).toBeCloseTo(0.004483, 5);
+  });
+
+  it("fallback still returns null for a cross-currency pair when the backend field is absent", () => {
+    expect(resolveDividendYield(undefined, 0.87, 54.49, "MXN", "USD")).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ import type { DividendGrowthResponse } from "@/features/market/types/dividend-gr
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, resolveAssetName } from "@/features/assets/lib/asset-logo-registry";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
-import { computeDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
+import { resolveDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
 import {
   dividendStatusBadge,
   formatDividendDate,
@@ -29,7 +29,7 @@ type Row = {
   annualIncome: number; // DPS of the latest year × shares, in the dividend's native currency
   currency: string; // native currency of the dividend (NOT the presentation currency)
   cagr5y: number | null; // fraction
-  dividendYield: number | null; // fraction; null when cross-currency or non-payer
+  dividendYield: number | null; // fraction; ADR-0031 backend yieldPct when available (cross-currency safe), else local same-currency calc. null = N/D
   pays: boolean;
   status: DisplayDividendStatus; // pays | none | verifying (ADR-0025 F4)
   nextDividend: NextDividend | null; // upcoming payment, or null
@@ -74,6 +74,15 @@ export function DividendsPanel({
       const annualIncome = latestDps * shares;
       const currency = data?.currency ?? "USD";
       const status = resolveDividendStatus(data?.eligibilityStatus, annualIncome);
+      // ADR-0031: prefer the backend's cross-currency-safe yieldPct when present,
+      // else fall back to the local same-currency computation (see helper doc).
+      const dividendYield = resolveDividendYield(
+        data?.yieldPct,
+        annualIncome,
+        Number(entry.currentValue) || 0,
+        currency,
+        displayCurrency,
+      );
       return {
         entry,
         name: resolveAssetName(entry.assetSymbol, entry.assetType, registry),
@@ -82,7 +91,7 @@ export function DividendsPanel({
         annualIncome,
         currency,
         cagr5y: data?.cagr5y ?? null,
-        dividendYield: computeDividendYield(annualIncome, Number(entry.currentValue) || 0, currency, displayCurrency),
+        dividendYield,
         pays: status === "pays",
         status,
         nextDividend: data?.nextDividend ?? null,
@@ -461,9 +470,6 @@ function DetailView({ rows }: { rows: Row[] }) {
           ))}
         </tbody>
       </table>
-      <p className="px-4 py-3 text-[0.72rem] text-[#5f6d82]">
-        Dividendo en la moneda nativa del activo. El rendimiento se muestra solo cuando el dividendo y el valor están en la misma moneda (el cross-currency necesita conversión del backend). Próximo pago y ex-dividendo salen del proveedor; «Verificando…» indica que aún se confirma la elegibilidad.
-      </p>
     </div>
   );
 }

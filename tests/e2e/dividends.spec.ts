@@ -287,3 +287,166 @@ test.describe("Dividendos — ingreso por moneda (Zen) + rendimiento (Detallado)
     await expect(section).toContainText("—");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR-0031 — rendimiento cross-currency-safe desde el backend (yieldPct).
+//
+// A diferencia del bloque de arriba (donde /growth NO manda yieldPct y la UI cae
+// al cálculo local same-currency), aquí el mock SÍ incluye yieldPct/priceBasis
+// para probar que resolveDividendYield prefiere SIEMPRE el valor del backend,
+// en AMBAS direcciones:
+//
+//   • BIMBOA  — dividendo en MXN, valor mostrado en USD (cross-currency). El
+//     cálculo local devolvería null; el backend manda yieldPct 0.0312 (nativo
+//     MXN) → la UI muestra "3.12%". El % sale del ratio nativo, NO se multiplica
+//     por FX, y es independiente de la moneda de display (aquí USD ≠ MXN).
+//   • KO      — dividendo en USD, valor en USD, CON historial (el cálculo local
+//     daría 3.10%), pero el backend manda yieldPct: null → la UI muestra "—".
+//     Nunca fabricamos un fallback cuando el backend dice null explícito.
+//
+// Celda "Rendim." = td.nth(3) (Holding, Acciones, Dividendo/año, Rendim., …).
+// Se compara el texto renderizado, que ya es yieldPct × 100 con 2 decimales.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type GrowthMock = {
+  dividendCurrency: string; // moneda nativa del dividendo (annualDividends + próximo)
+  dps: number; // DPS del último año (para annualIncome)
+  yieldPct: number | null; // ADR-0031: ratio nativo, o null explícito
+  priceBasis: { price: number; currency: string; asOf: string } | null;
+};
+
+const SHAPE: Record<string, { qty: string; value: string; growth: GrowthMock }> = {
+  // Cross-currency: paga MXN, valor en USD. Local → null; backend yieldPct gana.
+  BIMBOA: {
+    qty: "300",
+    value: "1500", // USD (display) → distinto de la moneda del dividendo (MXN)
+    growth: {
+      dividendCurrency: "MXN",
+      dps: 2.5, // 2.50 MXN × 300 = 750.00 MXN anual (nativo, nunca sumado a USD)
+      yieldPct: 0.0312, // 2.50 / 80.13 ≈ 3.12% nativo → UI "3.12%"
+      priceBasis: { price: 80.13, currency: "MXN", asOf: "2026-11-07T15:13:45-06:00" },
+    },
+  },
+  // Same-currency CON historial: local daría 3.10%, pero backend null → "—".
+  KO: {
+    qty: "80",
+    value: "5000", // USD
+    growth: {
+      dividendCurrency: "USD",
+      dps: 1.94, // 1.94 × 80 = 155.20 USD (local sería 155.20/5000 = 3.10%)
+      yieldPct: null, // null explícito del backend → no fabricar fallback
+      priceBasis: null, // yieldPct y priceBasis viajan juntos (ambos null)
+    },
+  },
+};
+const SHAPE_SYMBOLS = Object.keys(SHAPE);
+
+function shapeEntry(assetSymbol: string) {
+  const { qty, value } = SHAPE[assetSymbol];
+  return {
+    portfolioEntryId: `pe-${assetSymbol}`,
+    userId: "u1",
+    assetSymbol,
+    assetType: "STOCK",
+    totalQuantity: qty,
+    currentValue: value,
+    totalInvested: "1000",
+    totalProfitLoss: "100",
+    averagePricePerUnit: "45",
+    lastTransactionPrice: "50",
+    lastUpdated: "2026-01-15T10:00:00Z",
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2026-01-15T10:00:00Z",
+  };
+}
+
+test.describe("Dividendos — rendimiento ADR-0031 (yieldPct del backend)", () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    skipUnlessXsMobile(testInfo);
+    test.setTimeout(90_000);
+
+    await mockBackendAPIs(page);
+
+    await page.route(/\/api\/v1\/me\/portfolio(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(SHAPE_SYMBOLS.map(shapeEntry)),
+      }),
+    );
+
+    await page.route(/\/api\/v1\/market\/dividends\/[^/]+\/growth/, (route) => {
+      const m = route.request().url().match(/dividends\/([^/]+)\/growth/);
+      const sym = m ? decodeURIComponent(m[1]) : "";
+      const g = SHAPE[sym]?.growth;
+      const body = g
+        ? {
+            symbol: sym,
+            annualDividends: [
+              { year: 2024, totalDps: g.dps * 0.95 },
+              { year: 2025, totalDps: g.dps },
+            ],
+            cagr1y: 0.05,
+            cagr3y: 0.05,
+            cagr5y: 0.05,
+            cagr10y: 0.05,
+            currency: g.dividendCurrency,
+            eligibilityStatus: "PAYS",
+            lastCheckedAt: "2026-11-07T15:13:45-06:00",
+            nextDividend: null,
+            // ADR-0031: ambos presentes o ambos null, nunca uno sí y otro no.
+            yieldPct: g.yieldPct,
+            priceBasis: g.priceBasis,
+          }
+        : {
+            symbol: sym,
+            annualDividends: [],
+            cagr1y: null,
+            cagr3y: null,
+            cagr5y: null,
+            cagr10y: null,
+            currency: "USD",
+            eligibilityStatus: "UNKNOWN",
+            lastCheckedAt: null,
+            nextDividend: null,
+            yieldPct: null,
+            priceBasis: null,
+          };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    });
+
+    await page.route(/\/api\/v1\/me\/dividends(\?|$)/, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+    );
+
+    await loginAs(page);
+    await page.goto("/portfolio");
+    await page.getByTestId("bottom-navigation").waitFor({ state: "attached", timeout: 60_000 });
+    await page.getByRole("button", { name: "Dividendos" }).click();
+    await page.getByTestId("portfolio-dividends").waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Detallado" }).click();
+    await expect(page.getByRole("columnheader", { name: "Rendim." })).toBeVisible();
+  });
+
+  test("usa el yieldPct del backend en cross-currency (MXN→USD): muestra 3.12%", async ({ page }) => {
+    const detail = page.getByTestId("dividends-detail-table");
+    const row = detail.locator("tr", { hasText: "BIMBOA" });
+
+    // Dividendo/año en la moneda NATIVA del activo (MXN), nunca convertido a USD.
+    await expect(row.locator("td").nth(2)).toContainText("MXN");
+
+    // Rendim. = yieldPct × 100. El cálculo local sería null (dividendo MXN vs
+    // valor USD); el backend manda el ratio nativo → la UI lo muestra tal cual,
+    // independiente de la moneda de display.
+    await expect(row.locator("td").nth(3)).toHaveText("3.12%");
+  });
+
+  test("respeta yieldPct: null del backend aunque el cálculo local daría un número", async ({ page }) => {
+    const detail = page.getByTestId("dividends-detail-table");
+    const row = detail.locator("tr", { hasText: "KO" });
+
+    // KO es same-currency (USD/USD) con historial: 155.20/5000 = 3.10% localmente.
+    // Pero el backend manda yieldPct: null → no fabricamos fallback, va "—".
+    await expect(row.locator("td").nth(3)).toHaveText("—");
+  });
+});

@@ -42,3 +42,22 @@ export function computeDividendYield(
   if (!(currentValue > 0) || annualIncome <= 0) return null;
   return annualIncome / currentValue;
 }
+
+// ADR-0031 — which yield the UI shows. The backend's `yieldPct` is computed in
+// the asset's native currency (trailing DPS ÷ current native-currency price), so
+// it is cross-currency safe and authoritative whenever present: a number shows
+// that %, an explicit null means "no history / price unavailable" (→ "—"). Only
+// when the field is ABSENT (undefined — a pre-deploy backend that doesn't send it
+// yet) do we fall back to the local same-currency computation, which still
+// returns null for cross-currency pairs. This lets the UI work before and after
+// the backend deploy with no further change.
+export function resolveDividendYield(
+  backendYieldPct: number | null | undefined,
+  annualIncome: number,
+  currentValue: number,
+  dividendCurrency: string,
+  displayCurrency: string,
+): number | null {
+  if (backendYieldPct !== undefined) return backendYieldPct;
+  return computeDividendYield(annualIncome, currentValue, dividendCurrency, displayCurrency);
+}

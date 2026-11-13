@@ -25,6 +25,17 @@ export type NextDividend = {
   frequency: number | null; // payments per year (4 = quarterly, 12 = monthly, 1 = annual)
 };
 
+// ADR-0031 cross-currency-safe dividend yield. The backend computes the trailing
+// yield in the asset's NATIVE currency (last full year DPS, split-adjusted ÷
+// current price fetched in that same currency), so the % is invariant to the
+// user's preferredCurrency and never needs an FX conversion. priceBasis.currency
+// ALWAYS matches the dividend currency and records which price was used.
+export type DividendPriceBasis = {
+  price: number;
+  currency: string; // native currency of the asset (same as the dividend)
+  asOf: string; // ISO-8601 with offset
+};
+
 export type DividendGrowthResponse = {
   symbol: string;
   annualDividends: AnnualDividend[]; // ascending by year
@@ -40,4 +51,11 @@ export type DividendGrowthResponse = {
   eligibilityStatus?: DividendEligibilityStatus | null;
   lastCheckedAt?: string | null; // ISO-8601 with offset, or null when UNKNOWN
   nextDividend?: NextDividend | null; // null = no announced upcoming payment
+  // ADR-0031 (additive, pending backend deploy — optional). Trailing yield as a
+  // FRACTION (0.036667 = 3.67%), cross-currency safe; null = no dividend history
+  // or price unavailable. When undefined (pre-deploy backend), the UI falls back
+  // to computing the yield locally (same-currency only). priceBasis is null
+  // whenever yieldPct is null.
+  yieldPct?: number | null;
+  priceBasis?: DividendPriceBasis | null;
 };

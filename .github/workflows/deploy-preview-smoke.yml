@@ -78,7 +78,9 @@ jobs:
 
   smoke:
     name: Smoke — ${{ needs.resolve-url.outputs.environment }} (${{ needs.resolve-url.outputs.target_url }})
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: this job runs `playwright install --with-deps chromium`,
+    # which fails on ubuntu-latest (now Ubuntu 26.04) with Playwright 1.59.1.
+    runs-on: ubuntu-24.04
     needs: resolve-url
     if: needs.resolve-url.outputs.target_url != ''
 

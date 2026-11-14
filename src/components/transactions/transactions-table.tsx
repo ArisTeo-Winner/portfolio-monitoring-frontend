@@ -8,7 +8,8 @@ import { ApiError } from "@/lib/api/problem-details";
 import type { AssetOption } from "@/features/assets/types/asset.types";
 import { deleteTransaction, updateTransaction } from "@/features/transactions/api/create-transaction";
 import { getTransactionDetails, getUserTransactions } from "@/features/transactions/api/get-transactions";
-import type { TransactionDetailsResponse, TransactionResponse, TransferDirection } from "@/features/transactions/types/transaction.types";
+import type { FrictionBreakdown, TransactionDetailsResponse, TransactionResponse, TransferDirection } from "@/features/transactions/types/transaction.types";
+import { buildFeePayload } from "@/features/transactions/utils/totals";
 import { formatFeeCurrency, formatQuantity } from "@/lib/utils/format";
 import { getAssetDisplayName } from "@/lib/utils/asset";
 import { type CurrencyCode } from "@/lib/utils/currency";
@@ -72,6 +73,9 @@ export function TransactionsTable({
   // ADR-0007 edit policy: `source` decides which fields the inline editor exposes
   // (MANUAL = full, imported = notes only). Fetched lazily when Edit opens.
   const [inlineSource, setInlineSource] = useState<string | undefined>(undefined);
+  // ADR-0005 parity on edit: seed the Comisión/IVA split from the stored
+  // FrictionBreakdown so a manual BUY/SELL can be re-edited without flattening it.
+  const [inlineBreakdown, setInlineBreakdown] = useState<FrictionBreakdown | null>(null);
   const [inlineEditLoading, setInlineEditLoading] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
@@ -306,6 +310,7 @@ export function TransactionsTable({
     setExpandedDetailId(null);
     setInlineTransferType(undefined);
     setInlineSource(undefined);
+    setInlineBreakdown(null);
     setInlineEditId(transaction.transactionId);
 
     // The list row has neither `source` (ADR-0007 edit policy) nor transferType,
@@ -321,6 +326,7 @@ export function TransactionsTable({
     getTransactionDetails(transaction.transactionId)
       .then((details) => {
         setInlineSource(details.source ?? "MANUAL");
+        setInlineBreakdown(details.frictionBreakdown ?? null);
         if (isTransfer) setInlineTransferType(normalizeTransferType(details.transferType));
       })
       .catch((error) => {
@@ -417,7 +423,10 @@ export function TransactionsTable({
                 <option value="BUY">Buy</option>
                 <option value="SELL">Sell</option>
                 <option value="TRANSFER">Transfer</option>
-                <option value="DIVIDEND">Dividend</option>
+                {/* ADR-0029: /me/transactions no longer lists DIVIDEND rows (they
+                    live in Portfolio > Dividendos / /me/dividends), so the Dividend
+                    filter would be permanently empty here. The badge + type union
+                    keep DIVIDEND for robustness if a legacy row ever appears. */}
               </FilterSelect>
 
               <FilterSelect
@@ -642,6 +651,7 @@ export function TransactionsTable({
                 ) : null}
                 {isRowEditing ? (
                   <InlineTransactionEditor
+                    breakdown={inlineBreakdown}
                     loadingPolicy={inlineEditLoading}
                     onCancel={() => setInlineEditId(null)}
                     onSaved={handleInlineSaved}
@@ -893,10 +903,25 @@ function EditorField({ label, children, highlight = false, locked = false }: { l
   );
 }
 
+// Decompose a flat fee into the Comisión/IVA split used to SEED the edit form when
+// there is no stored breakdown. MXN broker fees (BMV/GBM) include 16% IVA, so we
+// back it out — commission = fee / 1.16, IVA = remainder — which both preserves the
+// exact total AND reproduces the same split the create wizard shows (19.17 → 16.53
+// + 2.64). USD carries no IVA, so the whole fee is commission. This is only a seed:
+// nothing is persisted unless the user actually edits a cost field (see feePayload).
+function decomposeFeeToSplit(fee: number, currency: CurrencyCode): { commission: string; iva: string } {
+  if (!(fee > 0)) return { commission: "", iva: "" };
+  if (currency !== "MXN") return { commission: String(fee), iva: "" };
+  const commission = Math.round((fee / 1.16) * 100) / 100;
+  const iva = Math.round((fee - commission) * 100) / 100;
+  return { commission: String(commission), iva: String(iva) };
+}
+
 // S4/S5: in-situ editor rendered as a full-width row beneath the transaction.
 // Save commits through updateTransaction with a submit guard so one click is
 // exactly one PUT, then onSaved refreshes and collapses the row back to S2.
 function InlineTransactionEditor({
+  breakdown,
   loadingPolicy = false,
   onCancel,
   onSaved,
@@ -904,6 +929,7 @@ function InlineTransactionEditor({
   transaction,
   transferType,
 }: {
+  breakdown?: FrictionBreakdown | null;
   loadingPolicy?: boolean;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
@@ -917,9 +943,29 @@ function InlineTransactionEditor({
   // While the source is still loading we keep them locked (safe default).
   const manual = source === "MANUAL";
   const financialLocked = loadingPolicy || !manual;
+  const mode = normalizeTransactionMode(transaction.transactionType);
+  const isBond = (transaction.assetType ?? "").toUpperCase().includes("BOND");
+  const feeCurrency: CurrencyCode = transaction.currency === "MXN" ? "MXN" : "USD";
+  // ADR-0005 parity on edit: the Comisión/IVA split is available for MANUAL
+  // BUY/SELL of non-bond assets — same gate as the create wizard. Bonds,
+  // transfers, dividends and imported/locked rows keep the single flat fee.
+  // A stored breakdown carrying otherFees can't be represented by the inline
+  // Comisión/IVA split (there is no otherFees field here), so fall back to the flat
+  // fee to avoid dropping it on save — manual entries virtually never carry it.
+  const hasOtherFees = (breakdown?.otherFees ?? 0) > 0;
+  const usesSplit = manual && (mode === "BUY" || mode === "SELL") && !isBond && !hasOtherFees;
   const [quantity, setQuantity] = useState(String(transaction.quantity ?? ""));
   const [price, setPrice] = useState(transaction.pricePerUnit ? String(transaction.pricePerUnit) : "");
   const [fee, setFee] = useState(transaction.fee > 0 ? String(transaction.fee) : "");
+  // Split seed: decompose the flat fee into Comisión/IVA (MXN backs out 16%) so the
+  // effective total is preserved and the form mirrors the create wizard. A stored
+  // breakdown (if any) refines this once the details fetch resolves.
+  const initialSplit = decomposeFeeToSplit(transaction.fee, feeCurrency);
+  const [brokerCommission, setBrokerCommission] = useState(initialSplit.commission);
+  const [brokerIva, setBrokerIva] = useState(initialSplit.iva);
+  const [ivaTouched, setIvaTouched] = useState(false);
+  const splitUserTouchedRef = useRef(false);
+  const breakdownAppliedRef = useRef(false);
   const [notes, setNotes] = useState(transaction.notes ?? "");
   const [date, setDate] = useState(() => toLocalDateTimeInput(transaction.transactionDate));
   const [submitting, setSubmitting] = useState(false);
@@ -933,10 +979,53 @@ function InlineTransactionEditor({
     (manual ? dateRef : notesRef).current?.focus();
   }, [loadingPolicy, manual]);
 
+  // The stored breakdown arrives async (after the details fetch). Apply it once as
+  // the split seed, but never after the user has started editing the cost fields —
+  // so a real persisted Comisión/IVA split is reconstructed without clobbering edits.
+  useEffect(() => {
+    if (breakdownAppliedRef.current || splitUserTouchedRef.current) return;
+    if (breakdown?.brokerCommission != null) {
+      setBrokerCommission(String(breakdown.brokerCommission));
+      setBrokerIva(breakdown.brokerIva != null ? String(breakdown.brokerIva) : "");
+      setIvaTouched(true);
+      breakdownAppliedRef.current = true;
+    }
+  }, [breakdown]);
+
   const quantityValue = Number.parseFloat(quantity) || 0;
   const priceValue = Number.parseFloat(price) || 0;
   const feeValue = Number.parseFloat(fee) || 0;
+  const commissionValue = Number.parseFloat(brokerCommission) || 0;
+  const ivaValue = Number.parseFloat(brokerIva) || 0;
+  const effectiveFee = usesSplit ? commissionValue + ivaValue : feeValue;
   const totalValue = priceValue * quantityValue;
+
+  // Only send the split when the user engaged the cost fields OR a stored split was
+  // reconstructed; otherwise an edit unrelated to costs keeps the original flat fee
+  // untouched (no silently-invented breakdown). buildFeePayload enforces the
+  // ADR-0005 mutual exclusivity of the split vs the single `fee`.
+  function feePayload() {
+    const sendSplit = usesSplit && (splitUserTouchedRef.current || breakdownAppliedRef.current);
+    return buildFeePayload(sendSplit, commissionValue, ivaValue, feeValue);
+  }
+
+  // IVA auto-derives at 16% of the commission for MXN until the user edits IVA by
+  // hand (parity with the create wizard); USD never auto-fills IVA. The 16% lives
+  // only in the UI — the backend receives IVA as an absolute amount (ADR-0005).
+  function handleCommissionChange(next: string) {
+    splitUserTouchedRef.current = true;
+    setBrokerCommission(next);
+    if (feeCurrency === "MXN" && !ivaTouched) {
+      const c = Number.parseFloat(next);
+      setBrokerIva(Number.isFinite(c) && c > 0 ? (c * 0.16).toFixed(2) : "");
+    }
+  }
+
+  function handleIvaChange(next: string) {
+    splitUserTouchedRef.current = true;
+    setIvaTouched(true);
+    setBrokerIva(next);
+  }
 
   async function handleSave() {
     if (submitting || loadingPolicy) return;
@@ -960,7 +1049,7 @@ function InlineTransactionEditor({
         assetType: transaction.assetType,
         quantity: quantityValue,
         pricePerUnit: isTransfer ? undefined : priceValue,
-        fee: feeValue > 0 ? feeValue : undefined,
+        ...feePayload(),
         notes: notes.trim() || undefined,
         transactionDate: date,
         transferType: isTransfer ? transferType : undefined,
@@ -981,6 +1070,7 @@ function InlineTransactionEditor({
     <tr className="bg-[#0f1319] [box-shadow:inset_0_-1px_0_#1a1f29]">
       <td className="px-5 py-4" colSpan={8}>
         <div
+          data-testid="inline-transaction-editor"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();
@@ -1006,7 +1096,7 @@ function InlineTransactionEditor({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div className={`grid grid-cols-2 gap-2 ${usesSplit ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
             <EditorField label="Date" locked={financialLocked}>
               <input
                 className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none disabled:cursor-not-allowed disabled:text-[#8a94a6]"
@@ -1044,19 +1134,52 @@ function InlineTransactionEditor({
                 value={quantity}
               />
             </EditorField>
-            <EditorField label="Fees" locked={financialLocked}>
-              <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
-              <input
-                className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
-                disabled={financialLocked}
-                inputMode="decimal"
-                onChange={(event) => setFee(event.target.value)}
-                placeholder="0.00"
-                step="any"
-                type="number"
-                value={fee}
-              />
-            </EditorField>
+            {usesSplit ? (
+              <>
+                <EditorField label="Comisión" locked={financialLocked}>
+                  <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
+                  <input
+                    className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                    data-testid="edit-broker-commission"
+                    disabled={financialLocked}
+                    inputMode="decimal"
+                    onChange={(event) => handleCommissionChange(event.target.value)}
+                    placeholder="0.00"
+                    step="any"
+                    type="number"
+                    value={brokerCommission}
+                  />
+                </EditorField>
+                <EditorField label={feeCurrency === "MXN" ? "IVA (16%)" : "IVA"} locked={financialLocked}>
+                  <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
+                  <input
+                    className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                    data-testid="edit-broker-iva"
+                    disabled={financialLocked}
+                    inputMode="decimal"
+                    onChange={(event) => handleIvaChange(event.target.value)}
+                    placeholder="0.00"
+                    step="any"
+                    type="number"
+                    value={brokerIva}
+                  />
+                </EditorField>
+              </>
+            ) : (
+              <EditorField label="Fees" locked={financialLocked}>
+                <span className="text-[0.8rem] font-semibold text-[#7f8aa3]">$</span>
+                <input
+                  className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
+                  disabled={financialLocked}
+                  inputMode="decimal"
+                  onChange={(event) => setFee(event.target.value)}
+                  placeholder="0.00"
+                  step="any"
+                  type="number"
+                  value={fee}
+                />
+              </EditorField>
+            )}
             <EditorField highlight={!loadingPolicy && !manual} label="Notes">
               <input
                 className="w-full bg-transparent text-[0.82rem] font-semibold text-white outline-none placeholder:text-[#5f6a7e] disabled:cursor-not-allowed disabled:text-[#8a94a6]"
@@ -1069,6 +1192,13 @@ function InlineTransactionEditor({
               />
             </EditorField>
           </div>
+
+          {usesSplit ? (
+            <p className="mt-2 px-1 text-[0.72rem] text-[#7f8aa3]">
+              Total costos:{" "}
+              <span className="font-semibold text-white" data-testid="edit-total-costs">{formatFeeCurrency(effectiveFee, feeCurrency)}</span>
+            </p>
+          ) : null}
 
           <ProblemAlert message={error} />
 

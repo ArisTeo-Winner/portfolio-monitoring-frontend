@@ -7,6 +7,17 @@ import type { DividendGrowthResponse } from "@/features/market/types/dividend-gr
 import type { PortfolioEntry } from "@/features/portfolio/types/portfolio.types";
 import { getAssetLogoFromRegistry, readAssetLogoRegistry, resolveAssetName } from "@/features/assets/lib/asset-logo-registry";
 import { AssetAvatar } from "@/components/shared/AssetAvatar";
+import { resolveDividendYield, groupIncomeByCurrency } from "@/features/portfolio/lib/dividends-currency";
+import {
+  dividendStatusBadge,
+  formatDividendDate,
+  frequencyLabel,
+  pickSoonestDividend,
+  resolveDividendStatus,
+  type DisplayDividendStatus,
+} from "@/features/portfolio/lib/dividends-eligibility";
+import type { NextDividend } from "@/features/market/types/dividend-growth.types";
+import { MyDividendsTable } from "@/components/portfolio/my-dividends-table";
 
 type ViewMode = "zen" | "detail";
 
@@ -18,15 +29,28 @@ type Row = {
   annualIncome: number; // DPS of the latest year × shares, in the dividend's native currency
   currency: string; // native currency of the dividend (NOT the presentation currency)
   cagr5y: number | null; // fraction
+  dividendYield: number | null; // fraction; ADR-0031 backend yieldPct when available (cross-currency safe), else local same-currency calc. null = N/D
   pays: boolean;
+  status: DisplayDividendStatus; // pays | none | verifying (ADR-0025 F4)
+  nextDividend: NextDividend | null; // upcoming payment, or null
 };
+
+function todayISO(): string {
+  return new Date().toLocaleDateString("en-CA"); // yyyy-MM-dd in local time
+}
 
 // ADR-0014 Dividends tab — "Ingresos". Zen mode answers "how much do I get and
 // when"; Detallado reveals the analyst columns. Income/growth come from the public
 // dividend-growth endpoint (DPS is in the dividend's NATIVE currency, labeled as
 // such). "Próximo pago" and yield-in-your-currency need a backend dividend
 // calendar + presentation-currency aggregate, so they render as "Pendiente".
-export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
+export function DividendsPanel({
+  entries,
+  displayCurrency,
+}: {
+  entries: PortfolioEntry[];
+  displayCurrency: string;
+}) {
   const [mode, setMode] = useState<ViewMode>("zen");
 
   const results = useQueries({
@@ -48,22 +72,37 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
       const latestDps = years.at(-1)?.totalDps ?? 0;
       const shares = Number(entry.totalQuantity) || 0;
       const annualIncome = latestDps * shares;
+      const currency = data?.currency ?? "USD";
+      const status = resolveDividendStatus(data?.eligibilityStatus, annualIncome);
+      // ADR-0031: prefer the backend's cross-currency-safe yieldPct when present,
+      // else fall back to the local same-currency computation (see helper doc).
+      const dividendYield = resolveDividendYield(
+        data?.yieldPct,
+        annualIncome,
+        Number(entry.currentValue) || 0,
+        currency,
+        displayCurrency,
+      );
       return {
         entry,
         name: resolveAssetName(entry.assetSymbol, entry.assetType, registry),
         logoUrl: getAssetLogoFromRegistry(registry, entry.assetSymbol, entry.assetType) ?? null,
         shares,
         annualIncome,
-        currency: data?.currency ?? "USD",
+        currency,
         cagr5y: data?.cagr5y ?? null,
-        pays: annualIncome > 0,
+        dividendYield,
+        pays: status === "pays",
+        status,
+        nextDividend: data?.nextDividend ?? null,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- results identity changes each render; gate on the stable loading flag + entries instead.
-  }, [entries, loading, registry]);
+  }, [entries, loading, registry, displayCurrency]);
 
-  const payers = rows.filter((r) => r.pays).sort((a, b) => b.annualIncome - a.annualIncome);
-  const nonPayers = rows.filter((r) => !r.pays);
+  const payers = rows.filter((r) => r.status === "pays").sort((a, b) => b.annualIncome - a.annualIncome);
+  const verifying = rows.filter((r) => r.status === "verifying");
+  const nonPayers = rows.filter((r) => r.status === "none");
 
   // Group the annual income by native currency (never sum across currencies).
   const totalsByCurrency = useMemo(() => {
@@ -79,7 +118,7 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
     return <p className="px-2 py-10 text-center text-[0.9rem] text-[#7f8aa3]">Cargando tus dividendos…</p>;
   }
 
-  if (!payers.length && !nonPayers.length) {
+  if (!payers.length && !nonPayers.length && !verifying.length) {
     return <p className="px-2 py-10 text-center text-[0.9rem] text-[#7f8aa3]">Aún no hay activos para analizar dividendos.</p>;
   }
 
@@ -101,13 +140,17 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
         <ZenView
           nonPayers={nonPayers}
           payers={payers}
+          verifying={verifying}
           primaryTotal={primaryTotal}
-          totalsByCurrency={totalsByCurrency}
           maxIncome={maxIncome}
         />
       ) : (
         <DetailView rows={rows} />
       )}
+
+      <div className="mt-6 border-t border-[#161b22] pt-6">
+        <MyDividendsTable />
+      </div>
     </div>
   );
 }
@@ -115,16 +158,19 @@ export function DividendsPanel({ entries }: { entries: PortfolioEntry[] }) {
 function ZenView({
   payers,
   nonPayers,
+  verifying,
   primaryTotal,
-  totalsByCurrency,
   maxIncome,
 }: {
   payers: Row[];
   nonPayers: Row[];
+  verifying: Row[];
   primaryTotal: [string, number] | null;
-  totalsByCurrency: [string, number][];
   maxIncome: number;
 }) {
+  // Soonest upcoming payment across paying holdings (ADR-0025 F4-B).
+  const soonest = useMemo(() => pickSoonestDividend(payers, todayISO()), [payers]);
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-[1.4fr_1fr]">
@@ -138,26 +184,49 @@ function ZenView({
               <p className="mt-2 text-[0.86rem] text-[#7f8aa3]">
                 ≈ <b className="font-semibold tabular-nums text-white">{money(primaryTotal[1] / 12)}</b> cada mes, sin mover un dedo
               </p>
-              {totalsByCurrency.length > 1 ? (
-                <p className="mt-1 text-[0.74rem] text-[#5f6d82]">
-                  + {totalsByCurrency.slice(1).map(([c, v]) => `${money(v)} ${c}`).join(" · ")} en otras monedas
-                </p>
-              ) : null}
             </>
           ) : (
             <p className="mt-3 text-[0.95rem] text-[#7f8aa3]">Tus activos todavía no reparten dividendos.</p>
           )}
         </article>
 
-        <article className="relative overflow-hidden rounded-[1.3rem] border border-[#232c3a] bg-[#111317] p-5">
+        <article
+          data-testid="dividends-next-payment"
+          className="relative overflow-hidden rounded-[1.3rem] border border-[#232c3a] bg-[#111317] p-5"
+        >
           <span className="absolute inset-y-0 left-0 w-1 bg-[#f0b45a]" aria-hidden="true" />
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#f0b45a]">Tu próximo pago</p>
-          <p className="mt-3 text-[0.95rem] text-[#9daccc]">Pronto podrás ver cuándo y cuánto cobras.</p>
-          <span className="mt-3 inline-flex w-max items-center gap-2 rounded-full border border-[#2a2f3a] bg-[#0f1217] px-3 py-1 text-[0.74rem] text-[#7f8aa3]">
-            Calendario de dividendos — pendiente
-          </span>
+          {soonest ? (
+            <>
+              <p className="mt-2 text-[1.6rem] font-semibold tracking-[-0.02em] tabular-nums text-white">
+                {money(soonest.nextDividend.amountPerShare)}{" "}
+                <span className="text-[0.42em] font-semibold text-[#7f8aa3]">{soonest.nextDividend.currency}/acción</span>
+              </p>
+              <p className="mt-2 text-[0.86rem] text-[#9daccc]">
+                <b className="font-semibold text-white">{soonest.item.name}</b>
+                {soonest.nextDividend.paymentDate ? (
+                  <> te paga el <b className="font-semibold text-white">{formatDividendDate(soonest.nextDividend.paymentDate)}</b></>
+                ) : null}
+                {frequencyLabel(soonest.nextDividend.frequency) ? <> · {frequencyLabel(soonest.nextDividend.frequency)}</> : null}
+              </p>
+              {soonest.nextDividend.exDividendDate ? (
+                <span className="mt-3 inline-flex w-max items-center gap-2 rounded-full border border-[#2a2f3a] bg-[#0f1217] px-3 py-1 text-[0.72rem] text-[#7f8aa3]">
+                  Ex-dividendo: {formatDividendDate(soonest.nextDividend.exDividendDate)}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-[0.95rem] text-[#9daccc]">Sin pagos próximos anunciados por ahora.</p>
+              <span className="mt-3 inline-flex w-max items-center gap-2 rounded-full border border-[#2a2f3a] bg-[#0f1217] px-3 py-1 text-[0.74rem] text-[#7f8aa3]">
+                Te avisaremos cuando se confirme el siguiente
+              </span>
+            </>
+          )}
         </article>
       </div>
+
+      <CurrencyDiversification payers={payers} />
 
       {payers.length ? (
         <div>
@@ -167,6 +236,24 @@ function ZenView({
               <PayerRow key={r.entry.assetSymbol} row={r} maxIncome={maxIncome} />
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {verifying.length ? (
+        <div data-testid="dividends-verifying">
+          <p className="mb-2 px-1 text-[0.72rem] font-medium uppercase tracking-[0.1em] text-[#f0b45a]">Verificando…</p>
+          <div className="flex flex-wrap gap-2">
+            {verifying.map((r) => (
+              <span
+                key={r.entry.assetSymbol}
+                className="inline-flex items-center gap-2 rounded-full border border-[#3a3220] bg-[#1a160e] px-3 py-1.5 text-[0.78rem] text-[#f0b45a]"
+              >
+                <AssetAvatar assetType={r.entry.assetType} dark symbol={r.entry.assetSymbol} logoUrl={r.logoUrl} />
+                {r.entry.assetSymbol}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 px-1 text-[0.68rem] text-[#5f6d82]">Aún verificamos con el proveedor si reparten dividendos.</p>
         </div>
       ) : null}
 
@@ -184,6 +271,25 @@ function ZenView({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: DisplayDividendStatus }) {
+  const badge = dividendStatusBadge(status);
+  const tone =
+    badge.tone === "positive"
+      ? "border-[#1d3a2b] bg-[#0e1a14] text-[#1fd38b]"
+      : badge.tone === "pending"
+        ? "border-[#3a3220] bg-[#1a160e] text-[#f0b45a]"
+        : "border-[#1b2028] bg-[#0f1217] text-[#7f8aa3]";
+  return (
+    <span
+      data-testid="dividend-status-badge"
+      data-status={status}
+      className={`inline-flex w-max items-center rounded-full border px-2 py-0.5 text-[0.62rem] font-medium ${tone}`}
+    >
+      {badge.label}
+    </span>
   );
 }
 
@@ -216,15 +322,91 @@ function PayerRow({ row, maxIncome }: { row: Row; maxIncome: number }) {
   );
 }
 
+// Zen "ingreso por moneda": shows which currencies your passive income arrives
+// in. The proportion bar is by NUMBER of paying holdings (unit-free) and amounts
+// stay in their own currency — we never sum/convert across currencies here.
+function CurrencyDiversification({ payers }: { payers: Row[] }) {
+  const groups = useMemo(() => groupIncomeByCurrency(payers), [payers]);
+  if (!groups.length) return null;
+
+  const multi = groups.length > 1;
+  return (
+    <article
+      data-testid="dividends-currency-diversification"
+      className="rounded-[1.3rem] border border-[#1b2028] bg-[#111317] p-5"
+    >
+      <p className="text-[0.72rem] font-medium uppercase tracking-[0.16em] text-[#71819b]">Tu ingreso por moneda</p>
+      <p className="mt-2 text-[0.9rem] text-[#9daccc]">
+        {multi ? (
+          <>Tu ingreso llega repartido en <b className="font-semibold text-white">{groups.length} monedas</b>.</>
+        ) : (
+          <>Todo tu ingreso llega en <b className="font-semibold text-white">{groups[0].currency}</b>.</>
+        )}
+      </p>
+
+      <div className="mt-4 space-y-3">
+        {groups.map((g) => {
+          const holdings = payers.filter((p) => p.currency === g.currency);
+          const pct = Math.round(g.share * 100);
+          return (
+            <div key={g.currency} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
+              <span className="rounded-[0.6rem] border border-[#2a313b] bg-[#0f1217] px-2.5 py-1 text-[0.78rem] font-semibold text-white">
+                {g.currency}
+              </span>
+              <div className="min-w-0">
+                <div className="flex -space-x-2">
+                  {holdings.slice(0, 5).map((h) => (
+                    <AssetAvatar
+                      key={h.entry.assetSymbol}
+                      assetType={h.entry.assetType}
+                      dark
+                      logoUrl={h.logoUrl}
+                      symbol={h.entry.assetSymbol}
+                    />
+                  ))}
+                  {holdings.length > 5 ? (
+                    <span className="flex h-7 items-center rounded-full border border-[#1b2028] bg-[#0f1217] px-2 text-[0.68rem] text-[#7f8aa3]">
+                      +{holdings.length - 5}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 h-[5px] max-w-[260px] overflow-hidden rounded-[3px] bg-[#121a28]">
+                  <i
+                    className="block h-full rounded-[3px] bg-[linear-gradient(90deg,#0f9e67,#1fd38b)]"
+                    style={{ width: `${Math.max(6, pct)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[0.9rem] font-semibold tabular-nums text-white">
+                  {money(g.total)} <span className="text-[0.62em] font-semibold text-[#7f8aa3]">{g.currency}</span>
+                </p>
+                <p className="text-[0.68rem] text-[#5f6d82]">
+                  {g.count} {g.count === 1 ? "activo" : "activos"} · {pct}%
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-3 text-[0.68rem] text-[#5f6d82]">
+        La proporción es por número de activos. Los montos no se suman entre monedas.
+      </p>
+    </article>
+  );
+}
+
 function DetailView({ rows }: { rows: Row[] }) {
   return (
     <div className="overflow-x-auto rounded-[1rem] border border-[#1b2028]">
-      <table className="w-full min-w-[720px] border-collapse text-[0.84rem]">
+      <table data-testid="dividends-detail-table" className="w-full min-w-[800px] border-collapse text-[0.84rem]">
         <thead>
           <tr className="border-b border-[#1b2028] text-[0.66rem] uppercase tracking-[0.08em] text-[#5f6d82]">
             <th className="px-4 py-3 text-left font-semibold">Holding</th>
             <th className="px-4 py-3 text-right font-semibold">Acciones</th>
             <th className="px-4 py-3 text-right font-semibold">Dividendo/año</th>
+            <th className="px-4 py-3 text-right font-semibold">Rendim.</th>
             <th className="px-4 py-3 text-right font-semibold">Crecim. 5A</th>
             <th className="px-4 py-3 text-right font-semibold">Próximo pago</th>
             <th className="px-4 py-3 text-right font-semibold">Ex-dividendo</th>
@@ -239,6 +421,9 @@ function DetailView({ rows }: { rows: Row[] }) {
                   <div>
                     <p className="font-semibold text-white">{r.name}</p>
                     <p className="text-[0.7rem] text-[#5f6d82]">{r.entry.assetSymbol}</p>
+                    <div className="mt-1">
+                      <StatusBadge status={r.status} />
+                    </div>
                   </div>
                 </div>
               </td>
@@ -247,21 +432,44 @@ function DetailView({ rows }: { rows: Row[] }) {
                 {r.pays ? <span className="text-white">{money(r.annualIncome)} {r.currency}</span> : <span className="text-[#5f6d82]">—</span>}
               </td>
               <td className="px-4 py-3 text-right">
+                {r.dividendYield != null ? (
+                  <span className="text-white">{(r.dividendYield * 100).toFixed(2)}%</span>
+                ) : (
+                  <span className="text-[#5f6d82]">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right">
                 {r.cagr5y != null ? (
                   <span className={r.cagr5y >= 0 ? "text-[#1fd38b]" : "text-[#ff6b6b]"}>{r.cagr5y >= 0 ? "+" : ""}{(r.cagr5y * 100).toFixed(1)}%</span>
                 ) : (
                   <span className="text-[#5f6d82]">—</span>
                 )}
               </td>
-              <td className="px-4 py-3 text-right text-[#5f6d82]">Pendiente</td>
-              <td className="px-4 py-3 text-right text-[#5f6d82]">Pendiente</td>
+              <td className="px-4 py-3 text-right">
+                {r.nextDividend ? (
+                  <span className="text-white">
+                    {money(r.nextDividend.amountPerShare)} {r.nextDividend.currency}
+                    {r.nextDividend.paymentDate ? (
+                      <span className="block text-[0.64rem] font-medium text-[#5f6d82]">{formatDividendDate(r.nextDividend.paymentDate)}</span>
+                    ) : null}
+                  </span>
+                ) : r.status === "verifying" ? (
+                  <span className="text-[#f0b45a]">Verificando…</span>
+                ) : (
+                  <span className="text-[#5f6d82]">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {r.nextDividend?.exDividendDate ? (
+                  <span className="text-white">{formatDividendDate(r.nextDividend.exDividendDate)}</span>
+                ) : (
+                  <span className="text-[#5f6d82]">—</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="px-4 py-3 text-[0.72rem] text-[#5f6d82]">
-        Dividendo en la moneda nativa del activo. Próximo pago y ex-dividendo llegan con el calendario de dividendos del backend.
-      </p>
     </div>
   );
 }

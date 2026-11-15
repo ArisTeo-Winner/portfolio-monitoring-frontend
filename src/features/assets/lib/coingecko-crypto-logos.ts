@@ -76,8 +76,12 @@ async function fetchMarketsPage(page: number) {
 
 function toLogoMap(items: CachedCoin[]) {
   return items.reduce<Record<string, string>>((map, coin) => {
-    if (coin.symbol && coin.image) {
-      map[coin.symbol.toUpperCase()] = coin.image;
+    const key = coin.symbol?.toUpperCase();
+    // First write wins: the markets list is market_cap_desc, so the canonical
+    // (highest market cap) coin for a ticker is seen first — don't let a
+    // lower-cap impostor sharing the symbol (e.g. a fake "BNB") overwrite it.
+    if (key && coin.image && !map[key]) {
+      map[key] = coin.image;
     }
     return map;
   }, {});

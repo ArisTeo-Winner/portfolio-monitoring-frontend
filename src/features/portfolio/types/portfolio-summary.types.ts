@@ -14,9 +14,10 @@ export type PortfolioSummaryResponse = {
   dividendIncome: number | null; // Σ net dividends
   totalReturn: number | null; // allTimeProfit + dividendIncome
   totalReturnPercent: number | null; // percent (e.g. 45.00 = 45%)
-  // Split components of allTimeProfit (additive; present once the backend exposes
-  // them — see ADR-0014). Until then the Total Return consumer derives the split
-  // from allTimeProfit minus the entries' unrealized P&L.
+  // Split components of allTimeProfit (additive; shipped by the backend since
+  // ADR-0014, which guarantees realizedPnl + unrealizedPnl + dividendIncome =
+  // totalReturn). The Total Return consumer prefers these and only derives the
+  // split (allTimeProfit minus the entries' unrealized P&L) when a field is absent.
   realizedPnl?: number | null; // gain locked in by sells
   unrealizedPnl?: number | null; // gain on current holdings (= Σ entries.totalProfitLoss)
   presentation?: PresentationEnvelope;

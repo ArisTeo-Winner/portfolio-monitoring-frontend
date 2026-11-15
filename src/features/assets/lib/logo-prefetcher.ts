@@ -8,6 +8,10 @@ import {
   rememberAssetLogo,
   type AssetLogoRegistry,
 } from "@/features/assets/lib/asset-logo-registry";
+import {
+  fetchCoinGeckoCryptoLogoMap,
+  readCoinGeckoCryptoLogoMap,
+} from "@/features/assets/lib/coingecko-crypto-logos";
 import { normalizeAssetType } from "@/lib/utils/asset";
 
 type AssetRef = { symbol: string; assetType: string };
@@ -48,6 +52,35 @@ export async function prefetchAssetLogos(
       rememberAssetLogo(match);
     }
   });
+
+  // Crypto whose catalog (searchAssets) carries no logo falls back to the
+  // CoinGecko market map — the same source the live resolver uses — but here we
+  // persist it into the shared registry so Portfolio resolves it on first lookup,
+  // exactly like Transactions resolve the BFF inline logoUrl. This removes the
+  // Portfolio-vs-Transactions icon divergence (e.g. BNB, which in prod resolves
+  // only via CoinGecko) and survives reloads. Must not throw (background prefetch).
+  try {
+    const afterSearch = readAssetLogoRegistry();
+    const cryptoMissing = missing.filter(
+      ({ symbol, assetType }) =>
+        normalizeAssetType(assetType, symbol) === "CRYPTO" &&
+        !getAssetLogoFromRegistry(afterSearch, symbol, assetType),
+    );
+
+    if (cryptoMissing.length) {
+      let cryptoMap = readCoinGeckoCryptoLogoMap();
+      if (!Object.keys(cryptoMap).length) {
+        cryptoMap = await fetchCoinGeckoCryptoLogoMap();
+      }
+      for (const { symbol, assetType } of cryptoMissing) {
+        const logoUrl = cryptoMap[symbol.toUpperCase()];
+        if (logoUrl) rememberAssetLogo({ symbol, assetType, logoUrl });
+      }
+    }
+  } catch {
+    // Provider unavailable — keep whatever searchAssets resolved; the live
+    // resolver still falls back to CoinGecko at render time.
+  }
 
   return readAssetLogoRegistry();
 }

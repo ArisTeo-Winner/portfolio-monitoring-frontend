@@ -64,7 +64,19 @@ export type UpdateTransactionPayload = {
   quantity: number;
   pricePerUnit?: number;
   transactionDate: string;
+  // Single-fee path (classic). Send this OR the split fields below, never both —
+  // same ADR-0005 rule as create: if any split field is present the backend
+  // derives fee = commission+iva+other, refreshes the FrictionBreakdown and
+  // ignores `fee`.
   fee?: number;
+  // Manual commission/IVA split (BUY/SELL), additive. Each optional and ≥ 0. When
+  // any is sent on update the backend derives `fee` from their sum and refreshes
+  // the fine-grained FrictionBreakdown. IVA is an ABSOLUTE amount (the UI computes
+  // 16% for MXN), not a rate — the backend never recomputes it. Imported rows stay
+  // locked (ADR-0007): these are only ever sent for MANUAL transactions.
+  brokerCommission?: number;
+  brokerIva?: number;
+  otherFees?: number;
   notes?: string;
   transferType?: TransferDirection;
   currency?: TransactionCurrency;

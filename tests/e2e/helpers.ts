@@ -105,6 +105,15 @@ export async function mockBackendAPIs(page: Page) {
     route.fulfill({ status: 200, contentType: "application/json", body: transactionsBody }),
   );
 
+  // ADR-0029 "Mis Dividendos" (/me/dividends) — fetched when the Dividends tab
+  // renders MyDividendsTable. Default to an empty list so any test that opens
+  // that tab doesn't fall through to the real backend (401 → session_expired
+  // redirect) or hang networkidle. Specs that assert received dividends register
+  // their own route afterwards, which wins by LIFO route precedence.
+  await page.route(/\/api\/v1\/me\/dividends/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+
   await page.route(/\/api\/v1\/users\/me/, (route) =>
     route.fulfill({
       status: 200,

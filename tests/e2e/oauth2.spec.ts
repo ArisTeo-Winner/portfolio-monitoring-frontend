@@ -44,6 +44,11 @@ test.describe("OAuth2 / Google Login", () => {
 
   // ─── 2. CALLBACK EXITOSO → /portfolio ─────────────────────────────────────
   test("callback exitoso persiste sesión y redirige a /portfolio", async ({ page }) => {
+    // First callback test in the file → it pays the on-demand compile of
+    // /auth/callback + /portfolio in `next dev`. Under parallel-worker CPU load
+    // that first compile can take tens of seconds (the identical flow in the
+    // "no queda en loop" test below passes because the routes are warm by then).
+    test.setTimeout(90_000);
     await mockBackendAPIs(page);
 
     await page.route("/api/auth/session", (route) =>
@@ -55,11 +60,18 @@ test.describe("OAuth2 / Google Login", () => {
     );
 
     await seedOAuthState(page);
+
+    // Warm-up: compile the heavy /portfolio route (the redirect target) once,
+    // unmeasured — refresh is mocked 401 so this just bounces to /login and
+    // compiles both routes. Keeps the measured redirect below off the cold path.
+    await page.goto("/portfolio");
+    await page.waitForURL(/\/(login|portfolio)/, { timeout: 60_000 });
+
     await page.goto(
       `/auth/callback#accessToken=${FAKE_ACCESS_TOKEN}&refreshToken=${FAKE_REFRESH_TOKEN}`,
     );
 
-    await expect(page).toHaveURL(/\/portfolio/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/portfolio/, { timeout: 30_000 });
 
     // Access token is memory-only — it must NOT appear in sessionStorage.
     const token = await page.evaluate(() => sessionStorage.getItem("cpm.accessToken"));

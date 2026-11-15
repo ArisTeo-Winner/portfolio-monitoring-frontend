@@ -59,6 +59,12 @@ export const endpoints = {
     transfer: "/api/v1/me/transactions/transfer",
     dividend: "/api/v1/me/transactions/dividend",
   },
+  // ADR-0029 "Mis Dividendos" — the authenticated user's RECEIVED dividends with
+  // their own amounts (gross/tax/net), not the public per-symbol /growth history.
+  // ROLE_USER, scope enforced by the backend; private, cacheable ~5 min.
+  dividends: {
+    mine: "/api/v1/me/dividends",
+  },
   // ADR-0012 market status. Public (no auth); computed from the backend's official
   // BMV/BIVA + NYSE calendars. `calendar` is the per-code detail for the Mercados page.
   market: {

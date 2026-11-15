@@ -59,7 +59,12 @@ export default defineConfig({
 
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // Local runs use 2 workers against a single `next dev`, so the first hit to a
+  // route pays an on-demand compile under CPU contention — enough to make timing
+  // / "visible within Ns" smoke tests flake once. One local retry absorbs that
+  // cold-compile outlier (CI already uses 2); a genuine failure still fails every
+  // attempt, so this hides no real regression.
+  retries: process.env.CI ? 2 : 1,
   // Run 2 workers locally for speed; CI sets PLAYWRIGHT_WORKERS or falls back to 1.
   workers: process.env.CI ? 1 : 2,
 

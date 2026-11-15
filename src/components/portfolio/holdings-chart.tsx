@@ -732,9 +732,10 @@ function formatTooltipDate(unixTimestamp: number) {
 
 function TotalReturnCard({ breakdown, fallbackUnrealized }: { breakdown: TotalReturnBreakdown; fallbackUnrealized: number }) {
   const { price, income, totalReturn, totalReturnPercent, currency } = breakdown;
-  // Prefer the backend split; until realizedPnl/unrealizedPnl ship, derive it so
-  // the three lines still reconcile to the total: unrealized is the entries' sum
-  // (which the holdings table also shows), realized is the rest of allTimeProfit.
+  // Prefer the backend split (realizedPnl/unrealizedPnl, shipped since ADR-0014);
+  // derive only as a fallback when a field is absent so the three lines still
+  // reconcile to the total: unrealized is the entries' sum (which the holdings
+  // table also shows), realized is the rest of allTimeProfit.
   const unrealized = breakdown.unrealized ?? fallbackUnrealized;
   const realized = breakdown.realized ?? price - unrealized;
   const positive = totalReturn >= 0;

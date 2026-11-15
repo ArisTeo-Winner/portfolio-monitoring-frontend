@@ -45,6 +45,12 @@ function routeJobEndpoints(
 test.describe("Broker import (GBM) — dual-channel async job flow", () => {
   test.setTimeout(60_000);
 
+  // The gbm-import-panel visibility checks below use a 20s budget on purpose: it is
+  // a presence-of-render assertion, not a perf SLA. Under a loaded local run 2 workers
+  // share one `next dev`, so /settings/connections' cold compile can exceed 10s and
+  // flake (even past the single local retry). 20s absorbs that contention; a genuine
+  // failure still times out on every attempt. Perf SLAs stay strict in performance.spec.
+
   test.beforeEach(async ({ page }, testInfo) => {
     skipUnlessXsMobile(testInfo);
     await mockBackendAPIs(page);
@@ -53,7 +59,7 @@ test.describe("Broker import (GBM) — dual-channel async job flow", () => {
 
   test("MXN channel (Mercado nacional): canal deshabilitado, visible pero inerte", async ({ page }) => {
     await page.goto("/settings/connections");
-    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 20_000 });
 
     // The national-market statement channel is intentionally disabled (kept, not
     // removed): the card is visible and badged, but has no file input.
@@ -90,7 +96,7 @@ test.describe("Broker import (GBM) — dual-channel async job flow", () => {
     );
 
     await page.goto("/settings/connections");
-    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 20_000 });
 
     await page.getByTestId("gbm-channel-drivewealth-input").setInputFiles([SAMPLE_PDF]);
 
@@ -129,7 +135,7 @@ test.describe("Broker import (GBM) — dual-channel async job flow", () => {
     await page.route(/\/api\/me\/transactions(\?|$)/, (route) => json(route, txns));
 
     await page.goto("/settings/connections");
-    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("gbm-import-panel")).toBeVisible({ timeout: 20_000 });
 
     await page.getByTestId("import-job-review-toggle").click();
     await expect(page.getByTestId("import-review-row")).toHaveCount(2, { timeout: 15_000 });

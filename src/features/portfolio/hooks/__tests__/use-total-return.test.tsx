@@ -58,6 +58,33 @@ describe("useTotalReturn", () => {
     expect(typeof result.current?.currency).toBe("string");
   });
 
+  it("surfaces the backend realized/unrealized split when present", async () => {
+    mockedApiRequest.mockResolvedValue(
+      buildSummary({
+        dividendIncome: 3,
+        totalReturn: 9,
+        totalReturnPercent: 45,
+        realizedPnl: 4,
+        unrealizedPnl: 2,
+      }),
+    );
+    const { result } = renderHook(() => useTotalReturn(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current).not.toBeNull());
+    expect(result.current).toMatchObject({ realized: 4, unrealized: 2 });
+  });
+
+  it("leaves realized/unrealized null when the backend omits the split (caller derives)", async () => {
+    mockedApiRequest.mockResolvedValue(
+      buildSummary({ dividendIncome: 3, totalReturn: 9, totalReturnPercent: 45 }),
+    );
+    const { result } = renderHook(() => useTotalReturn(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current).not.toBeNull());
+    expect(result.current?.realized).toBeNull();
+    expect(result.current?.unrealized).toBeNull();
+  });
+
   it("returns null when the summary endpoint is unavailable (pre-ADR-0014 backend)", async () => {
     mockedApiRequest.mockRejectedValue(new Error("404 Not Found"));
     const { result } = renderHook(() => useTotalReturn(), { wrapper: createWrapper() });

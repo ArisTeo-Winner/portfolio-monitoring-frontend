@@ -188,6 +188,27 @@ export async function mockBackendAPIs(page: Page) {
     }),
   );
 
+  // Market status mock (ADR-0012) — MarketStatusAnchor/Chip render in the shared
+  // shell on every authenticated route (/transactions, /settings, …) and the hook
+  // calls the backend directly (endpoints.market.status = /api/v1/market/status).
+  // Left unmocked, CI (NEXT_PUBLIC_API_BASE_URL = Render) hits it cross-origin and
+  // the browser logs a CORS console.error — not in BENIGN_PATTERNS — which fails
+  // console-errors.spec deterministically. The `/market/status` regex also covers
+  // the BFF alias (endpoints.bff.marketStatus = /api/market/status).
+  await page.route(/\/market\/status/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        asOf: "2026-05-06T15:00:00.000Z",
+        markets: [
+          { code: "NYSE", label: "NYSE", exchange: "New York Stock Exchange", timezone: "America/New_York", phase: "OPEN", isOpen: true, regular: { open: "09:30", close: "16:00" }, extended: { pre: "04:00", after: "20:00" }, nextChange: { type: "CLOSE", at: "2026-05-06T20:00:00.000Z" }, reasonCode: "REGULAR" },
+          { code: "BMV", label: "BMV", exchange: "Bolsa Mexicana de Valores", timezone: "America/Mexico_City", phase: "OPEN", isOpen: true, regular: { open: "08:30", close: "15:00" }, extended: null, nextChange: { type: "CLOSE", at: "2026-05-06T21:00:00.000Z" }, reasonCode: "REGULAR" },
+        ],
+      }),
+    }),
+  );
+
   // GBM import-job history — the broker import panel fetches this on mount from
   // every page that renders it (/settings/connections). Left unmocked it forwards
   // to the real backend with the fake token → 401 → the app treats it as
